@@ -1,5 +1,6 @@
 node_modules
 backend/.stack-work
+backend/stack.yaml.lock
 backend/data
 backend/dist-newstyle
 .hie
