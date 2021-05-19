@@ -7,6 +7,7 @@
 
 module FromDiscogs
   ( rereadLists,
+    readDiscogsRelease,
     readDiscogsReleases,
     readDiscogsReleasesCache,
     readDiscogsLists,
@@ -223,7 +224,18 @@ type DiscogsAPI =
       -- :> Header "Authorization: Discogs token" Token
       :> Header "User-Agent" UserAgent
       :> Get '[JSON] WLItems
+    -- Get release item
+    :<|> "users"
+      :> Capture "name" UserName
+      :> "collection"
+      :> "releases"
+      :> Capture "releaseid" Int
+      :> QueryParam "token" Token
+      -- :> Header "Authorization: Discogs token" Token
+      :> Header "User-Agent" UserAgent
+      :> Get '[JSON] WRelease
 
+--
 -- Get Folder items
 -- :<|> "users"
 --      :> Capture "name" UserName
@@ -265,10 +277,15 @@ getList ::
 --          -> Maybe Token
 --          -> Maybe UserAgent
 --          -> ClientM WReleases'
-
+getRelease ::
+  UserName ->
+  Int ->
+  Maybe Token ->
+  Maybe UserAgent ->
+  ClientM WRelease
 discogsAPI :: Proxy DiscogsAPI
 discogsAPI = Proxy
-getReleases :<|> getFolders :<|> getLists :<|> getList = client discogsAPI
+getReleases :<|> getFolders :<|> getLists :<|> getList :<|> getRelease = client discogsAPI
 
 getWr :: WReleases -> [WRelease]
 getWr wr = rs
@@ -379,6 +396,31 @@ readDiscogsReleases di = do
         Left _ -> []
         Right d -> getR <$> d
   pure rs
+
+releaseFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String WRelease)
+releaseFromDiscogsApi di rid = do
+  m <- newManager tlsManagerSettings -- defaultManagerSettings
+  let DiscogsSession tok un = di
+  let dc = mkClientEnv m discogsBaseUrl
+      query :: ClientM WRelease
+      query = do
+        getRelease un rid (Just tok) userAgent
+  putTextLn "-----------------Getting Release from Discogs-----"
+  res <- runClientM query dc
+  case res of
+    Left err -> pure $ Left (show err)
+    Right r -> pure $ Right r
+
+readDiscogsRelease :: DiscogsInfo -> Int -> IO Release
+readDiscogsRelease di rid = do
+  res <- releaseFromDiscogsApi di rid
+  case res of
+    Left err -> putTextLn $ "Error: " <> show err
+    Right _ -> pure ()
+  let r = case res of
+        Left _ -> error "killed, release not found"
+        Right d -> getR d
+  pure r
 
 listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
 listsFromDiscogsApi di = do
