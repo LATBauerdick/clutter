@@ -23,25 +23,34 @@ renderAlbum mAlbum = L.html_ $ do
   renderHead "Album Page"
   L.body_ albumBody
   where
-    albumBody = case mAlbum of
-      Nothing -> L.div_ [L.class_ "login-message"] $ do
-        L.p_ "Unknown Album, Sorry!"
-        L.br_ []
-        L.a_ [L.href_ "/albums"] "Please see all Albums"
-      Just a -> L.div_ [L.class_ "data-deskgap-drag"] $ do
-        L.div_ [L.class_ "cover-container"] $ do
-          L.a_ [L.href_ (albumURL a a)] $ do
-            L.img_
-              [ L.src_ (albumCover a)
-              , L.alt_ "cover image"
-              , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
-              , L.class_ "cover-image"
-                ]
-            L.div_ [L.class_ "cover-overlay"] "Overlay Here"
-        L.p_ $ L.toHtml ("Title: " <> albumTitle a)
-        L.p_ $ L.toHtml ("Artist: " <> albumArtist a)
-        L.p_ $ L.toHtml ("Year: " <> albumReleased a)
-        L.br_ []
+    albumBody = 
+      case mAlbum of
+        Nothing ->
+          L.div_ [L.class_ "login-message"] $ do
+            L.p_ "Unknown Album, Sorry!"
+            L.br_ []
+            L.a_ [L.href_ "/albums/All"] "Please see all Albums"
+        Just a ->
+          case albumFormat a of
+            "Tidal" ->
+              L.div_ [L.class_ "login-message"] $ do
+              L.p_ "Tidal Album, this view is not yet available."
+              L.br_ []
+              L.a_ [L.href_ "/albums/All"] "Please see all Albums"
+            _ ->
+              L.div_ [L.class_ "data-deskgap-drag"] $ do
+              L.div_ [L.class_ "cover-container"] $ do
+                L.a_ [L.href_ (albumURL a a)] $ do
+                  L.img_
+                    [ L.src_ (albumCover a)
+                    , L.alt_ "cover image"
+                    , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
+                    , L.class_ "cover-image"
+                      ]
+              L.p_ $ L.toHtml ("Title: " <> albumTitle a)
+              L.p_ $ L.toHtml ("Artist: " <> albumArtist a)
+              L.p_ $ L.toHtml ("Year: " <> albumReleased a)
+              L.br_ []
 
 renderAlbums :: Env -> EnvR -> Text -> Vector Int -> L.Html ()
 renderAlbums env envr ln aids =
@@ -54,7 +63,7 @@ renderAlbums env envr ln aids =
       renderLeftMenu
       -- grid of Albums
       L.div_ [L.class_ "albums"] $
-        L.div_ [L.class_ "row"] $
+        L.div_ [L.class_ "row"] $ do
           F.traverse_ renderAlbumTN $ zip [1..] (mapMaybe (`M.lookup` albums envr) (V.toList aids))
 
     renderLeftMenu :: L.Html ()
@@ -105,21 +114,22 @@ renderAlbums env envr ln aids =
                -- , L.style_ ("background-image: url(\'" <> (albumCover a) <> "\'); background-repeat: no-repeat; background-size: cover;")
                ] $ do
           L.div_ [L.class_ "cover-img"] $ do
-            L.a_ [L.href_ (albumURL a a)] $ do
-          -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $ do
-          -- <img src="workplace.jpg" alt="Workplace" usemap="#workmap">
-          -- <map name="workmap">
-          --  <area shape="rect" coords="34,44,270,350" alt="Computer" href="computer.htm">
-          --  <area shape="rect" coords="290,172,333,250" alt="Phone" href="phone.htm">
-          -- </map>
-          --
+            L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $ do
+            -- L.a_ [L.href_ (albumURL a a)] $ do
+              -- L.map_ [L.name_ ("album-thumb-map" <> show idx)] $
+              --   L.area_ [ L.shape_ "rect"
+              --           , L.coords_ "40,40,100,100"
+              --           , L.alt_ "album link"
+              --           -- , L.href_ "computer.htm"
+              --           , L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))
+              --           ]
               L.img_
                 [ L.src_ (albumCover a)
                 , L.class_ "cover-image"
                 , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
+                -- , L.usemap_ ("#album-thumb-map" <> show idx)
                 ]
-          L.div_ [L.class_ "cover-overlay"] $ do
-              case albumFormat a of
+          case albumFormat a of
                 "Vinyl" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.a_ [L.href_ (albumURL a a)] $ do
@@ -127,7 +137,8 @@ renderAlbums env envr ln aids =
                   -- L.img_ [ L.src_ "/discogs-icon.png", L.alt_ "D", L.class_ "cover-oimage" ]
                 "Tidal" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.img_ [ L.src_ "/tidal-icon.png", L.alt_ "T", L.class_ "cover-oimage" ]
+                    L.a_ [L.href_ (albumURL a a)] $ do
+                      L.img_ [ L.src_ "/tidal-icon.png", L.alt_ "T", L.class_ "cover-oimage" ]
                 "CD" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.a_ [L.href_ (albumURL a a)] $ do
@@ -177,10 +188,10 @@ renderAlbums env envr ln aids =
             else ""
           let showNumbers = True
           if showNumbers then
-            L.div_ [L.class_ "idx"] $ do
-              L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))]
-              -- L.a_ [L.href_ (albumURL a a)]
-                ( " " <> show idx <> " " )
+            L.div_ [L.class_ "idx"] $
+              -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $
+              -- L.a_ [L.href_ (albumURL a a)] $
+                " " <> show idx <> " "
             else ""
           let showRating = True
           if showRating then
@@ -425,15 +436,6 @@ p.album-artist {
   box-shadow: 0 0 2px 1px rgba(0, 140, 186, 0.5);
 }
 
-/* The overlay effect - lays on top of the container and over the image */
-.cover-overlay {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
 .cover-obackground {
   width: 16px;
   height: 16px;
@@ -599,11 +601,5 @@ a:active {
 .cover-obackground2:hover .loctext {
   visibility: visible;
 }
-
-/* When you mouse over the container, fade in the overlay title */
-/*.cover-container:hover .cover-overlay {
-  opacity: 1;
-}
-*/
 
 |]

@@ -23,12 +23,13 @@ import Network.Wai
 import Network.Wai.Handler.Warp
 import Provider (readAlbum)
 import Relude
+import qualified Relude.Unsafe as Unsafe
 import Render
   ( renderAlbum,
     renderAlbums,
   )
 import Servant
-import Types (DiscogsInfo (..), Env (..), EnvR (..), SortOrder (..), getDiscogs)
+import Types (DiscogsInfo (..), Env (..), EnvR (..), SortOrder (..), getDiscogs, Album (..))
 
 data HTML = HTML
 
@@ -70,13 +71,17 @@ server env =
   where
     serveAlbum :: Int -> Handler RawHtml
     serveAlbum aid = do
-      am <- liftIO (readIORef (albumsR env))
-
-      -- get album info from Discogs
       di <- liftIO (readIORef (discogsR env))
-      ma <- case getDiscogs di of
-        DiscogsSession _ _ -> liftIO (readAlbum di aid)
-        _ -> liftIO (pure Nothing)
+      am <- liftIO (readIORef (albumsR env))
+      -- check if this aid is already known / in the Map
+      let mam = M.lookup aid am
+      ma <- if isJust mam && albumFormat (Unsafe.fromJust mam) == "Tidal"
+              then pure mam
+              else
+      -- it's not a Tidal album, update album info from Discogs
+                case getDiscogs di of
+                  DiscogsSession _ _ -> liftIO (readAlbum di aid)
+                  _ -> liftIO (pure Nothing)
       -- insert updated album and put in album map
       _ <- case ma of
         Just a -> liftIO $ writeIORef (albumsR env) (M.insert aid a am)
