@@ -233,7 +233,7 @@ type DiscogsAPI =
       :> QueryParam "token" Token
       -- :> Header "Authorization: Discogs token" Token
       :> Header "User-Agent" UserAgent
-      :> Get '[JSON] WRelease
+      :> Get '[JSON] WReleases
 
 --
 -- Get Folder items
@@ -282,7 +282,7 @@ getRelease ::
   Int ->
   Maybe Token ->
   Maybe UserAgent ->
-  ClientM WRelease
+  ClientM WReleases
 discogsAPI :: Proxy DiscogsAPI
 discogsAPI = Proxy
 getReleases :<|> getFolders :<|> getLists :<|> getList :<|> getRelease = client discogsAPI
@@ -398,29 +398,30 @@ readDiscogsReleases di = do
   pure rs
 
 releaseFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String WRelease)
-releaseFromDiscogsApi di rid = do
+releaseFromDiscogsApi di aid = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
   let DiscogsSession tok un = di
   let dc = mkClientEnv m discogsBaseUrl
-      query :: ClientM WRelease
+      query :: ClientM WReleases
       query = do
-        getRelease un rid (Just tok) userAgent
-  putTextLn "-----------------Getting Release from Discogs-----"
+        getRelease un aid (Just tok) userAgent
+  putTextLn $ "-----------------Getting Release " <> show aid <> " from Discogs-----"
   res <- runClientM query dc
   case res of
     Left err -> pure $ Left (show err)
-    Right r -> pure $ Right r
+    Right rs -> pure $ case viaNonEmpty head (getWr rs) of
+      Nothing -> Left $ "No Release Found for " <> show aid
+      Just r -> Right r
 
-readDiscogsRelease :: DiscogsInfo -> Int -> IO Release
+readDiscogsRelease :: DiscogsInfo -> Int -> IO (Maybe Release)
 readDiscogsRelease di rid = do
   res <- releaseFromDiscogsApi di rid
   case res of
-    Left err -> putTextLn $ "Error: " <> show err
+    Left err -> putTextLn $ "Error in readDiscogsRelease: " <> show err
     Right _ -> pure ()
-  let r = case res of
-        Left _ -> error "killed, release not found"
-        Right d -> getR d
-  pure r
+  pure $ case res of
+    Left _ -> Nothing
+    Right d -> Just (getR d)
 
 listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
 listsFromDiscogsApi di = do

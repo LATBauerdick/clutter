@@ -17,11 +17,11 @@ import Env
   ( initEnv,
     refreshEnv,
   )
-import FromDiscogs (readDiscogsRelease)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Provider (readAlbum)
 import Relude
 import Render
   ( renderAlbum,
@@ -71,13 +71,19 @@ server env =
     serveAlbum :: Int -> Handler RawHtml
     serveAlbum aid = do
       am <- liftIO (readIORef (albumsR env))
-      let mAlbum = M.lookup aid am
-      di <- liftIO (readIORef (discogsR env))
-      case getDiscogs di of
-        DiscogsSession _ _ -> liftIO (readDiscogsRelease (getDiscogs di) 14129698) -- 10296629)
-        _ -> undefined
 
-      pure . RawHtml $ L.renderBS (renderAlbum mAlbum)
+      -- get album info from Discogs
+      di <- liftIO (readIORef (discogsR env))
+      ma <- case getDiscogs di of
+        DiscogsSession _ _ -> liftIO (readAlbum di aid)
+        _ -> liftIO (pure Nothing)
+      -- insert updated album and put in album map
+      _ <- case ma of
+        Just a -> liftIO $ writeIORef (albumsR env) (M.insert aid a am)
+        Nothing -> pure ()
+
+      -- let mAlbum = M.lookup aid am
+      pure . RawHtml $ L.renderBS (renderAlbum ma)
 
     serveAlbums :: Text -> Maybe Text -> Maybe Text -> Handler RawHtml
     serveAlbums listName msb mso = do

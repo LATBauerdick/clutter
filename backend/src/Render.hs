@@ -30,13 +30,14 @@ renderAlbum mAlbum = L.html_ $ do
         L.a_ [L.href_ "/albums"] "Please see all Albums"
       Just a -> L.div_ [L.class_ "data-deskgap-drag"] $ do
         L.div_ [L.class_ "cover-container"] $ do
-          L.img_
-            [ L.src_ (albumCover a)
-            , L.alt_ "cover image"
-            , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
-            , L.class_ "cover-image"
-            ]
-          L.div_ [L.class_ "cover-overlay"] "Overlay Here"
+          L.a_ [L.href_ (albumURL a a)] $ do
+            L.img_
+              [ L.src_ (albumCover a)
+              , L.alt_ "cover image"
+              , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
+              , L.class_ "cover-image"
+                ]
+            L.div_ [L.class_ "cover-overlay"] "Overlay Here"
         L.p_ $ L.toHtml ("Title: " <> albumTitle a)
         L.p_ $ L.toHtml ("Artist: " <> albumArtist a)
         L.p_ $ L.toHtml ("Year: " <> albumReleased a)
@@ -100,34 +101,49 @@ renderAlbums env envr ln aids =
     renderAlbumTN :: (Int, Album) -> L.Html ()
     renderAlbumTN (idx, a) =
       L.div_ [L.class_ "album-thumb"] $ do
-        L.div_ [L.class_ "cover-container"] $ do
-          L.a_ [L.href_ (albumURL a a)] $ do
-            L.img_
-              [ L.src_ (albumCover a)
-              , L.class_ "cover-image"
-              , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
-              ]
-            L.div_ [L.class_ "cover-overlay"] $ do
+        L.div_ [ L.class_ "cover-container"
+               -- , L.style_ ("background-image: url(\'" <> (albumCover a) <> "\'); background-repeat: no-repeat; background-size: cover;")
+               ] $ do
+          L.div_ [L.class_ "cover-img"] $ do
+            L.a_ [L.href_ (albumURL a a)] $ do
+          -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $ do
+          -- <img src="workplace.jpg" alt="Workplace" usemap="#workmap">
+          -- <map name="workmap">
+          --  <area shape="rect" coords="34,44,270,350" alt="Computer" href="computer.htm">
+          --  <area shape="rect" coords="290,172,333,250" alt="Phone" href="phone.htm">
+          -- </map>
+          --
+              L.img_
+                [ L.src_ (albumCover a)
+                , L.class_ "cover-image"
+                , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
+                ]
+          L.div_ [L.class_ "cover-overlay"] $ do
               case albumFormat a of
                 "Vinyl" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.span_ [ L.class_ "fas fa-record-vinyl fa-sm" ] ""
+                    L.a_ [L.href_ (albumURL a a)] $ do
+                      L.span_ [ L.class_ "fas fa-record-vinyl fa-sm" ] ""
                   -- L.img_ [ L.src_ "/discogs-icon.png", L.alt_ "D", L.class_ "cover-oimage" ]
                 "Tidal" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.img_ [ L.src_ "/tidal-icon.png", L.alt_ "T", L.class_ "cover-oimage" ]
                 "CD" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.span_ [ L.class_ "fas fa-compact-disc fa-sm" ] ""
+                    L.a_ [L.href_ (albumURL a a)] $ do
+                      L.span_ [ L.class_ "fas fa-compact-disc fa-sm" ] ""
                 "Vinyl, Box Set" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
+                    L.a_ [L.href_ (albumURL a a)] $ do
+                      L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
                 "File" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.span_ [ L.class_ "far fa-file-audio fa-sm" ] ""
+                    L.a_ [L.href_ (albumURL a a)] $ do
+                      L.span_ [ L.class_ "far fa-file-audio fa-sm" ] ""
                 _ ->
                   L.div_ [L.class_ "cover-obackground"] $
-                    L.toHtml (albumFormat a)
+                    L.a_ [L.href_ (albumURL a a)] $ do
+                      L.toHtml (albumFormat a)
           case albumTidal a of
             Nothing -> ""
             Just turl -> L.div_ [L.class_ "cover-obackground1"] $ do
@@ -161,7 +177,10 @@ renderAlbums env envr ln aids =
             else ""
           let showNumbers = True
           if showNumbers then
-            L.div_ [L.class_ "idx"] $ " " <> show idx <> " "
+            L.div_ [L.class_ "idx"] $ do
+              L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))]
+              -- L.a_ [L.href_ (albumURL a a)]
+                ( " " <> show idx <> " " )
             else ""
           let showRating = True
           if showRating then
