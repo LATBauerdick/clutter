@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: de21c7198ae9f486ec9c9e3fe0e40e1e58ee16d258e094afc4237d2518c1d5d1
+-- hash: 6357c33d60c9b1d56715e777b126ebfdfc6b9245cb68bb8f033027e668ffbe49
 
 name:           backend
 version:        0.1.0.0
@@ -52,6 +52,7 @@ library
     , http-client
     , http-client-tls
     , http-media
+    , lens
     , lucid
     , raw-strings-qq
     , relude
@@ -83,6 +84,7 @@ executable backend-exe
     , http-client
     , http-client-tls
     , http-media
+    , lens
     , lucid
     , raw-strings-qq
     , relude
@@ -118,6 +120,7 @@ test-suite backend-test
     , http-client
     , http-client-tls
     , http-media
+    , lens
     , lucid
     , raw-strings-qq
     , relude

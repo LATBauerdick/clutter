@@ -40,6 +40,7 @@ dependencies:
 - raw-strings-qq
 - http-client
 - http-client-tls
+- lens
 
 library:
   source-dirs: src
