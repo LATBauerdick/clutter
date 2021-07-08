@@ -114,7 +114,7 @@ renderAlbums env envr ln aids =
                -- , L.style_ ("background-image: url(\'" <> (albumCover a) <> "\'); background-repeat: no-repeat; background-size: cover;")
                ] $ do
           L.div_ [L.class_ "cover-img"] $ do
-            L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $ do
+            L.a_ [L.href_ ("/album/" <> show (albumID a))] $ do
             -- L.a_ [L.href_ (albumURL a a)] $ do
               -- L.map_ [L.name_ ("album-thumb-map" <> show idx)] $
               --   L.area_ [ L.shape_ "rect"
