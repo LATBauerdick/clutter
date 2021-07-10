@@ -14,7 +14,7 @@ module Types ( Tidal (..)
              ) where
 
 import Relude
-import qualified Text.Show
+-- import qualified Text.Show
 import Data.Vector ( Vector )
 
 data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
@@ -77,8 +77,10 @@ data Release
   , dcover    :: !Text
   , dfolder   :: Int
   , dformat   :: [Text]
-  , dtidalurl :: Maybe Text
+  , dtidalid  :: Maybe Text
+  , damid     :: Maybe Text
   , dlocation :: Maybe Text
+  , dtags     :: [Text]
   , drating   :: Int
   , dplays    :: Int
   } deriving (Show)
@@ -92,15 +94,14 @@ data Album
   , albumCover    :: Text
   , albumAdded    :: Text
   , albumFolder   :: Int
-  , albumURL      :: Album -> Text
+  , albumURL      :: Text
   , albumFormat   :: Text
   , albumTidal    :: Maybe Text
+  , albumAM       :: Maybe Text
   , albumLocation :: Maybe Text
+  , albumTags     :: [Text]
   , albumRating   :: Int
   , albumPlays    :: Int
-  }
+  } deriving (Show)
 instance Eq Album where
   (==) a b = albumID a == albumID b
-instance Show Album where
-  show a = "Album {albumID = " ++ show (albumID a) ++ ", albumTitle =" ++ show (albumTitle a) ++ "}"
-

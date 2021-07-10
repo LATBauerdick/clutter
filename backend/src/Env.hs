@@ -144,8 +144,8 @@ envFromFiles = do
       discogsToken = t0
       discogsUser = t1
       accessToken = t5
-  -- let tidal = Tidal $ TidalFile "data/traw1.json"
-  let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
+  let tidal = Tidal $ TidalFile "data/traw2.json"
+  -- let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
   -- let dc = Discogs $ DiscogsSession discogsToken discogsUser
   let dc = Discogs $ DiscogsFile "data/"
 

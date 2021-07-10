@@ -88,6 +88,8 @@ server env =
         Nothing -> pure ()
 
       -- let mAlbum = M.lookup aid am
+      _ <- liftIO $ print ma
+
       pure . RawHtml $ L.renderBS (renderAlbum ma)
 
     serveAlbums :: Text -> Maybe Text -> Maybe Text -> Handler RawHtml

@@ -175,10 +175,12 @@ getReleases t = getRelease <$> tis where
                        , dcover    = tcover
                        , dfolder   = fromEnum TTidal
                        , dformat   = ["Tidal"]
-                       , dtidalurl = Nothing
+                       , dtidalid  = Just (show tid)
+                       , damid     = Nothing
                        , dlocation = Nothing
-                       , drating = 0
-                       , dplays = 0
+                       , dtags     = []
+                       , drating   = 0
+                       , dplays    = 0
                        }
 
 

@@ -26,6 +26,8 @@ import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
+import Data.Text as T (stripPrefix, filter, null, toCaseFold, splitOn)
+import Data.Char as Ch (isDigit)
 -- import Control.Applicative
 -- import Control.Monad
 -- import Control.Monad.IO.Class
@@ -320,12 +322,51 @@ getR dr = r
     as = (\WArtist {name = n} -> n) <$> das
     turl :: Maybe Text
     turl = case mapMaybe (\WNote {field_id = i, value = v} -> if i /= 6 then Nothing else Just v) ns of
-      [a] -> Just a
+      [a] -> (\t -> if t == Just "" then Nothing else t) . fmap (\t -> if T.null (T.filter (not . Ch.isDigit) t) then t else "") . viaNonEmpty last . splitOn "/" $ a
       _ -> Nothing
-    loc :: Maybe Text
-    loc = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
+    nts :: Maybe Text
+    nts = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 3 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
+    tags :: [Text]
+    tags = mapMaybe (stripPrefix "#")
+         . words
+         $ fromMaybe "" nts
+    loct :: Maybe Text
+    loct = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
+      Just a -> if a /= "" then Just a else Nothing
+      _ -> Nothing
+    tidalid :: Maybe Text
+    tidalid = if isJust turl then turl else
+          viaNonEmpty head
+          . mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
+          . mapMaybe (T.stripPrefix "T")
+          . words
+          $ fromMaybe "" loct
+    amid :: Maybe Text
+    amid = viaNonEmpty head
+          . mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
+          . mapMaybe (stripPrefix "A")
+          . words
+          $ fromMaybe "" loct
+    loc :: Maybe Text
+    loc = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
+      Just a -> if a /= "" then Just (unwords
+                                    . mapMaybe (\t -> case stripPrefix "T" t of
+                                        Nothing -> Just t
+                                        Just ta -> if T.null (T.filter (not . Ch.isDigit) ta)
+                                                    then Nothing
+                                                    else Just t)
+                                    . mapMaybe (\t -> case stripPrefix "A" t of
+                                        Nothing -> Just t
+                                        Just ta -> if T.null (T.filter (not . Ch.isDigit) ta)
+                                                    then Nothing
+                                                    else Just t)
+                                    . words
+                                    $ a)
+                          else Nothing
+      _ -> Nothing
+
     plays :: Int
     plays = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 7 then Nothing else Just v) $ ns of
       Just a -> fromMaybe 0 (readMaybe . toString $ a)
@@ -333,18 +374,20 @@ getR dr = r
     fs = (\WFormat {name = n} -> n) <$> dfs
     r =
       Release
-        { daid = did,
-          dtitle = dt,
-          dartists = as,
+        { daid      = did,
+          dtitle    = dt,
+          dartists  = as,
           dreleased = show dyear,
-          dadded = da,
-          dcover = dcov,
-          dfolder = dfolder_id,
-          drating = drat,
-          dformat = fs,
-          dtidalurl = turl,
-          dlocation = loc,
-          dplays = plays
+          dadded    = da,
+          dcover    = dcov,
+          dfolder   = dfolder_id,
+          dformat   = fs,
+          dtidalid  = tidalid,
+          damid     = amid,
+          dlocation = if loc == Just "" then Nothing else loc,
+          dtags     = ["discogs"] <> map T.toCaseFold fs <> tags,
+          drating   = drat,
+          dplays    = plays
         }
 
 releasesFromDiscogsApi :: DiscogsInfo -> IO (Either String [WRelease])

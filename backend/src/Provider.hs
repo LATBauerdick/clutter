@@ -45,8 +45,8 @@ import Types
 
 atest :: [Album]
 atest =
-  [ Album 161314 "Mezzanine" "Massive Attack" "2001" "161314.jpg" "2018-01-01T18:01:42-08:00" 1349997 (const "https://www.tidal.com/album/161314") "Vinyl" Nothing Nothing 0 0,
-    Album 5253301 "Beethoven - Symphonie Nr. 3 »Eroica« & 4" "Herbert von Karajan" "1992" "5253301.jpg" "2017-09-17T20:57:52-07:00" 1351871 (const "https://www.tidal.com/album/5253301") "Vinyl" Nothing Nothing 0 0
+  [ Album 161314 "Mezzanine" "Massive Attack" "2001" "161314.jpg" "2018-01-01T18:01:42-08:00" 1349997 "https://www.tidal.com/album/161314" "Vinyl" Nothing Nothing Nothing [] 0 0,
+    Album 5253301 "Beethoven - Symphonie Nr. 3 »Eroica« & 4" "Herbert von Karajan" "1992" "5253301.jpg" "2017-09-17T20:57:52-07:00" 1351871 "https://www.tidal.com/album/5253301" "Vinyl" Nothing Nothing Nothing [] 0 0
   ]
 
 class Provider p where
@@ -65,9 +65,10 @@ instance Provider Tidal where
               T.pack "/320x320.jpg"
             ]
         tgetAlbumURL :: Album -> Text
-        tgetAlbumURL a =
-          T.pack $
-            "https://listen.tidal.com/album/" ++ show (albumID a)
+        tgetAlbumURL a = makeTidalURL (albumID a)
+        makeTidalURL :: Int -> Text
+        makeTidalURL tid =
+          T.pack $ "https://listen.tidal.com/album/" ++ show tid
 
     ds <- case getTidal p of
       TidalFile fn -> FT.readTidalReleasesCache fn
@@ -82,10 +83,12 @@ instance Provider Tidal where
             (ttoCoverURL r)
             (dadded r)
             (fromEnum TTidal)
-            tgetAlbumURL
+            (makeTidalURL (daid r))
             "Tidal"
-            Nothing -- (Just (fromString "https://listen.tidal.com/album/" <> show ( daid r )))
+            (Just (show (daid r)))
             Nothing
+            Nothing
+            ["tidal"]
             0
             0
 
@@ -104,14 +107,16 @@ dToAlbum r =
     (dcover r)
     (dadded r)
     (dfolder r)
-    getAlbumURL
+    (makeDiscogsURL (daid r))
     (T.intercalate ", " $ dformat r)
-    (dtidalurl r)
+    (dtidalid r)
+    (damid r)
     (dlocation r)
+    (dtags r)
     (drating r)
     (dplays r)
   where
-    getAlbumURL a = T.pack $ "https://www.discogs.com/release/" ++ show (albumID a)
+    makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
 
 instance Provider Discogs where
   readLists p = case getDiscogs p of

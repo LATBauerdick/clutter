@@ -40,7 +40,7 @@ renderAlbum mAlbum = L.html_ $ do
             _ ->
               L.div_ [L.class_ "data-deskgap-drag"] $ do
               L.div_ [L.class_ "cover-container"] $ do
-                L.a_ [L.href_ (albumURL a a)] $ do
+                L.a_ [L.href_ (albumURL a)] $ do
                   L.img_
                     [ L.src_ (albumCover a)
                     , L.alt_ "cover image"
@@ -108,58 +108,69 @@ renderAlbums env envr ln aids =
             L.toHtml t1
 
     renderAlbumTN :: (Int, Album) -> L.Html ()
-    renderAlbumTN (idx, a) =
+    renderAlbumTN (idx, a0) = do
+    -- is this a Tidal entry? is there a Discog entry for this?
+      let a = if albumFormat a0 /= "Tidal"
+          then a0
+          else fromMaybe a0
+            . (`M.lookup` albums envr)
+            . fromMaybe 0
+            . (`M.lookup` M.fromList [(74889902, 12895083), (180866908, 18529033), (59700396, 8492595), (183187812, 18869488)])
+            . fromMaybe 0 . readMaybe . toString . fromMaybe "0" . albumTidal $ a0
       L.div_ [L.class_ "album-thumb"] $ do
         L.div_ [ L.class_ "cover-container"
-               -- , L.style_ ("background-image: url(\'" <> (albumCover a) <> "\'); background-repeat: no-repeat; background-size: cover;")
                ] $ do
           L.div_ [L.class_ "cover-img"] $ do
             L.a_ [L.href_ ("/album/" <> show (albumID a))] $ do
-            -- L.a_ [L.href_ (albumURL a a)] $ do
-              -- L.map_ [L.name_ ("album-thumb-map" <> show idx)] $
-              --   L.area_ [ L.shape_ "rect"
-              --           , L.coords_ "40,40,100,100"
-              --           , L.alt_ "album link"
-              --           -- , L.href_ "computer.htm"
-              --           , L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))
-              --           ]
               L.img_
                 [ L.src_ (albumCover a)
                 , L.class_ "cover-image"
                 , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
-                -- , L.usemap_ ("#album-thumb-map" <> show idx)
                 ]
           case albumFormat a of
                 "Vinyl" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.a_ [L.href_ (albumURL a a)] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "fas fa-record-vinyl fa-sm" ] ""
                   -- L.img_ [ L.src_ "/discogs-icon.png", L.alt_ "D", L.class_ "cover-oimage" ]
-                "Tidal" ->
-                  L.div_ [L.class_ "cover-obackground"] $ do
-                    L.a_ [L.href_ (albumURL a a)] $ do
-                      L.img_ [ L.src_ "/tidal-icon.png", L.alt_ "T", L.class_ "cover-oimage" ]
+                "Tidal" -> do
+                  let tid :: Int
+                      tid = fromMaybe 0 . readMaybe . toString . fromMaybe "0" . albumTidal $ a
+                      did :: Int
+                      did = fromMaybe 0 $ M.lookup tid $ M.fromList [(74889902, 12895083), (180866908, 18529033 )]
+                      mad :: Maybe Album
+                      mad = M.lookup did (albums envr)
+                  case mad of
+                    Nothing ->  L.div_ ""
+                    Just ad ->  L.div_ [L.class_ "cover-obackground"] $ do
+                            L.a_ [L.href_ (albumURL ad)] $ do
+                              L.span_ [ L.class_ "fas fa-compact-disc fa-sm" ] ""
                 "CD" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.a_ [L.href_ (albumURL a a)] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "fas fa-compact-disc fa-sm" ] ""
                 "Vinyl, Box Set" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.a_ [L.href_ (albumURL a a)] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
                 "File" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
-                    L.a_ [L.href_ (albumURL a a)] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "far fa-file-audio fa-sm" ] ""
                 _ ->
                   L.div_ [L.class_ "cover-obackground"] $
-                    L.a_ [L.href_ (albumURL a a)] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
                       L.toHtml (albumFormat a)
           case albumTidal a of
             Nothing -> ""
-            Just turl -> L.div_ [L.class_ "cover-obackground1"] $ do
-                  L.a_ [L.href_ turl] $ do
+            Just tid -> L.div_ [L.class_ "cover-obackground1"] $ do
+                  L.a_ [L.href_ ("https://listen.tidal.com/album/" <> tid)] $ do
                     L.img_ [L.src_ "/tidal-icon.png", L.alt_ "T", L.class_ "cover-oimage"]
+          case albumAM a of
+            Nothing -> ""
+            Just amid -> L.div_ [L.class_ "cover-obackground3"] $ do
+                  L.a_ [L.href_ ("https://music.apple.com/us/album/" <> amid)] $ do
+                    L.img_ [L.src_ "/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
           let showLocation = True
           if showLocation then
             case albumLocation a of
@@ -190,7 +201,7 @@ renderAlbums env envr ln aids =
           if showNumbers then
             L.div_ [L.class_ "idx"] $
               -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $
-              -- L.a_ [L.href_ (albumURL a a)] $
+              -- L.a_ [L.href_ (albumURL a)] $
                 " " <> show idx <> " "
             else ""
           let showRating = True
@@ -571,13 +582,24 @@ a:active {
   background-color: rgba(255,255,255,.5);
 }
 
+.cover-obackground3 {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border-radius: 4px;
+  position: absolute;
+  left: 27;
+  bottom: 7;
+  background-color: rgba(255,255,255,.5);
+}
+
 .cover-obackground2 {
   height: 16px;
   width: 20px;
   color: black;
   border-radius: 4px;
   position: absolute;
-  left: 39;
+  left: 49;
   bottom: 7;
   background-color: rgba(255,255,255,.5);
 }
