@@ -13,13 +13,15 @@ import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import qualified Data.Vector as V
+import Data.Time
 import qualified Lucid as L
+import qualified Data.Text as T (replace)
 import Relude
 import Text.RawString.QQ
 import Types (Env (..), EnvR (..), Album (..), SortOrder (..), pLocList)
 
-renderAlbum :: Maybe Album -> L.Html ()
-renderAlbum mAlbum = L.html_ $ do
+renderAlbum :: Maybe Album -> ZonedTime -> L.Html ()
+renderAlbum mAlbum now = L.html_ $ do
   renderHead "Album Page"
   L.body_ albumBody
   where
@@ -51,6 +53,37 @@ renderAlbum mAlbum = L.html_ $ do
               L.p_ $ L.toHtml ("Artist: " <> albumArtist a)
               L.p_ $ L.toHtml ("Year: " <> albumReleased a)
               L.br_ []
+
+              L.div_ [L.class_ "quoteable"] $ do
+                let ttl = T.replace ":" "_" . T.replace "/" "·" $ albumArtist a <> " – " <> albumTitle a
+                let dt :: Text; dt  = toText $ formatTime defaultTimeLocale "%y%m%d" now
+                let dtl = formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+                L.samp_ $ L.toHtml (dt <> "-" <> ttl)
+                L.br_ []
+                L.samp_ $ L.toHtml ("---" :: Text)
+                L.br_ []
+                L.samp_ $ L.toHtml ("date: " <> dtl)
+                L.br_ []
+                L.samp_ $ L.toHtml ("title: " <> ttl)
+                L.br_ []
+                L.samp_ $ L.toHtml ("---" :: Text)
+                L.br_ []
+                L.samp_ $ L.toHtml ("### " <> albumArtist a <> " – " <> albumTitle a)
+                L.br_ []
+                L.samp_ $ L.toHtml ("[![](" <> albumCover a <> ")][1] ")
+                L.br_ []
+                L.samp_ $ L.toHtml ("[1]: " <> albumURL a)
+                L.br_ []
+                case albumTidal a of
+                  Nothing -> ""
+                  Just tid -> do
+                                L.samp_ $ L.toHtml ("[2]: " <> "https://listen.tidal.com/album/" <> tid)
+                                L.br_ []
+                case albumAM a of
+                  Nothing -> ""
+                  Just amid -> do
+                                L.samp_ $ L.toHtml ("[3]: " <> "https://music.apple.com/us/album/" <> amid)
+                                L.br_ []
 
 renderAlbums :: Env -> EnvR -> Text -> Vector Int -> L.Html ()
 renderAlbums env envr ln aids =
@@ -108,15 +141,7 @@ renderAlbums env envr ln aids =
             L.toHtml t1
 
     renderAlbumTN :: (Int, Album) -> L.Html ()
-    renderAlbumTN (idx, a0) = do
-    -- is this a Tidal entry? is there a Discog entry for this?
-      let a = if albumFormat a0 /= "Tidal"
-          then a0
-          else fromMaybe a0
-            . (`M.lookup` albums envr)
-            . fromMaybe 0
-            . (`M.lookup` M.fromList [(74889902, 12895083), (180866908, 18529033), (59700396, 8492595), (183187812, 18869488)])
-            . fromMaybe 0 . readMaybe . toString . fromMaybe "0" . albumTidal $ a0
+    renderAlbumTN (idx, a) = do
       L.div_ [L.class_ "album-thumb"] $ do
         L.div_ [ L.class_ "cover-container"
                ] $ do
@@ -133,18 +158,7 @@ renderAlbums env envr ln aids =
                     L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "fas fa-record-vinyl fa-sm" ] ""
                   -- L.img_ [ L.src_ "/discogs-icon.png", L.alt_ "D", L.class_ "cover-oimage" ]
-                "Tidal" -> do
-                  let tid :: Int
-                      tid = fromMaybe 0 . readMaybe . toString . fromMaybe "0" . albumTidal $ a
-                      did :: Int
-                      did = fromMaybe 0 $ M.lookup tid $ M.fromList [(74889902, 12895083), (180866908, 18529033 )]
-                      mad :: Maybe Album
-                      mad = M.lookup did (albums envr)
-                  case mad of
-                    Nothing ->  L.div_ ""
-                    Just ad ->  L.div_ [L.class_ "cover-obackground"] $ do
-                            L.a_ [L.href_ (albumURL ad)] $ do
-                              L.span_ [ L.class_ "fas fa-compact-disc fa-sm" ] ""
+                "Tidal" -> L.div_ ""
                 "CD" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.a_ [L.href_ (albumURL a)] $ do
@@ -599,7 +613,7 @@ a:active {
   color: black;
   border-radius: 4px;
   position: absolute;
-  left: 49;
+  left: 47;
   bottom: 7;
   background-color: rgba(255,255,255,.5);
 }

@@ -8,6 +8,7 @@ module Provider
     readLists,
     readFolders,
     readFolderAids,
+    updateTidalFolderAids,
     rereadLists,
     atest,
   )
@@ -42,6 +43,9 @@ import Types
     getDiscogs,
     getTidal,
   )
+-- import Relude.Debug ( traceShow )
+debug :: a -> Text -> a
+debug = flip traceShow
 
 atest :: [Album]
 atest =
@@ -153,50 +157,59 @@ readFolders p = case getDiscogs p of
   _ -> FD.readDiscogsFolders (getDiscogs p)
 
 -- populate the aids for folders from the folder+id in each Album
-readFolderAids :: Map Text Int -> Map Int Album -> Map Text (Int, Vector Int)
-readFolderAids fm am = fam
-  where
-    -- 0: all discogs
-    -- 1: uncategorized
-    fam' = M.map getFolder fm
-    fam =
-      M.insert "Tidal" (fromEnum TTidal, allTidal) $
-        M.insert "Discogs" (fromEnum TDiscogs, allDiscogs) $
-          M.insert
-            "All"
-            (fromEnum TAll, allAlbums)
-            fam'
-    allAlbums =
-      sAdded $
-        V.map albumID $
-          V.fromList $ M.elems am
-    allDiscogs =
-      sAdded $
-        V.map fst $
-          V.filter (\(_, f) -> f /= fromEnum TTidal) $
-            V.map (\a -> (albumID a, albumFolder a)) $
-              V.fromList $ M.elems am
-    allTidal =
-      sAdded $
-        V.map fst $
-          V.filter (\(_, f) -> f == fromEnum TTidal) $
-            V.map (\a -> (albumID a, albumFolder a)) $
-              V.fromList $ M.elems am
-
+-- special treatment for Tidal, Discogs, and All folders
+updateTidalFolderAids :: Map Int Album -> Map Text (Int, Vector Int) -> Map Text (Int, Vector Int)
+updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal) where
+    -- for Tidal folder, replace anything that's also on Discogs
+    xxx :: [(Int, Int)]
+    xxx = mapMaybe (\a -> case readMaybe . toString =<< albumTidal a of
+                            Just i -> if i == albumID a then Nothing else Just (i , albumID a)
+                            Nothing -> Nothing
+                   )
+        $ M.elems am
+    tidalToDiscogs = M.fromList xxx `debug` show xxx
+    allTidal  = V.map (\i -> fromMaybe i (i `M.lookup` tidalToDiscogs))
+              . sAdded
+              .  V.map fst
+              . V.filter (\(_, f) -> f == fromEnum TTidal)
+              . V.map (\a -> (albumID a, albumFolder a))
+              .  V.fromList $ M.elems am
     sAdded :: Vector Int -> Vector Int
     sAdded aids = V.fromList (fst <$> sortBy (\(_, a) (_, b) -> comparing (fmap albumAdded) b a) asi)
       where
         asi :: [(Int, Maybe Album)]
         asi = map (\aid -> (aid, M.lookup aid am)) $ V.toList aids
+
+
+readFolderAids :: Map Text Int -> Map Int Album -> Map Text (Int, Vector Int)
+readFolderAids fm am = fam
+  where
+    fam' = M.map getFolder fm
+    fam = updateTidalFolderAids am
+        . M.insert "Discogs" (fromEnum TDiscogs, allDiscogs)
+        . M.insert "All" (fromEnum TAll, allAlbums)
+        $ fam'
+    allAlbums = sAdded
+              . V.map albumID
+              . V.fromList $ M.elems am
+    allDiscogs  = sAdded
+                . V.map fst
+                . V.filter (\(_, f) -> f /= fromEnum TTidal)
+                . V.map (\a -> (albumID a, albumFolder a))
+                . V.fromList $ M.elems am
     getFolder :: Int -> (Int, Vector Int)
     getFolder i = (i, filtFolder i)
     filtFolder :: Int -> Vector Int
-    filtFolder fid =
-      sAdded $
-        V.map fst $
-          V.filter (\(_, f) -> f == fid) $
-            V.map (\a -> (albumID a, albumFolder a)) $
-              V.fromList $ M.elems am
+    filtFolder fid  = sAdded
+                    . V.map fst
+                    . V.filter (\(_, f) -> f == fid)
+                    . V.map (\a -> (albumID a, albumFolder a))
+                    . V.fromList $ M.elems am
+    sAdded :: Vector Int -> Vector Int
+    sAdded aids = V.fromList (fst <$> sortBy (\(_, a) (_, b) -> comparing (fmap albumAdded) b a) asi)
+      where
+        asi :: [(Int, Maybe Album)]
+        asi = map (\aid -> (aid, M.lookup aid am)) $ V.toList aids
 
 rereadLists :: Discogs -> IO (Map Text (Int, Vector Int))
 rereadLists p = case getDiscogs p of

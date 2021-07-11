@@ -332,6 +332,7 @@ getR dr = r
     tags = mapMaybe (stripPrefix "#")
          . words
          $ fromMaybe "" nts
+    -- parse location text (field 4), look for T<tidalID> and A<AppleMusicID>
     loct :: Maybe Text
     loct = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just a else Nothing
@@ -349,6 +350,7 @@ getR dr = r
           . mapMaybe (stripPrefix "A")
           . words
           $ fromMaybe "" loct
+    -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
     loc :: Maybe Text
     loc = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just (unwords

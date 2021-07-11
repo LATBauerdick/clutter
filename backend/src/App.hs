@@ -13,6 +13,8 @@ where
 
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as M
+import Data.Time (getZonedTime)
+
 import Env
   ( initEnv,
     refreshEnv,
@@ -21,9 +23,10 @@ import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
 import Network.Wai.Handler.Warp
-import Provider (readAlbum)
+import Provider ( readAlbum
+                , updateTidalFolderAids
+                )
 import Relude
-import qualified Relude.Unsafe as Unsafe
 import Render
   ( renderAlbum,
     renderAlbums,
@@ -73,24 +76,28 @@ server env =
     serveAlbum aid = do
       di <- liftIO (readIORef (discogsR env))
       am <- liftIO (readIORef (albumsR env))
+      ls <- liftIO (readIORef (listsR env))
       -- check if this aid is already known / in the Map
       let mam = M.lookup aid am
-      ma <- if isJust mam && albumFormat (Unsafe.fromJust mam) == "Tidal"
-              then pure mam
-              else
-      -- it's not a Tidal album, update album info from Discogs
-                case getDiscogs di of
+      -- if it's not a Tidal album, update album info from Discogs
+      ma <- case fmap albumFormat mam of
+        Just "Tidal" -> pure mam
+        _ -> case getDiscogs di of
                   DiscogsSession _ _ -> liftIO (readAlbum di aid)
                   _ -> liftIO (pure Nothing)
-      -- insert updated album and put in album map
       _ <- case ma of
-        Just a -> liftIO $ writeIORef (albumsR env) (M.insert aid a am)
+        Just a -> do
+      -- insert updated album and put in album map
+          liftIO $ writeIORef (albumsR env) (M.insert aid a am)
+      -- also update Tidal "special" list
+          liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
         Nothing -> pure ()
 
       -- let mAlbum = M.lookup aid am
       _ <- liftIO $ print ma
 
-      pure . RawHtml $ L.renderBS (renderAlbum ma)
+      now <- liftIO getZonedTime -- `debugId`
+      pure . RawHtml $ L.renderBS (renderAlbum ma now)
 
     serveAlbums :: Text -> Maybe Text -> Maybe Text -> Handler RawHtml
     serveAlbums listName msb mso = do

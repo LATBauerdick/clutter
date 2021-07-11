@@ -41,6 +41,7 @@ dependencies:
 - http-client
 - http-client-tls
 - lens
+- time
 
 library:
   source-dirs: src

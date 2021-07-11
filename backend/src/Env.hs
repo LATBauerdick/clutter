@@ -144,10 +144,10 @@ envFromFiles = do
       discogsToken = t0
       discogsUser = t1
       accessToken = t5
-  let tidal = Tidal $ TidalFile "data/traw2.json"
-  -- let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
-  -- let dc = Discogs $ DiscogsSession discogsToken discogsUser
-  let dc = Discogs $ DiscogsFile "data/"
+  -- let tidal = Tidal $ TidalFile "data/traw2.json"                        -- from cache file
+  let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken -- from the web
+  let dc = Discogs $ DiscogsFile "data/"                                    -- from cache file
+  -- let dc = Discogs $ DiscogsSession discogsToken discogsUser             -- from the web
 
   -- vda/vta :: Vector of Album
   vta <- readAlbums tidal

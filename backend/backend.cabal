@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6357c33d60c9b1d56715e777b126ebfdfc6b9245cb68bb8f033027e668ffbe49
+-- hash: 9acef550ef05d77c846964e987bbe0e3e5e767c36902e7b098460ed9396469e8
 
 name:           backend
 version:        0.1.0.0
@@ -60,6 +60,7 @@ library
     , servant-client
     , servant-server
     , text
+    , time
     , vector
     , wai
     , warp
@@ -92,6 +93,7 @@ executable backend-exe
     , servant-client
     , servant-server
     , text
+    , time
     , vector
     , wai
     , warp
@@ -128,6 +130,7 @@ test-suite backend-test
     , servant-client
     , servant-server
     , text
+    , time
     , vector
     , wai
     , warp
