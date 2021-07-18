@@ -36,9 +36,12 @@ renderAlbum mAlbum now = L.html_ $ do
           case albumFormat a of
             "Tidal" ->
               L.div_ [L.class_ "login-message"] $ do
-              L.p_ "Tidal Album, this view is not yet available."
+              L.p_ $ "Tidal Album <" <> show (albumID a) <>  ">."
               L.br_ []
-              L.a_ [L.href_ "/albums/All"] "Please see all Albums"
+              let qry = T.replace " " "+" $ albumTitle a <> " " <> albumArtist a
+              L.p_ $ do
+                L.toHtml ("Search \"" <> albumTitle a <> "\" by " <> albumArtist a <> " on ")
+                L.a_ [L.href_ $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"] "DISCOGS"
             _ ->
               L.div_ [L.class_ "data-deskgap-drag"] $ do
               L.div_ [L.class_ "cover-container"] $ do
@@ -72,18 +75,42 @@ renderAlbum mAlbum now = L.html_ $ do
                 L.br_ []
                 L.samp_ $ L.toHtml ("[![](" <> albumCover a <> ")][1] ")
                 L.br_ []
-                L.samp_ $ L.toHtml ("[1]: " <> albumURL a)
+                -- reference-style link to album page
                 L.br_ []
-                case albumTidal a of
-                  Nothing -> ""
-                  Just tid -> do
-                                L.samp_ $ L.toHtml ("[2]: " <> "https://listen.tidal.com/album/" <> tid)
-                                L.br_ []
+                L.samp_ $ L.toHtml ("[1]: " <> albumURL a)
                 case albumAM a of
                   Nothing -> ""
                   Just amid -> do
-                                L.samp_ $ L.toHtml ("[3]: " <> "https://music.apple.com/us/album/" <> amid)
                                 L.br_ []
+                                L.samp_ $ L.toHtml ("[2]: " <> "https://music.apple.com/us/album/" <> amid)
+                case albumTidal a of
+                  Nothing -> ""
+                  Just tid -> do
+                                L.br_ []
+                                L.samp_ $ L.toHtml ("[3]: " <> "https://listen.tidal.com/album/" <> tid)
+                -- icon with link to album page
+                L.br_ []
+                L.br_ []
+                case albumAM a of
+                  Nothing -> ""
+                  Just _ -> do
+                                L.samp_ $ L.toHtml ("[![[attachments/am-is.png]]][2]" :: Text)
+                case albumTidal a of
+                  Nothing -> ""
+                  Just _ -> do
+                                L.samp_ $ L.toHtml ("[![[attachments/tidal-is.png]]][3]" :: Text)
+                -- embeded player for album
+                L.br_ []
+                case albumAM a of
+                  Nothing -> ""
+                  Just amid -> do
+                                L.br_ []
+                                L.samp_ $ L.toHtml ("<iframe allow=\"autoplay *; encrypted-media *; fullscreen *\" frameborder=\"0\" height=\"450\" style=\"width:100%;max-width:660px;overflow:hidden;background:transparent;\" sandbox=\"allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation\" src=\"https://embed.music.apple.com/us/album/turn-blue/" <> amid <> "\"></iframe>")
+                case albumTidal a of
+                  Nothing -> ""
+                  Just tid -> do
+                                L.br_ []
+                                L.samp_ $ L.toHtml ("<div style=\"position: relative; padding-bottom: 100%; height: 0; overflow: hidden; max-width: 100%;\"><iframe src=\"https://embed.tidal.com/albums/" <> tid <> "?layout=gridify\" frameborder= \"0\" allowfullscreen style=\"position: absolute; top: 0; left: 0; width: 100%; height: 1px; min-height: 100%; margin: 0 auto;\"></iframe></div>")
 
 renderAlbums :: Env -> EnvR -> Text -> Vector Int -> L.Html ()
 renderAlbums env envr ln aids =
@@ -163,7 +190,15 @@ renderAlbums env envr ln aids =
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "fas fa-compact-disc fa-sm" ] ""
+                "Box Set, Vinyl" ->
+                  L.div_ [L.class_ "cover-obackground"] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
+                      L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
                 "Vinyl, Box Set" ->
+                  L.div_ [L.class_ "cover-obackground"] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
+                      L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
+                "Vinyl, Vinyl" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
@@ -171,6 +206,10 @@ renderAlbums env envr ln aids =
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "far fa-file-audio fa-sm" ] ""
+                "Streaming" ->
+                  L.div_ [L.class_ "cover-obackground"] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
+                      L.span_ [ L.class_ "far fa-wifi fa-sm" ] ""
                 _ ->
                   L.div_ [L.class_ "cover-obackground"] $
                     L.a_ [L.href_ (albumURL a)] $ do

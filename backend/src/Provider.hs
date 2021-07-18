@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Provider
   ( readListAids,
@@ -43,9 +44,9 @@ import Types
     getDiscogs,
     getTidal,
   )
--- import Relude.Debug ( traceShow )
+-- import Relude.Debug ( trace )
 debug :: a -> Text -> a
-debug = flip traceShow
+debug a b = trace (toString b) a
 
 atest :: [Album]
 atest =
@@ -112,7 +113,7 @@ dToAlbum r =
     (dadded r)
     (dfolder r)
     (makeDiscogsURL (daid r))
-    (T.intercalate ", " $ dformat r)
+    format
     (dtidalid r)
     (damid r)
     (dlocation r)
@@ -121,6 +122,9 @@ dToAlbum r =
     (dplays r)
   where
     makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
+    format = if dfolder r == 3292597
+                then "Streaming"
+                else T.intercalate ", " $ dformat r
 
 instance Provider Discogs where
   readLists p = case getDiscogs p of

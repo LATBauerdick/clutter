@@ -26,7 +26,7 @@ import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
-import Data.Text as T (stripPrefix, filter, null, toCaseFold, splitOn)
+import Data.Text as T (stripPrefix, filter, null, toCaseFold)
 import Data.Char as Ch (isDigit)
 -- import Control.Applicative
 -- import Control.Monad
@@ -93,11 +93,13 @@ instance FromJSON WRelease where
     pure $ WRelease daid_ dadded_ fid_ rating_ bi_ notes_
 
 data WBasicInfo = WBasicInfo
-  { title :: !Text,
-    year :: Int,
-    cover_image :: !Text,
-    artists :: [WArtist],
-    formats :: [WFormat]
+  { title :: !Text
+  , year :: Int
+  , cover_image :: !Text
+  , artists :: [WArtist]
+  , formats :: [WFormat]
+  , genres :: [Text]
+  , styles :: [Text]
   }
   deriving (Show, Generic)
 
@@ -109,13 +111,13 @@ data WNote = WNote
 
 data WArtist = WArtist
   { name :: !Text
-  -- , id :: Int
+  , id :: Int
   }
   deriving (Show, Generic)
 
 data WFormat = WFormat
   { name :: !Text
-  -- , qty :: Int
+  , qty :: !Text
   }
   deriving (Show, Generic)
 
@@ -320,10 +322,6 @@ getR dr = r
         notes = ns
       } = dr
     as = (\WArtist {name = n} -> n) <$> das
-    turl :: Maybe Text
-    turl = case mapMaybe (\WNote {field_id = i, value = v} -> if i /= 6 then Nothing else Just v) ns of
-      [a] -> (\t -> if t == Just "" then Nothing else t) . fmap (\t -> if T.null (T.filter (not . Ch.isDigit) t) then t else "") . viaNonEmpty last . splitOn "/" $ a
-      _ -> Nothing
     nts :: Maybe Text
     nts = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 3 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just a else Nothing
@@ -338,12 +336,11 @@ getR dr = r
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
     tidalid :: Maybe Text
-    tidalid = if isJust turl then turl else
-          viaNonEmpty head
-          . mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
-          . mapMaybe (T.stripPrefix "T")
-          . words
-          $ fromMaybe "" loct
+    tidalid = viaNonEmpty head
+            . mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
+            . mapMaybe (T.stripPrefix "T")
+            . words
+            $ fromMaybe "" loct
     amid :: Maybe Text
     amid = viaNonEmpty head
           . mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
