@@ -122,9 +122,14 @@ dToAlbum r =
     (dplays r)
   where
     makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
-    format = if dfolder r == 3292597
-                then "Streaming"
-                else T.intercalate ", " $ dformat r
+-- LATB Hack, needs to be fixed!!!! XXXXXXXX
+    format = case dfolder r of
+                3292597 -> "Streaming"
+                3141493 -> "File"
+                _       -> T.intercalate ", " $ dformat r
+
+
+
 
 instance Provider Discogs where
   readLists p = case getDiscogs p of

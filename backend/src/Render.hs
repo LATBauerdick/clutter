@@ -15,7 +15,7 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Data.Time
 import qualified Lucid as L
-import qualified Data.Text as T (replace)
+import qualified Data.Text as T (replace, take)
 import Relude
 import Text.RawString.QQ
 import Types (Env (..), EnvR (..), Album (..), SortOrder (..), pLocList)
@@ -82,7 +82,9 @@ renderAlbum mAlbum now = L.html_ $ do
                   Nothing -> ""
                   Just amid -> do
                                 L.br_ []
-                                L.samp_ $ L.toHtml ("[2]: " <> "https://music.apple.com/us/album/" <> amid)
+                                if T.take 2 amid == "l."
+                                  then L.samp_ $ L.toHtml ("[2]: " <> "https://music.apple.com/library/albums/" <> amid)
+                                  else L.samp_ $ L.toHtml ("[2]: " <> "https://music.apple.com/us/album/" <> amid)
                 case albumTidal a of
                   Nothing -> ""
                   Just tid -> do
@@ -222,8 +224,10 @@ renderAlbums env envr ln aids =
           case albumAM a of
             Nothing -> ""
             Just amid -> L.div_ [L.class_ "cover-obackground3"] $ do
-                  L.a_ [L.href_ ("https://music.apple.com/us/album/" <> amid)] $ do
-                    L.img_ [L.src_ "/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
+                  if T.take 2 amid == "l."
+                    then L.a_ [L.href_ ("https://music.apple.com/library/albums/" <> amid)]
+                    else L.a_ [L.href_ ("https://music.apple.com/us/album/" <> amid)]
+                  $ do L.img_ [L.src_ "/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
           let showLocation = True
           if showLocation then
             case albumLocation a of

@@ -26,7 +26,7 @@ import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
-import Data.Text as T (stripPrefix, filter, null, toCaseFold)
+import Data.Text as T (stripPrefix, filter, null, toCaseFold, take)
 import Data.Char as Ch (isDigit)
 -- import Control.Applicative
 -- import Control.Monad
@@ -335,15 +335,22 @@ getR dr = r
     loct = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
-    tidalid :: Maybe Text
+    tidalid :: Maybe Text  -- T<number>
     tidalid = viaNonEmpty head
             . mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
             . mapMaybe (T.stripPrefix "T")
             . words
             $ fromMaybe "" loct
     amid :: Maybe Text
+    -- A<number> -> https://music.apple.com/us/album/<number>
+    -- or Al.<string> -> https://music.apple.com/library/albums/l.<string>
     amid = viaNonEmpty head
-          . mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
+          . mapMaybe  (\t -> if T.null (T.filter (not . Ch.isDigit) t)
+                              then Just t 
+                              else if T.take 2 t == "l."
+                                    then Just t
+                                    else Nothing
+                      )
           . mapMaybe (stripPrefix "A")
           . words
           $ fromMaybe "" loct
