@@ -46,7 +46,10 @@ instance MimeRender HTML RawHtml where
 
 ------------------ Servant Stuff
 
-type API0 = "album" :> Capture "aid" Int :> Get '[HTML] RawHtml
+type API0 =
+  "album"
+    :> Capture "aid" Int
+    :> Get '[HTML] RawHtml
 
 type API1 =
   "albums"
@@ -55,11 +58,26 @@ type API1 =
     :> QueryParam "sortOrder" Text
     :> Get '[HTML] RawHtml
 
-type API3 = "provider" :> "discogs" :> Capture "token" Text :> Capture "username" Text :> Get '[HTML] RawHtml
+type API2 =
+  "add"
+    :> Capture "releaseid" Int
+    :> Get '[HTML] RawHtml
 
-type API4 = "provider" :> "tidal" :> Capture "token" Text :> Capture "username" Text :> Get '[HTML] RawHtml
+type API3 =
+  "provider"
+    :> "discogs"
+    :> Capture "token" Text
+    :> Capture "username" Text
+    :> Get '[HTML] RawHtml
 
-type API = API0 :<|> API1 :<|> API3 :<|> API4 :<|> Raw
+type API4 =
+  "provider"
+    :> "tidal"
+    :> Capture "token" Text
+    :> Capture "username" Text
+    :> Get '[HTML] RawHtml
+
+type API = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> Raw
 
 api :: Proxy API
 api = Proxy
@@ -68,6 +86,7 @@ server :: Env -> Server API
 server env =
   serveAlbum
     :<|> serveAlbums
+    :<|> serveAdd
     :<|> serveDiscogs
     :<|> serveTidal
     :<|> serveDirectoryFileServer "static"
@@ -129,6 +148,35 @@ server env =
     -- serveJSON :: Server API2
     -- serveJSON = do
     --   pure $ M.elems ( albums env )
+
+    serveAdd :: Int -> Handler RawHtml
+    serveAdd rid = do
+      di <- liftIO (readIORef (discogsR env))
+      am <- liftIO (readIORef (albumsR env))
+      ls <- liftIO (readIORef (listsR env))
+      -- check if this release id is already known / in the Map
+      let mam = M.lookup rid am
+      -- if it's not a Tidal album, update album info from Discogs
+      -- here we need to add it to the album map and to all lists it is on XXXX TO BE DONE
+      ma <- case fmap albumFormat mam of
+        Just "Tidal" -> pure mam
+        Just _ -> pure mam -- already known, nothing do add
+        _ -> case getDiscogs di of
+                  DiscogsSession _ _ -> liftIO (readAlbum di rid)
+                  _ -> liftIO (pure Nothing)
+      _ <- case ma of
+        Just a -> do
+      -- insert updated album and put in album map
+          liftIO $ writeIORef (albumsR env) (M.insert rid a am)
+      -- also update Tidal "special" list
+          liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
+        Nothing -> pure ()
+
+      -- let mAlbum = M.lookup aid am
+      _ <- liftIO $ print ma
+
+      now <- liftIO getZonedTime -- `debugId`
+      pure . RawHtml $ L.renderBS (renderAlbum ma now)
 
     serveDiscogs :: Text -> Text -> Handler RawHtml
     serveDiscogs token username = do

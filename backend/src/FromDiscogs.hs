@@ -345,11 +345,9 @@ getR dr = r
     -- A<number> -> https://music.apple.com/us/album/<number>
     -- or Al.<string> -> https://music.apple.com/library/albums/l.<string>
     amid = viaNonEmpty head
-          . mapMaybe  (\t -> if T.null (T.filter (not . Ch.isDigit) t)
-                              then Just t 
-                              else if T.take 2 t == "l."
-                                    then Just t
-                                    else Nothing
+          . mapMaybe  (\t ->  if T.null (T.filter (not . Ch.isDigit) t) || (T.take 2 t == "l.")
+                                then Just t
+                                else Nothing
                       )
           . mapMaybe (stripPrefix "A")
           . words
@@ -363,11 +361,12 @@ getR dr = r
                                         Just ta -> if T.null (T.filter (not . Ch.isDigit) ta)
                                                     then Nothing
                                                     else Just t)
-                                    . mapMaybe (\t -> case stripPrefix "A" t of
+                                    . mapMaybe  (\t -> case stripPrefix "A" t of
                                         Nothing -> Just t
-                                        Just ta -> if T.null (T.filter (not . Ch.isDigit) ta)
-                                                    then Nothing
-                                                    else Just t)
+                                        Just ta ->  if T.null (T.filter (not . Ch.isDigit) ta) || (T.take 2 ta == "l.")
+                                                      then Nothing
+                                                      else Just t
+                                                )
                                     . words
                                     $ a)
                           else Nothing
