@@ -12,7 +12,7 @@ module FromDiscogs
     readDiscogsReleasesCache,
     readDiscogsLists,
     readDiscogsListsCache,
-    readListAids,
+    readListAids',
     readDiscogsFolders,
     readDiscogsFoldersCache,
   )
@@ -36,7 +36,14 @@ import Data.Char as Ch (isDigit)
 import Servant
 -- import Servant.API
 import Servant.Client
-import Types (DiscogsInfo (..), Release (..))
+import Types
+  ( DiscogsInfo (..),
+    Discogs (..),
+    Release (..),
+    Env (..),
+    envGetDiscogs,
+    envGetListName,
+  )
 
 data WTest = WTest
   { uri :: !Text
@@ -251,7 +258,7 @@ type DiscogsAPI =
 --      :> Header "User-Agent" UserAgent
 --      :> Get '[JSON] WReleases'
 
-getReleases ::
+discogsGetReleases ::
   UserName ->
   Int ->
   -- -> Maybe Text
@@ -261,27 +268,22 @@ getReleases ::
   Maybe Token ->
   Maybe UserAgent ->
   ClientM WReleases
-getFolders ::
+discogsGetFolders ::
   UserName ->
   Maybe Token ->
   Maybe UserAgent ->
   ClientM WFolders
-getLists ::
+discogsGetLists ::
   UserName ->
   Maybe Token ->
   Maybe UserAgent ->
   ClientM WLists
-getList ::
+discogsGetList ::
   Int ->
   Maybe Token ->
   Maybe UserAgent ->
   ClientM WLItems
--- getFolder :: UserName
---          -> Int
---          -> Maybe Token
---          -> Maybe UserAgent
---          -> ClientM WReleases'
-getRelease ::
+discogsGetRelease ::
   UserName ->
   Int ->
   Maybe Token ->
@@ -289,7 +291,7 @@ getRelease ::
   ClientM WReleases
 discogsAPI :: Proxy DiscogsAPI
 discogsAPI = Proxy
-getReleases :<|> getFolders :<|> getLists :<|> getList :<|> getRelease = client discogsAPI
+discogsGetReleases :<|> discogsGetFolders :<|> discogsGetLists :<|> discogsGetList :<|> discogsGetRelease = client discogsAPI
 
 getWr :: WReleases -> [WRelease]
 getWr wr = rs
@@ -402,11 +404,11 @@ releasesFromDiscogsApi di = do
   let dc = mkClientEnv m discogsBaseUrl
       query :: ClientM [WRelease]
       query = do
-        r0 <- getReleases un 0 (Just 1) (Just 500) (Just tok) userAgent
+        r0 <- discogsGetReleases un 0 (Just 1) (Just 500) (Just tok) userAgent
         let rs0 = getWr r0
-        r1 <- getReleases un 0 (Just 2) (Just 500) (Just tok) userAgent
+        r1 <- discogsGetReleases un 0 (Just 2) (Just 500) (Just tok) userAgent
         let rs1 = getWr r1
-        r2 <- getReleases un 0 (Just 3) (Just 500) (Just tok) userAgent
+        r2 <- discogsGetReleases un 0 (Just 3) (Just 500) (Just tok) userAgent
         let rs2 = getWr r2
         pure $ rs0 <> rs1 <> rs2
   putTextLn "-----------------Getting Collection from Discogs-----"
@@ -452,7 +454,7 @@ releaseFromDiscogsApi di aid = do
   let dc = mkClientEnv m discogsBaseUrl
       query :: ClientM WReleases
       query = do
-        getRelease un aid (Just tok) userAgent
+        discogsGetRelease un aid (Just tok) userAgent
   putTextLn $ "-----------------Getting Release " <> show aid <> " from Discogs-----"
   res <- runClientM query dc
   case res of
@@ -478,7 +480,7 @@ listsFromDiscogsApi di = do
   let dc = mkClientEnv m discogsBaseUrl
   -- get list and folder names and ids
   let query :: ClientM WLists
-      query = getLists un (Just tok) userAgent
+      query = discogsGetLists un (Just tok) userAgent
   res <- runClientM query dc
   pure $ case res of
     Left err -> Left (show err)
@@ -531,7 +533,7 @@ foldersFromDiscogsApi di = do
   let DiscogsSession tok un = di
       dc = mkClientEnv m discogsBaseUrl
   -- get list and folder names and ids
-  res <- runClientM (getFolders un (Just tok) userAgent) dc
+  res <- runClientM (discogsGetFolders un (Just tok) userAgent) dc
   pure $ case res of
     Left err -> Left (show err)
     Right r -> Right r
@@ -576,13 +578,15 @@ readDiscogsFoldersCache fn = do
 -- we're treating Discog folders like lists,
 -- also assuming that their IDs are unique
 -- NB: the JSON required to extract album id info is different between them
-readListAids :: DiscogsInfo -> Int -> IO (Vector Int)
-readListAids di i = do
-  let DiscogsSession tok _ = di
+readListAids' :: Env -> Int -> IO (Vector Int)
+readListAids' env i = do
+  di <- envGetDiscogs env
+  let DiscogsSession tok _ = getDiscogs di
   m <- newManager tlsManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
-  putTextLn $ "-----------------Getting List " <> show i <> " from Discogs-----"
-  res <- runClientM (getList i (Just tok) userAgent) dc
+  ln <- envGetListName env i
+  putTextLn $ "-----------------Getting List " <> show i <> " " <> show ln <> " from Discogs-----"
+  res <- runClientM (discogsGetList i (Just tok) userAgent) dc
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
@@ -593,7 +597,7 @@ readListAids di i = do
 readListAidsCache :: FilePath -> Int -> IO (Vector Int)
 readListAidsCache fn i = do
   putTextLn $ "-----------------Getting List " <> show i <> " from Discogs Cache-----"
-  -- res <- runClientM ( getList i ( Just tok ) userAgent ) dc
+  -- res <- runClientM ( discogsGetList i ( Just tok ) userAgent ) dc
   let fn' = fn <> "l" <> show i <> "-raw.json"
   res <- readWLItemsCache fn'
   case res of
@@ -612,7 +616,7 @@ rereadLists di = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
   let query :: ClientM WLists
-      query = getLists un (Just tok) userAgent
+      query = discogsGetLists un (Just tok) userAgent
   putTextLn "-----------------rereading Lists from Discogs-----"
   res <- runClientM query dc
   case res of

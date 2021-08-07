@@ -139,14 +139,14 @@ renderAlbums env envr ln aids =
             L.toHtml $ if pLocList ln then "List " else "List " <> ln <> " "
             L.i_ [ L.class_ "fa fa-caret-down" ] ""
           L.div_ [L.class_ "dropdown-content"] $ do
-            F.traverse_ (addLink "albums/") $ V.filter (not . pLocList) (listNames envr)
+            F.traverse_ (addLink "albums/") . filter (not . pLocList) $ M.keys (listNames envr)
 
         L.li_ [L.class_ "dropdown"] $ do
           L.a_ [L.class_ "dropbtn", L.href_ "javascript:void(0)"] $do
             L.toHtml $ if not (pLocList ln) then "Location " else "Location " <> ln <> " "
             L.i_ [ L.class_ "fa fa-caret-down" ] ""
           L.div_ [L.class_ "dropdown-content"] $ do
-            F.traverse_ (addLink "albums/") $ V.filter pLocList (listNames envr)
+            F.traverse_ (addLink "albums/") . filter pLocList $ M.keys (listNames envr)
 
         L.li_ [L.class_ "dropdown"] $ do
           let sso = case sortOrder envr of
@@ -192,6 +192,13 @@ renderAlbums env envr ln aids =
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.a_ [L.href_ (albumURL a)] $ do
                       L.span_ [ L.class_ "fas fa-compact-disc fa-sm" ] ""
+                "CD, Box Set" ->
+                  L.div_ [L.class_ "cover-obackground"] $ do
+                    L.a_ [L.href_ (albumURL a)] $ do
+                      L.span_ [ L.class_ "fa-stack fa-sm" ] $ do
+                        -- L.span_ [L.class_ "fa fa-clone fa-stack-1x"] ""
+                        L.span_ [L.class_ "fa fa-square-o fa-stack-1x"] ""
+                        L.span_ [L.class_ "fa fa-compact-disc fa-stack-1x"] ""
                 "Box Set, Vinyl" ->
                   L.div_ [L.class_ "cover-obackground"] $ do
                     L.a_ [L.href_ (albumURL a)] $ do

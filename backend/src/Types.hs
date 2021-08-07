@@ -11,11 +11,14 @@ module Types ( Tidal (..)
              , SortOrder (..)
              , Env (..)
              , EnvR (..)
+             , envGetDiscogs
+             , envGetListName
              ) where
 
 import Relude
 -- import qualified Text.Show
 import Data.Vector ( Vector )
+import qualified Data.Map.Strict as M
 
 data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
 data DiscogsInfo = DiscogsFile FilePath | DiscogsSession Text Text
@@ -44,7 +47,7 @@ newtype Discogs = Discogs { getDiscogs :: DiscogsInfo } deriving Show
 data Env
   = Env
   { albumsR     :: IORef ( Map Int Album )
-  , listNamesR  :: IORef ( Vector Text )
+  , listNamesR  :: IORef ( Map Text Int )
   , listsR      :: IORef ( Map Text (Int, Vector Int) )
   , locsR       :: IORef ( Map Int (Text, Int) )  -- lookup (location, pos) by from albumID
   , sortNameR   :: IORef Text
@@ -56,12 +59,21 @@ data Env
   , getSort     :: Map Int Album -> Text -> (SortOrder -> Vector Int -> Vector Int )
   }
 
+envGetDiscogs :: Env -> IO Discogs
+envGetDiscogs env = do readIORef (discogsR env)
+
+envGetListName :: Env -> Int -> IO (Maybe Text)
+envGetListName env i = do
+  lns <- readIORef (listNamesR env)
+  let ln :: Maybe Text; ln = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
+  pure ln
+
 data EnvR
   = EnvR
   { albums     :: Map Int Album
   , lists      :: Map Text (Int, Vector Int)
   , locs       :: Map Int (Text, Int) -- lookup (location, pos) by from albumID
-  , listNames  :: Vector Text
+  , listNames  :: Map Text Int
   , sortName   :: Text
   , sortOrder  :: SortOrder
   , discogs    :: Discogs

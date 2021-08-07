@@ -4,7 +4,7 @@ import App (app)
 import qualified Data.ByteString.Char8 as S8
 import Data.Text (Text)
 import qualified Data.Text as T
-import Env (initEnv)
+import Env (envInit)
 import Provider (readAlbums)
 import Relude hiding (get)
 import Test.Hspec
@@ -23,7 +23,7 @@ main = do
       discogsUser = t1
       accessToken = t5
   -- vta <- readAlbums $ Tidal $ TidalSession userId sessionId countryCode
-  testEnv <- initEnv
+  testEnv <- envInit
 
   let spec :: Spec
       spec = with (return (app testEnv)) $ do

@@ -3,7 +3,8 @@
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Provider
-  ( readListAids,
+  (
+    readListAids',
     readAlbum,
     readAlbums,
     readLists,
@@ -28,7 +29,7 @@ import qualified FromDiscogs as FD
     readDiscogsRelease,
     readDiscogsReleases,
     readDiscogsReleasesCache,
-    readListAids,
+    readListAids',
     rereadLists,
   )
 import qualified FromTidal as FT (readTidalReleases, readTidalReleasesCache)
@@ -41,6 +42,8 @@ import Types
     TagFolder (..),
     Tidal (..),
     TidalInfo (..),
+    Env (..),
+    envGetDiscogs,
     getDiscogs,
     getTidal,
   )
@@ -122,6 +125,7 @@ dToAlbum r =
     (dplays r)
   where
     makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
+-- format is special for certain folders
 -- LATB Hack, needs to be fixed!!!! XXXXXXXX
     format = case dfolder r of
                 3292597 -> "Streaming"
@@ -155,10 +159,12 @@ instance Provider Discogs where
 
     pure $ V.fromList as
 
-readListAids :: Discogs -> Int -> IO (Vector Int)
-readListAids p i = case getDiscogs p of
-  DiscogsFile _ -> pure V.empty -- maybe not ok
-  _ -> FD.readListAids (getDiscogs p) i
+readListAids' :: Env -> Int -> IO (Vector Int)
+readListAids' env i = do
+  p <- envGetDiscogs env
+  case getDiscogs p of
+        DiscogsFile _ -> pure V.empty -- maybe not ok
+        _ -> FD.readListAids' env i
 
 readFolders :: Discogs -> IO (Map Text Int)
 readFolders p = case getDiscogs p of
