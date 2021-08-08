@@ -1,4 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, InstanceSigs #-}
 
 module Types ( Tidal (..)
              , Discogs (..)
@@ -16,12 +16,13 @@ module Types ( Tidal (..)
              ) where
 
 import Relude
--- import qualified Text.Show
+import qualified Text.Show
 import Data.Vector ( Vector )
 import qualified Data.Map.Strict as M
 
 data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
-data DiscogsInfo = DiscogsFile FilePath | DiscogsSession Text Text
+  deriving Show
+data DiscogsInfo = DiscogsEnv Env | DiscogsFile FilePath | DiscogsSession Text Text
   deriving Show
 
 class ATags f where toInt :: f -> Int
@@ -53,11 +54,15 @@ data Env
   , sortNameR   :: IORef Text
   , sortOrderR  :: IORef SortOrder
   , discogsR    :: IORef Discogs
+  , tagsR       :: IORef ( Map Text (Vector Int) )
   , sorts       :: Vector Text
   , url         :: Text
   , getList     :: Env -> Text -> IO ( Vector Int )
   , getSort     :: Map Int Album -> Text -> (SortOrder -> Vector Int -> Vector Int )
   }
+instance Show Env where
+  show :: Env -> String
+  show _ = "This is an Env"
 
 envGetDiscogs :: Env -> IO Discogs
 envGetDiscogs env = do readIORef (discogsR env)
@@ -77,6 +82,7 @@ data EnvR
   , sortName   :: Text
   , sortOrder  :: SortOrder
   , discogs    :: Discogs
+  , tags       :: Map Text (Vector Int)
   }
 
 data Release

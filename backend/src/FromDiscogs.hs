@@ -12,7 +12,7 @@ module FromDiscogs
     readDiscogsReleasesCache,
     readDiscogsLists,
     readDiscogsListsCache,
-    readListAids',
+    readListAids,
     readDiscogsFolders,
     readDiscogsFoldersCache,
   )
@@ -305,8 +305,8 @@ getWr wr = rs
         releases = rs
       } = wr
 
-getR :: WRelease -> Release
-getR dr = r
+getR :: Maybe Env -> WRelease -> Release
+getR _menv dr = r
   where
     WRelease
       { id = did,
@@ -319,12 +319,13 @@ getR dr = r
               year = dyear,
               cover_image = dcov,
               artists = das,
-              formats = dfs
+              formats = dfs,
+              genres = dgens
             },
         notes = ns
       } = dr
     as = (\WArtist {name = n} -> n) <$> das
-    nts :: Maybe Text
+    nts :: Maybe Text -- Notes field
     nts = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 3 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
@@ -351,7 +352,7 @@ getR dr = r
                                 then Just t
                                 else Nothing
                       )
-          . mapMaybe (stripPrefix "A")
+          . mapMaybe (T.stripPrefix "A")
           . words
           $ fromMaybe "" loct
     -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
@@ -379,6 +380,8 @@ getR dr = r
       Just a -> fromMaybe 0 (readMaybe . toString $ a)
       _ -> 0
     fs = (\WFormat {name = n} -> n) <$> dfs
+    tagsList :: [Text]
+    tagsList = ["discogs"] <> map T.toCaseFold fs <> tags <> map T.toCaseFold dgens
     r =
       Release
         { daid      = did,
@@ -392,7 +395,7 @@ getR dr = r
           dtidalid  = tidalid,
           damid     = amid,
           dlocation = if loc == Just "" then Nothing else loc,
-          dtags     = ["discogs"] <> map T.toCaseFold fs <> tags,
+          dtags     = tagsList,
           drating   = drat,
           dplays    = plays
         }
@@ -433,18 +436,19 @@ readDiscogsReleasesCache fn = do
     Right _ -> pure ()
   let rs = case res of
         Left _ -> []
-        Right d -> getR <$> d
+        Right d -> getR Nothing <$> d
   pure rs
 
-readDiscogsReleases :: DiscogsInfo -> IO [Release]
-readDiscogsReleases di = do
-  res <- releasesFromDiscogsApi di
+readDiscogsReleases :: Env -> IO [Release]
+readDiscogsReleases env = do
+  p <- envGetDiscogs env
+  res <- releasesFromDiscogsApi (getDiscogs p)
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
   let rs = case res of
         Left _ -> []
-        Right d -> getR <$> d
+        Right d -> getR (Just env) <$> d
   pure rs
 
 releaseFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String WRelease)
@@ -471,7 +475,7 @@ readDiscogsRelease di rid = do
     Right _ -> pure ()
   pure $ case res of
     Left _ -> Nothing
-    Right d -> Just (getR d)
+    Right d -> Just (getR Nothing d)
 
 listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
 listsFromDiscogsApi di = do
@@ -578,14 +582,14 @@ readDiscogsFoldersCache fn = do
 -- we're treating Discog folders like lists,
 -- also assuming that their IDs are unique
 -- NB: the JSON required to extract album id info is different between them
-readListAids' :: Env -> Int -> IO (Vector Int)
-readListAids' env i = do
+readListAids :: Env -> Int -> IO (Vector Int)
+readListAids env i = do
   di <- envGetDiscogs env
   let DiscogsSession tok _ = getDiscogs di
   m <- newManager tlsManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
   ln <- envGetListName env i
-  putTextLn $ "-----------------Getting List " <> show i <> " " <> show ln <> " from Discogs-----"
+  putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
   res <- runClientM (discogsGetList i (Just tok) userAgent) dc
   case res of
     Left err -> putTextLn $ "Error: " <> show err

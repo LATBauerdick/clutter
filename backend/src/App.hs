@@ -18,12 +18,14 @@ import Env
   , envUpdate
   , envUpdateAlbum
   , envGetEnvr
+  , envGetTag
   , envUpdateSort
   )
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Data.Text as T (stripPrefix)
 import Relude
 import Render
   ( renderAlbum,
@@ -81,13 +83,12 @@ api :: Proxy API
 api = Proxy
 
 server :: Env -> Server API
-server env =
-  serveAlbum
-    :<|> serveAlbums
-    :<|> serveAdd
-    :<|> serveDiscogs
-    :<|> serveTidal
-    :<|> serveDirectoryFileServer "static"
+server env = serveAlbum
+          :<|> serveAlbums
+          :<|> serveAdd
+          :<|> serveDiscogs
+          :<|> serveTidal
+          :<|> serveDirectoryFileServer "static"
   where
     serveAlbum :: Int -> Handler RawHtml
     serveAlbum aid = do
@@ -97,16 +98,15 @@ server env =
 
     serveAlbums :: Text -> Maybe Text -> Maybe Text -> Handler RawHtml
     serveAlbums listName msb mso = do
-      aids' <- liftIO (getList env env listName)
+      aids' <- liftIO $ case T.stripPrefix "#" listName of
+        Just tag -> envGetTag env tag
+        Nothing  -> getList env env listName
       envr <- liftIO $ envUpdateSort env msb mso
-      let EnvR am _ _ _ sn so _ = envr
+      let EnvR am _ _ _ sn so _ _ = envr
       let doSort = getSort env am sn
       let aids = doSort so aids'
       pure . RawHtml $
         L.renderBS (renderAlbums env envr listName aids)
-    -- serveJSON :: Server API2
-    -- serveJSON = do
-    --   pure $ M.elems ( albums env )
 
     serveAdd :: Int -> Handler RawHtml
     serveAdd aid = do

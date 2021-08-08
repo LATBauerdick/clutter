@@ -7,6 +7,7 @@ module Env
     envInit,
     envUpdateAlbum,
     envGetEnvr,
+    envGetTag,
     envUpdateSort,
   )
 where
@@ -21,13 +22,16 @@ import qualified Data.Vector as V
     null,
     reverse,
     toList,
+    singleton,
+    (++),
   )
 import Provider
   ( readAlbum,
     readAlbums,
+    readTidalAlbums,
     readFolderAids,
     readFolders,
-    readListAids',
+    readListAids,
     readLists,
     rereadLists,
     updateTidalFolderAids,
@@ -59,7 +63,7 @@ envInit = envGet Nothing Nothing
 envUpdate :: Env -> Text -> Text -> IO Env
 envUpdate env tok un = envGet (Just env) (Just (Discogs $ DiscogsSession tok un))
 
--- initialize env: if not exest yet, get from file, otherwise from Discogs
+-- initialize env: if not exists yet, get from file, otherwise from Discogs
 envGet :: Maybe Env -> Maybe Discogs -> IO Env
 envGet _ Nothing = envFromFiles
 envGet Nothing _ = envFromFiles
@@ -74,17 +78,37 @@ envGet (Just env) (Just discogs') = do
       vta = V.fromList $ mapMaybe (`M.lookup` oldAlbums) $ V.toList tl
       tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
 
+  -- update with the new discogs info
+  _ <- writeIORef (discogsR env) discogs'
+
+  -- reread Discogs folders info
+  newFolders <- readFolders env -- readDiscogsFolders
+
   -- reread Discogs albums info, overwriting changes
-  vda <- readAlbums discogs'
+
+  vda <- readAlbums env
   let newAlbums :: Map Int Album
       newAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vda
   let allAlbums = newAlbums <> tidalAlbums
   _ <- writeIORef (albumsR env) allAlbums
 
-  -- reread Discogs folders info
-  newFolders <- readFolders discogs' -- readDiscogsFolders
+  -- create the Tags index
+  putTextLn "-------------- Updating Tags index"
+  let updateTags :: Album -> Map Text (Vector Int) -> Map Text (Vector Int)
+      updateTags a m = foldr
+            (\k mm -> M.insertWith (V.++) k (V.singleton (albumID a)) mm)
+            m
+            (albumTags a)
+  let tagsMap :: Map Text (Vector Int)
+      tagsMap = foldr
+              updateTags
+              M.empty
+              (M.elems allAlbums)
+  putTextLn "---------------------- list of Tags found: "
+  print (M.keys tagsMap)
+
   -- reread Discogs lists info
-  lm <- rereadLists discogs'
+  lm <- rereadLists env
   -- reread folder album ids
   let fm :: Map Text (Int, Vector Int)
       fm = readFolderAids newFolders allAlbums
@@ -93,7 +117,6 @@ envGet (Just env) (Just discogs') = do
 
   _ <- writeIORef (listsR env) allLists
   _ <- writeIORef (listNamesR env) $ M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList allLists
-  _ <- writeIORef (discogsR env) discogs'
   _ <- writeIORef (sortNameR env) "Default"
   _ <- writeIORef (sortOrderR env) Asc
   pure env
@@ -114,7 +137,7 @@ envFromFiles = do
         let (lid, aids') = fromMaybe (0, V.empty) (M.lookup ln lists')
         if V.null aids'
           then do
-            aids <- readListAids' env lid
+            aids <- readListAids env lid
             -- update location info in albums
             --   go through this list and update location in albums
             -- am <- liftIO ( readIORef (albumsR env) )
@@ -145,23 +168,73 @@ envFromFiles = do
       discogsToken = t0
       discogsUser = t1
       accessToken = t5
-  -- let tidal = Tidal $ TidalFile "data/traw2.json"                        -- from cache file
-  let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken -- from the web
-  let dc = Discogs $ DiscogsFile "data/"                                    -- from cache file
-  -- let dc = Discogs $ DiscogsSession discogsToken discogsUser             -- from the web
+
+  -- from cache file or from Tidal API
+  let _tidal = Tidal $ TidalFile "data/traw2.json"
+  let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
+  -- from cache file or from Discogs API
+  let dci = Discogs $ DiscogsFile "data/"
+  let _dci = Discogs $ DiscogsSession discogsToken discogsUser
+
+  -- initial env only needs discogs info
+  dcir <- newIORef dci
+  let env = Env { discogsR = dcir }
+
+  -- read the map of Discogs folder names and ids
+  -- fns :: Map Text Int
+  fns <- readFolders env
 
   -- vda/vta :: Vector of Album
-  vta <- readAlbums tidal
-  vda <- readAlbums dc
+  vta <- readTidalAlbums tidal
+  vda <- readAlbums env
 
   let albums' :: Map Int Album
       albums' =
         M.fromList $
           (\a -> (albumID a, a)) <$> V.toList (vda <> vta)
 
+  -- create the Tags index
+  putTextLn "-------------- Updating Tags index"
+  let updateTags :: Album -> Map Text (Vector Int) -> Map Text (Vector Int)
+      updateTags a m = foldr
+            (\k mm -> M.insertWith (V.++) k (V.singleton (albumID a)) mm)
+            m
+            (albumTags a)
+  let tagsMap :: Map Text (Vector Int)
+      tagsMap = foldr
+              updateTags
+              M.empty
+              (M.elems albums')
+  putTextLn "---------------------- list of Tags found: "
+  print (M.keys tagsMap)
+
+
+  -- read the map of Discogs lists (still empty album ids)
+  lm <- readLists env
+
+  let fm :: Map Text (Int, Vector Int)
+      fm = readFolderAids fns albums'
+
+  let lists' = lm <> fm
+  let listNames' :: Map Text Int
+      listNames' =  M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList lists'
+  _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) lists'
+  let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
+
+  -- store DiscogsSession after reading from cache files
+  let dc = Discogs $ DiscogsSession discogsToken discogsUser
+
+  dr <- newIORef dc
+  ar <- newIORef albums'
+  lr <- newIORef lists'
+  lo <- newIORef allLocs
+  lnr <- newIORef listNames'
+  sr <- newIORef "Default"
+  so <- newIORef Asc
+  tr <- newIORef tagsMap
   -- define sort functions and map to names
   let sDef :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
-      sDef _ so l = case so of
+      sDef _ s l = case s of
         Asc -> l
         _ -> V.reverse l
   let sortAsi :: Map Int Album -> Vector Int -> [(Int, Maybe Album)]
@@ -169,19 +242,19 @@ envFromFiles = do
       compareAsc f (_, a) (_, b) = comparing f a b
       compareDesc f (_, a) (_, b) = comparing f b a
   let sTitle :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
-      sTitle am so aids = V.fromList (fst <$> sortBy (comp so) (sortAsi am aids))
+      sTitle am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
         where
           comp o = case o of
             Asc -> compareAsc (fmap albumTitle)
             Desc -> compareDesc (fmap albumTitle)
   let sArtist :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
-      sArtist am so aids = V.fromList (fst <$> sortBy (comp so) (sortAsi am aids))
+      sArtist am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
         where
           comp o = case o of
             Asc -> compareAsc (fmap albumArtist)
             Desc -> compareDesc (fmap albumArtist)
   let sAdded :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
-      sAdded am so aids = V.fromList (fst <$> sortBy (comp so) (sortAsi am aids))
+      sAdded am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
         where
           comp o = case o of
             Asc -> compareDesc (fmap albumAdded)
@@ -194,37 +267,10 @@ envFromFiles = do
             ("Title", sTitle),
             ("Added", sAdded)
           ]
-
-      getSort' :: Map Int Album -> Text -> (SortOrder -> Vector Int -> Vector Int)
-      getSort' am sn = fromMaybe sDef (M.lookup sn sfs) am
-
-      sorts' :: Vector Text
-      sorts' = V.fromList $ M.keys sfs
-  -- read the map of Discogs lists (still empty album ids)
-  lm <- readLists dc
-
-  -- read the map of Discogs folders
-  -- fm' :: Map Text Int
-  fm' <- readFolders dc
-  let fm :: Map Text (Int, Vector Int)
-      fm = readFolderAids fm' albums'
-
-  let lists' = lm <> fm
-  let listNames' :: Map Text Int
-      listNames' =  M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList lists'
-  _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) lists'
-  let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
-
-  -- store DiscogsSession after reading from cache files
-  let dc' = Discogs $ DiscogsSession discogsToken discogsUser
-
-  lnr <- newIORef listNames'
-  lr <- newIORef lists'
-  lo <- newIORef allLocs
-  dr <- newIORef dc'
-  ar <- newIORef albums'
-  sr <- newIORef "Default"
-  so <- newIORef Asc
+      -- getSort' :: Map Int Album -> Text -> (SortOrder -> Vector Int -> Vector Int)
+      -- getSort' am sn = fromMaybe sDef (M.lookup sn sfs) am
+      -- sorts' :: Vector Text
+      -- sorts' = V.fromList $ M.keys sfs
   pure
     Env
       { discogsR = dr,
@@ -232,12 +278,13 @@ envFromFiles = do
         listsR = lr,
         locsR = lo,
         listNamesR = lnr,
+        tagsR = tr,
         sortNameR = sr,
         sortOrderR = so,
-        sorts = sorts',
         url = "/",
         getList = getList',
-        getSort = getSort'
+        sorts = V.fromList $ M.keys sfs,
+        getSort = \ am sn -> fromMaybe sDef (M.lookup sn sfs) am
       }
 
 envUpdateAlbum :: Env -> Int -> IO ( Maybe Album )
@@ -252,9 +299,9 @@ envUpdateAlbum env aid = do
   -- here we need to add it to the album map and to all lists it is on XXXX TO BE DONE
   ma <- case fmap albumFormat ma' of
     Just "Tidal" -> pure ma'
-    Just _ -> pure ma' -- already known, nothing do add
+    -- Just _ -> pure ma' -- already known, nothing do add
     _ -> case getDiscogs di of
-              DiscogsSession _ _ -> liftIO (readAlbum di aid)
+              DiscogsSession _ _ -> liftIO (readAlbum env aid)
               _ -> liftIO (pure Nothing) -- we only have the caching files
   _ <- case ma of
     Just a -> do
@@ -268,14 +315,14 @@ envUpdateAlbum env aid = do
       liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
 
   -- update lists and folders
-      newFolders <- readFolders di -- readDiscogsFolders
+      newFolders <- readFolders env -- readDiscogsFolders
       -- reread Discogs lists info
-      lm <- rereadLists di
+      lm <- rereadLists env
       -- reread folder album ids
       let fm :: Map Text (Int, Vector Int)
           fm = readFolderAids newFolders am
       let allLists = lm <> fm
-      _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) allLists
+      -- _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) allLists
 
       _ <- writeIORef (listsR env) allLists
       _ <- writeIORef (listNamesR env) $ M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList allLists
@@ -294,7 +341,15 @@ envGetEnvr env = do
       sn <- readIORef (sortNameR env)
       so <- readIORef (sortOrderR env)
       di <- readIORef (discogsR env)
-      pure $ EnvR am lm lcs lns sn so di
+      tm <- readIORef (tagsR env)
+      pure $ EnvR am lm lcs lns sn so di tm
+
+envGetTag :: Env -> Text -> IO (Vector Int)
+envGetTag env t = do
+  tm <- readIORef (tagsR env)
+  case M.lookup t tm of
+    Just v  -> pure v
+    Nothing -> pure V.empty
 
 envUpdateSort :: Env -> Maybe Text -> Maybe Text -> IO EnvR
 envUpdateSort env msb mso = do
@@ -303,6 +358,7 @@ envUpdateSort env msb mso = do
   lm <- liftIO (readIORef (listsR env))
   lcs <- liftIO (readIORef (locsR env))
   di <- liftIO (readIORef (discogsR env))
+  tm <- liftIO (readIORef (tagsR env))
   sn <- case msb of
     Nothing -> readIORef (sortNameR env)
     Just sb -> do
@@ -316,5 +372,5 @@ envUpdateSort env msb mso = do
             _ -> Asc
       _ <- writeIORef (sortOrderR env) so
       pure so
-  pure $ EnvR am lm lcs lns sn so di
+  pure $ EnvR am lm lcs lns sn so di tm
 

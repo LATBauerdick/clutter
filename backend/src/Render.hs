@@ -15,7 +15,7 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Data.Time
 import qualified Lucid as L
-import qualified Data.Text as T (replace, take)
+import qualified Data.Text as T (replace, take, stripPrefix)
 import Relude
 import Text.RawString.QQ
 import Types (Env (..), EnvR (..), Album (..), SortOrder (..), pLocList)
@@ -38,7 +38,7 @@ renderAlbum mAlbum now = L.html_ $ do
               L.div_ [L.class_ "login-message"] $ do
               L.p_ $ "Tidal Album <" <> show (albumID a) <>  ">."
               L.br_ []
-              let qry = T.replace " " "+" $ albumTitle a <> " " <> albumArtist a
+              let qry = T.replace " " "+" $ albumArtist a <> "+-+" <> albumTitle a
               L.p_ $ do
                 L.toHtml ("Search \"" <> albumTitle a <> "\" by " <> albumArtist a <> " on ")
                 L.a_ [L.href_ $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"] "DISCOGS"
@@ -136,7 +136,7 @@ renderAlbums env envr ln aids =
 
         L.li_ [L.class_ "dropdown"] $ do
           L.a_ [L.class_ "dropbtn", L.href_ "javascript:void(0)"] $do
-            L.toHtml $ if pLocList ln then "List " else "List " <> ln <> " "
+            L.toHtml $ if pLocList ln || isJust (T.stripPrefix "#" ln) then "List " else  "List " <> ln <> " "
             L.i_ [ L.class_ "fa fa-caret-down" ] ""
           L.div_ [L.class_ "dropdown-content"] $ do
             F.traverse_ (addLink "albums/") . filter (not . pLocList) $ M.keys (listNames envr)
@@ -147,6 +147,13 @@ renderAlbums env envr ln aids =
             L.i_ [ L.class_ "fa fa-caret-down" ] ""
           L.div_ [L.class_ "dropdown-content"] $ do
             F.traverse_ (addLink "albums/") . filter pLocList $ M.keys (listNames envr)
+
+        L.li_ [L.class_ "dropdown"] $ do
+          L.a_ [L.class_ "dropbtn", L.href_ "javascript:void(0)"] $do
+            L.toHtml $ if isNothing (T.stripPrefix "#" ln) then "Tags " else "Tags " <> ln <> " "
+            L.i_ [ L.class_ "fa fa-caret-down" ] ""
+          L.div_ [L.class_ "dropdown-content"] $ do
+            F.traverse_ (addLink "albums/%23") $ M.keys (tags envr)
 
         L.li_ [L.class_ "dropdown"] $ do
           let sso = case sortOrder envr of
