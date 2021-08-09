@@ -21,7 +21,7 @@ where
 import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.!=), (.:), (.:?))
 import qualified Data.Map as M
 import Data.Vector (Vector)
-import qualified Data.Vector as V (empty, fromList)
+import qualified Data.Vector as V (empty, fromList, uniq)
 import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
@@ -320,7 +320,8 @@ getR _menv dr = r
               cover_image = dcov,
               artists = das,
               formats = dfs,
-              genres = dgens
+              genres = dgens,
+              styles = dstls
             },
         notes = ns
       } = dr
@@ -380,8 +381,9 @@ getR _menv dr = r
       Just a -> fromMaybe 0 (readMaybe . toString $ a)
       _ -> 0
     fs = (\WFormat {name = n} -> n) <$> dfs
-    tagsList :: [Text]
-    tagsList = ["discogs"] <> map T.toCaseFold fs <> tags <> map T.toCaseFold dgens
+    -- tags from notes, genres, styles, formats, if there is a tidal or apple music version, discogs
+    tagsList :: Vector Text
+    tagsList = V.uniq . V.fromList . sort $ ["discogs"] <> maybe [] (const ["applemusic"]) amid <> maybe [] (const ["tidal"]) tidalid <> map T.toCaseFold fs <> tags <> map T.toCaseFold dgens <> map T.toCaseFold dstls
     r =
       Release
         { daid      = did,

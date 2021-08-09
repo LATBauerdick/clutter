@@ -94,16 +94,8 @@ envGet (Just env) (Just discogs') = do
 
   -- create the Tags index
   putTextLn "-------------- Updating Tags index"
-  let updateTags :: Album -> Map Text (Vector Int) -> Map Text (Vector Int)
-      updateTags a m = foldr
-            (\k mm -> M.insertWith (V.++) k (V.singleton (albumID a)) mm)
-            m
-            (albumTags a)
   let tagsMap :: Map Text (Vector Int)
-      tagsMap = foldr
-              updateTags
-              M.empty
-              (M.elems allAlbums)
+      tagsMap = foldr updateTags M.empty (M.elems allAlbums)
   putTextLn "---------------------- list of Tags found: "
   print (M.keys tagsMap)
 
@@ -123,6 +115,12 @@ envGet (Just env) (Just discogs') = do
 
 fromListMap :: (Text, (Int, Vector Int)) -> [(Int, (Text, Int))]
 fromListMap (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
+
+updateTags :: Album -> Map Text (Vector Int) -> Map Text (Vector Int)
+updateTags a m = foldr
+            (\k mm -> M.insertWith (V.++) k (V.singleton (albumID a)) mm)
+            m
+            (albumTags a)
 
 envFromFiles :: IO Env
 envFromFiles = do
@@ -195,16 +193,8 @@ envFromFiles = do
 
   -- create the Tags index
   putTextLn "-------------- Updating Tags index"
-  let updateTags :: Album -> Map Text (Vector Int) -> Map Text (Vector Int)
-      updateTags a m = foldr
-            (\k mm -> M.insertWith (V.++) k (V.singleton (albumID a)) mm)
-            m
-            (albumTags a)
   let tagsMap :: Map Text (Vector Int)
-      tagsMap = foldr
-              updateTags
-              M.empty
-              (M.elems albums')
+      tagsMap = foldr updateTags M.empty (M.elems albums')
   putTextLn "---------------------- list of Tags found: "
   print (M.keys tagsMap)
 
@@ -296,7 +286,6 @@ envUpdateAlbum env aid = do
   let ma' :: Maybe Album
       ma' = M.lookup aid am'
   -- if it's not a Tidal album, update album info from Discogs
-  -- here we need to add it to the album map and to all lists it is on XXXX TO BE DONE
   ma <- case fmap albumFormat ma' of
     Just "Tidal" -> pure ma'
     -- Just _ -> pure ma' -- already known, nothing do add
@@ -313,6 +302,10 @@ envUpdateAlbum env aid = do
       -- update folder "lists" and invalidate lists
   -- also update Tidal "special" list
       liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
+
+-- update the tags map with tags from this album
+      tm <- readIORef (tagsR env)
+      _ <- writeIORef (tagsR env) (updateTags a tm)
 
   -- update lists and folders
       newFolders <- readFolders env -- readDiscogsFolders

@@ -58,11 +58,6 @@ type API1 =
     :> QueryParam "sortOrder" Text
     :> Get '[HTML] RawHtml
 
-type API2 =
-  "add"
-    :> Capture "releaseid" Int
-    :> Get '[HTML] RawHtml
-
 type API3 =
   "provider"
     :> "discogs"
@@ -77,7 +72,7 @@ type API4 =
     :> Capture "username" Text
     :> Get '[HTML] RawHtml
 
-type API = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> Raw
+type API = API0 :<|> API1 :<|> API3 :<|> API4 :<|> Raw
 
 api :: Proxy API
 api = Proxy
@@ -85,7 +80,6 @@ api = Proxy
 server :: Env -> Server API
 server env = serveAlbum
           :<|> serveAlbums
-          :<|> serveAdd
           :<|> serveDiscogs
           :<|> serveTidal
           :<|> serveDirectoryFileServer "static"
@@ -107,13 +101,6 @@ server env = serveAlbum
       let aids = doSort so aids'
       pure . RawHtml $
         L.renderBS (renderAlbums env envr listName aids)
-
-    serveAdd :: Int -> Handler RawHtml
-    serveAdd aid = do
-      now <- liftIO getZonedTime -- `debugId`
-      ma <- liftIO $ envUpdateAlbum env aid
-      pure . RawHtml $ L.renderBS (renderAlbum ma now)
-      -- fromEnum TDiscogs
 
     serveDiscogs :: Text -> Text -> Handler RawHtml
     serveDiscogs token username = do

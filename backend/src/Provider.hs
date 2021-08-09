@@ -233,7 +233,7 @@ readTidalAlbums p = do
             (Just (show (daid r)))
             Nothing
             Nothing
-            ["tidal"]
+            (V.singleton "tidal")
             0
             0
 
