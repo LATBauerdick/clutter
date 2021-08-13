@@ -119,62 +119,103 @@ renderAlbums env envr ln aids =
   -- L.doctype_ "html"
   L.html_ $ do
     renderHead $ "Albums - " <> ln
-    L.body_ albumBody
+    L.body_ $ do
+      albumBody
+      L.script_ scriptqq
   where
+    albumBody :: L.Html ()
     albumBody = do
-      renderLeftMenu
+      let topMenu = True
+      if topMenu then "" else renderTopMenu
+      L.div_ [L.class_ (if topMenu
+                          then "albums"
+                          else "albums12perc"
+                        )] $
       -- grid of Albums
-      L.div_ [L.class_ "albums"] $
         L.div_ [L.class_ "row"] $ do
-          F.traverse_ renderAlbumTN $ zip [1..] (mapMaybe (`M.lookup` albums envr) (V.toList aids))
+          F.traverse_ renderAlbumTN
+            $ zip [1..]
+                  (mapMaybe
+                    (`M.lookup` albums envr)
+                    (V.toList aids)
+                  )
+      if topMenu then renderTopMenu else ""
+
+    renderTopMenu :: L.Html ()
+    renderTopMenu =
+      L.div_ [L.id_ "navbar"] $ do
+        renderButtonHome
+        L.a_ [L.href_ (url env <> "albums/Discogs")] "Discogs"
+        L.a_ [L.href_ (url env <> "albums/Tidal")] "Tidal"
+        L.div_ [L.class_ "dropdown"] renderButtonList
+        L.div_ [L.class_ "dropdown"] renderButtonLocation
+        L.div_ [L.class_ "dropdown"] renderButtonTags
+        L.div_ [L.class_ "dropdown"] renderButtonSort
+        L.div_ [L.class_ "dropdown"] renderButtonOrder
+
+    addLink :: Text -> Text -> L.Html ()
+    addLink t0 t1 =
+      L.a_ [L.href_ (url env <> t0 <> t1)] $ do
+        L.toHtml t1
+
+    renderButtonHome =  L.a_ [L.class_ "active", L.href_ (url env <> "albums/All")] "Home"
+
+    renderButtonList = do
+      L.button_ [L.class_ "dropbtn"] $do
+        L.toHtml $ if pLocList ln || isJust (T.stripPrefix "#" ln) then "List " else  "List " <> ln <> " "
+        L.i_ [ L.class_ "fa fa-caret-down" ] ""
+      L.div_ [L.class_ "dropdown-content"] $ do
+        F.traverse_ (addLink "albums/") . filter (not . pLocList) $ M.keys (listNames envr)
+
+    renderButtonLocation = do
+      L.button_ [L.class_ "dropbtn"] $do
+        L.toHtml $ if not (pLocList ln) then "Location " else "Location " <> ln <> " "
+        L.i_ [ L.class_ "fa fa-caret-down" ] ""
+      L.div_ [L.class_ "dropdown-content"] $ do
+        F.traverse_ (addLink "albums/") . filter pLocList $ M.keys (listNames envr)
+
+    renderButtonTags = do
+      L.button_ [L.class_ "dropbtn"] $do
+        L.toHtml $ if isNothing (T.stripPrefix "#" ln) then "Tags " else "Tags " <> ln <> " "
+        L.i_ [ L.class_ "fa fa-caret-down" ] ""
+      L.div_ [L.class_ "dropdown-content"] $ do
+        F.traverse_ (addLink "albums/%23") $ M.keys (tags envr)
+
+    renderButtonSort = do
+      L.button_ [L.class_ "dropbtn"] $ do
+        L.toHtml $ "Sort " <> if sortName envr /= "Default"
+                    then "by " <> sortName envr <> " "
+                    else ""
+      L.div_ [L.class_ "dropdown-content"] $ do
+        F.traverse_ (addLink ("albums/"
+                              <> maybe ln ( "%23" <> )
+                                      (T.stripPrefix "#" ln)
+                              <> "?sortBy="
+                              )
+                    ) (sorts env)
+
+    renderButtonOrder = do
+      let sso = case sortOrder envr of
+                  Asc  -> Desc
+                  Desc -> Asc
+      L.a_  [L.href_ (url env <> "albums/"
+                        <> maybe ln ( "%23" <> )
+                                (T.stripPrefix "#" ln)
+                        <> "?sortOrder=" <> show sso
+                        )] $
+          case sortOrder envr of
+            Asc ->  L.i_ [ L.class_ "fa fa-chevron-circle-down" ] ""
+            Desc -> L.i_ [ L.class_ "fa fa-chevron-circle-up" ] ""
 
     renderLeftMenu :: L.Html ()
     renderLeftMenu =
       L.ul_ $ do
-
-        L.li_ $ L.a_ [L.class_ "active", L.href_ (url env <> "albums/All")] "Home"
-
-        L.li_ [L.class_ "dropdown"] $ do
-          L.a_ [L.class_ "dropbtn", L.href_ "javascript:void(0)"] $do
-            L.toHtml $ if pLocList ln || isJust (T.stripPrefix "#" ln) then "List " else  "List " <> ln <> " "
-            L.i_ [ L.class_ "fa fa-caret-down" ] ""
-          L.div_ [L.class_ "dropdown-content"] $ do
-            F.traverse_ (addLink "albums/") . filter (not . pLocList) $ M.keys (listNames envr)
-
-        L.li_ [L.class_ "dropdown"] $ do
-          L.a_ [L.class_ "dropbtn", L.href_ "javascript:void(0)"] $do
-            L.toHtml $ if not (pLocList ln) then "Location " else "Location " <> ln <> " "
-            L.i_ [ L.class_ "fa fa-caret-down" ] ""
-          L.div_ [L.class_ "dropdown-content"] $ do
-            F.traverse_ (addLink "albums/") . filter pLocList $ M.keys (listNames envr)
-
-        L.li_ [L.class_ "dropdown"] $ do
-          L.a_ [L.class_ "dropbtn", L.href_ "javascript:void(0)"] $do
-            L.toHtml $ if isNothing (T.stripPrefix "#" ln) then "Tags " else "Tags " <> ln <> " "
-            L.i_ [ L.class_ "fa fa-caret-down" ] ""
-          L.div_ [L.class_ "dropdown-content"] $ do
-            F.traverse_ (addLink "albums/%23") $ M.keys (tags envr)
-
-        L.li_ [L.class_ "dropdown"] $ do
-          let sso = case sortOrder envr of
-                      Asc  -> Desc
-                      Desc -> Asc
-          L.a_ [L.class_ "dropbtn", L.href_ (url env <> "albums/" <> ln <> "?sortOrder=" <> show sso )] $ do
-            "Sort "
-            case sortName envr of
-              "Default" -> ""
-              _         -> L.toHtml $ "by " <> sortName envr <> " "
-            case sortOrder envr of
-              Asc  -> L.i_ [ L.class_ "fa fa-chevron-circle-down" ] ""
-              Desc -> L.i_ [ L.class_ "fa fa-chevron-circle-up" ] ""
-          L.div_ [L.class_ "dropdown-content"] $ do
-            F.traverse_ (addLink ("albums/" <> ln <> "?sortBy=")) (sorts env)
-
-      where
-        addLink :: Text -> Text -> L.Html ()
-        addLink t0 t1 =
-          L.a_ [L.href_ (url env <> t0 <> t1)] $ do
-            L.toHtml t1
+        L.li_ renderButtonHome
+        L.li_ [L.class_ "dropdown"] renderButtonList
+        L.li_ [L.class_ "dropdown"] renderButtonLocation
+        L.li_ [L.class_ "dropdown"] renderButtonTags
+        L.li_ [L.class_ "dropdown"] renderButtonSort
+        L.li_ [L.class_ "dropdown"] renderButtonOrder
 
     renderAlbumTN :: (Int, Album) -> L.Html ()
     renderAlbumTN (idx, a) = do
@@ -339,15 +380,25 @@ renderHead t =
     L.meta_ [L.charset_ "utf-8"]
     L.meta_ [L.name_ "viewport", L.content_ "width=device-width, initial-scale=1.0"]
     L.meta_ [L.httpEquiv_ "X-UA-Compatible", L.content_ "ie=edge"]
-    -- L.link_
-    --   [ L.rel_ "stylesheet",
-    --     L.type_ "text/css",
-    --     L.href_ "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"
-    --   ]
     let ttt :: Text; ttt = ""
     L.script_ [L.src_ "https://kit.fontawesome.com/dd23371146.js", L.crossorigin_ "anonymous"] ttt
     -- <script src="https://kit.fontawesome.com/dd23371146.js" crossorigin="anonymous"></script>
     L.style_ styleqq
+
+scriptqq :: Text
+scriptqq =
+  [r|
+var prevScrollpos = window.pageYOffset;
+window.onscroll = function() {
+var currentScrollPos = window.pageYOffset;
+  if (prevScrollpos > currentScrollPos) {
+    document.getElementById("navbar").style.top = "0";
+  } else {
+    document.getElementById("navbar").style.top = "-50px";
+  }
+  prevScrollpos = currentScrollPos;
+}
+  |]
 
 styleqq :: Text
 styleqq =
@@ -385,7 +436,6 @@ li a {
   text-decoration: none;
 }
 
-/* Change the link color on hover */
 li a:hover {
   background-color: #555;
   color: white;
@@ -396,47 +446,90 @@ li a:hover {
   color: white;
 }
 
-.dropbtn {
-  background-color: #ff7000 /* #4CAF50*/;
+#navbar {
+  overflow: visible;
+  position: fixed;
+  top: 0; /* stay on top */
+  width: 100%;
+  transition: top 0.6s; /* Transition effect when sliding down (and up) */
+  background-color: #ff7000;
+}
+
+#navbar a {
+  float: left;
+  font-size: 16px;
   color: white;
-  padding: 16px;
+  text-align: center;
+  padding: 14px 16px;
+  text-decoration: none;
+}
+
+#navbar .dropdown a {
+  font-size: 16px;
+  color: white;
+  padding: 14px 2px;
+  text-decoration: none;
+}
+
+#navbar .dropdown a i {
+  padding: 2px 0px;
+}
+#navbar .dropdown {
+  float: left;
+  overflow: visible;
+  position: relative;
+}
+
+#navbar .dropdown .dropbtn {
   font-size: 16px;
   border: none;
-  cursor: pointer;
+  outline: none;
+  color: white;
+  padding: 14px 16px;
+  background-color: inherit;
+  font-family: inherit;
+  margin: 0;
 }
 
-.dropdown {
-  position: relative;
-  display: inline-block;
+#navbar a:hover, #navbar .dropdown:hover .dropbtn {
+  background-color: red;
 }
 
-.dropdown-content {
+#navbar .dropdown .dropdown-content {
   display: none;
   position: absolute;
+  color: black;
   background-color: #f9f9f9;
+  padding: 1px 1px;
+  margin: 1px 1px;
+  border-radius: 6px;
   min-width: 160px;
+  max-height: 600px;
+  overflow: auto;
   box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
   z-index: 1;
 }
 
-.dropdown-content a {
+#navbar .dropdown .dropdown-content a {
+  float: none;
   color: black;
-  padding: 12px 16px;
+  padding: 5px 5px;
+  border-radius: 6px;
   text-decoration: none;
   display: block;
+  text-align: left;
 }
 
-.dropdown-content a:hover {background-color: #f9c87c /* #f1f1f1 */}
-
-.dropdown:hover .dropdown-content {
-  display: block;
+#navbar .dropdown .dropdown-content a:hover {
+  background-color: orange;
 }
 
-.dropdown:hover .dropbtn {
-  background-color: #f97432 /* #3e8e41 */;
+#navbar .dropdown:hover .dropdown-content {
+  display: grid;
 }
 
 
+/**************************************************************/
 * {
   box-sizing: border-box;
 }
@@ -478,10 +571,15 @@ p.album-artist {
   margin: 4px 0 0 0;
 }
 
-.albums {
+.albums12perc {
   margin-left:12%;
   padding:1px 16px;
 /*  height:1000px; */
+ }
+
+.albums {
+   padding:15px 15px 250px;
+   margin-top:50px;
  }
 
 .row {

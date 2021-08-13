@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+
+
+####  python3 -m pip install git+https://github.com/tamland/python-tidal@ee120d94d897f6f6ee644fd835a35fb68942b331
+import tidalapi
+session = tidalapi.Session()
+# new oauth-based authentication
+# Will run until you visit the printed url and link your account
+session.login_oauth_simple()
+# then print out the access_token etc
+#print(session.user.username)
+print(session.user.id)
+print(session.session_id)
+print(session.country_code)
+print(session.access_token)
+
