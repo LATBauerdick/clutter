@@ -158,7 +158,7 @@ renderAlbums env envr ln aids =
       L.a_ [L.href_ (url env <> t0 <> t1)] $ do
         L.toHtml t1
 
-    renderButtonHome =  L.a_ [L.class_ "active", L.href_ (url env <> "albums/All")] "Home"
+    renderButtonHome =  L.a_ [L.class_ "active", L.href_ (url env <> "albums/2021%20Listened?sortOrder=Desc")] "Home"
 
     renderButtonList = do
       L.button_ [L.class_ "dropbtn"] $do
@@ -500,8 +500,8 @@ li a:hover {
   position: absolute;
   color: black;
   background-color: #f9f9f9;
-  padding: 1px 1px;
-  margin: 1px 1px;
+  padding: 5px 8px;
+  margin: 1px 0px;
   border-radius: 6px;
   min-width: 160px;
   max-height: 600px;
@@ -514,6 +514,7 @@ li a:hover {
   float: none;
   color: black;
   padding: 5px 5px;
+  margin: 0px 0px;
   border-radius: 6px;
   text-decoration: none;
   display: block;

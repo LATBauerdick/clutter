@@ -65,14 +65,7 @@ type API3 =
     :> Capture "username" Text
     :> Get '[HTML] RawHtml
 
-type API4 =
-  "provider"
-    :> "tidal"
-    :> Capture "token" Text
-    :> Capture "username" Text
-    :> Get '[HTML] RawHtml
-
-type API = API0 :<|> API1 :<|> API3 :<|> API4 :<|> Raw
+type API = API0 :<|> API1 :<|> API3 :<|> Raw
 
 api :: Proxy API
 api = Proxy
@@ -81,7 +74,6 @@ server :: Env -> Server API
 server env = serveAlbum
           :<|> serveAlbums
           :<|> serveDiscogs
-          :<|> serveTidal
           :<|> serveDirectoryFileServer "static"
   where
     serveAlbum :: Int -> Handler RawHtml
@@ -107,14 +99,6 @@ server env = serveAlbum
       _ <- liftIO (envUpdate env token username)
       envr <- liftIO $ envGetEnvr env
       let ln = "Discogs"
-      aids <- liftIO (getList env env ln)
-      pure . RawHtml $ L.renderBS (renderAlbums env envr ln aids)
-
-    serveTidal :: Text -> Text -> Handler RawHtml
-    serveTidal token username = do
-      _ <- liftIO (envUpdate env token username)
-      envr <- liftIO $ envGetEnvr env
-      let ln = "Tidal"
       aids <- liftIO (getList env env ln)
       pure . RawHtml $ L.renderBS (renderAlbums env envr ln aids)
 
