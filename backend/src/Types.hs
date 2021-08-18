@@ -54,7 +54,8 @@ data Env
   , sortNameR   :: IORef Text
   , sortOrderR  :: IORef SortOrder
   , discogsR    :: IORef Discogs
-  , tagsR       :: IORef ( Map Text (Vector Int) )
+  , tagsR       :: IORef ( Map Text [Int] )
+  , focusR      :: IORef [Text]
   , sorts       :: Vector Text
   , url         :: Text
   , getList     :: Env -> Text -> IO ( Vector Int )
@@ -82,7 +83,8 @@ data EnvR
   , sortName   :: Text
   , sortOrder  :: SortOrder
   , discogs    :: Discogs
-  , tags       :: Map Text (Vector Int)
+  , tags       :: Map Text [Int]
+  , focus      :: [Text]
   }
 
 data Release
@@ -94,7 +96,7 @@ data Release
   , dadded    :: !Text
   , dcover    :: !Text
   , dfolder   :: Int
-  , dformat   :: [Text]
+  , dformat   :: Text
   , dtidalid  :: Maybe Text
   , damid     :: Maybe Text
   , dlocation :: Maybe Text

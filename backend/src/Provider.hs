@@ -7,6 +7,7 @@ module Provider
     readListAids,
     readAlbum,
     readAlbums,
+    readSomeAlbums,
     readLists,
     readFolders,
     readFolderAids,
@@ -28,6 +29,7 @@ import qualified FromDiscogs as FD
     readDiscogsListsCache,
     readDiscogsRelease,
     readDiscogsReleases,
+    readSomeDiscogsReleases,
     readDiscogsReleasesCache,
     readListAids,
     rereadLists,
@@ -62,7 +64,7 @@ dToAlbum r =
     (dadded r)
     (dfolder r)
     (makeDiscogsURL (daid r))
-    format
+    (dformat r)
     (dtidalid r)
     (damid r)
     (dlocation r)
@@ -71,13 +73,6 @@ dToAlbum r =
     (dplays r)
   where
     makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
--- format is special for certain folders
--- LATB Hack, needs to be fixed!!!! XXXXXXXX
--- should maybe rather go through the "Streaming" and "File" lists and change the format
-    format = case dfolder r of
-                3292597 -> "Streaming"
-                3141493 -> "File"
-                _       -> T.intercalate ", " $ dformat r
 
 readLists :: Env -> IO (Map Text (Int, Vector Int))
 readLists env = do
@@ -102,6 +97,13 @@ readAlbum env aid = do
   let a = dToAlbum <$> d
   putTextLn $ "Retrieved Discogs Album " <> show (albumTitle <$> a)
   pure a
+
+readSomeAlbums :: Env -> Int -> IO (Vector Album)
+readSomeAlbums env nreleases = do
+    ds <- FD.readSomeDiscogsReleases env nreleases
+    let as = dToAlbum <$> ds
+    putTextLn $ "Total # Discogs Albums read: " <> show (length as)
+    pure $ V.fromList as
 
 readAlbums :: Env -> IO (Vector Album)
 readAlbums env = do

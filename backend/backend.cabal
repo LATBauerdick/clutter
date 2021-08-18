@@ -3,8 +3,6 @@ cabal-version: 1.12
 -- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: 9acef550ef05d77c846964e987bbe0e3e5e767c36902e7b098460ed9396469e8
 
 name:           backend
 version:        0.1.0.0
@@ -35,6 +33,9 @@ library
       Parse
       Provider
       Render
+      RenderAlbumsView
+      RenderAlbumView
+      RenderUtil
       Types
   other-modules:
       Paths_backend
@@ -46,7 +47,7 @@ library
   ghc-options: -Wall -fno-warn-unused-binds -fwrite-ide-info -hiedir=.hie
   build-depends:
       aeson
-    , base >=4.7 && <5
+    , base >=4.14 && <5
     , bytestring
     , containers
     , http-client
@@ -79,7 +80,7 @@ executable backend-exe
   build-depends:
       aeson
     , backend
-    , base
+    , base >=4.14 && <5
     , bytestring
     , containers
     , http-client
@@ -113,7 +114,7 @@ test-suite backend-test
   build-depends:
       aeson
     , backend
-    , base
+    , base >=4.14 && <5
     , bytestring
     , containers
     , hspec

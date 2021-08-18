@@ -16,18 +16,20 @@ where
 -- import Data.Ord (comparing)
 import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
+import qualified Data.List as L
+  ( union
+  )
 import qualified Data.Vector as V
   ( empty,
     fromList,
     null,
     reverse,
     toList,
-    singleton,
-    (++),
   )
 import Provider
   ( readAlbum,
     readAlbums,
+    readSomeAlbums,
     readTidalAlbums,
     readFolderAids,
     readFolders,
@@ -58,16 +60,11 @@ import Types
 --                   "2021-01-01T01:23:01-07:00" 1349997 ( const "xxx" )
 
 envInit :: IO Env
-envInit = envGet Nothing Nothing
+envInit = envFromFiles
 
-envUpdate :: Env -> Text -> Text -> IO Env
-envUpdate env tok un = envGet (Just env) (Just (Discogs $ DiscogsSession tok un))
-
--- initialize env: if not exists yet, get from file, otherwise from Discogs
-envGet :: Maybe Env -> Maybe Discogs -> IO Env
-envGet _ Nothing = envFromFiles
-envGet Nothing _ = envFromFiles
-envGet (Just env) (Just discogs') = do
+envUpdate :: Env -> Text -> Text -> Int -> IO Env
+envUpdate env tok un nreleases = do
+  let discogs' = Discogs $ DiscogsSession tok un
   putTextLn $ "-----------------Updating from " <> show discogs'
 
   -- save tidal albums map
@@ -84,17 +81,22 @@ envGet (Just env) (Just discogs') = do
   -- reread Discogs folders info
   newFolders <- readFolders env -- readDiscogsFolders
 
-  -- reread Discogs albums info, overwriting changes
-
-  vda <- readAlbums env
-  let newAlbums :: Map Int Album
-      newAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vda
-  let allAlbums = newAlbums <> tidalAlbums
+  -- reread Discogs albums info, overwriting with changes
+  -- newAlbums <- if nreleases == 0
+  --                   then
+  --                     M.fromList . map (\a -> (albumID a, a)) . V.toList
+  --                       <$> readAlbums env
+  --                   else
+  --                     M.fromList . map (\a -> (albumID a, a)) . V.toList
+  --                       <$> readSomeAlbums env nreleases
+  newAlbums <- M.fromList . map (\a -> (albumID a, a)) . V.toList
+                          <$> readSomeAlbums env nreleases
+  let allAlbums = newAlbums <> oldAlbums <> tidalAlbums
   _ <- writeIORef (albumsR env) allAlbums
 
   -- create the Tags index
   putTextLn "-------------- Updating Tags index"
-  let tagsMap :: Map Text (Vector Int)
+  let tagsMap :: Map Text [Int]
       tagsMap = foldr updateTags M.empty (M.elems allAlbums)
   putTextLn "---------------------- list of Tags found: "
   print (M.keys tagsMap)
@@ -116,9 +118,9 @@ envGet (Just env) (Just discogs') = do
 fromListMap :: (Text, (Int, Vector Int)) -> [(Int, (Text, Int))]
 fromListMap (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
 
-updateTags :: Album -> Map Text (Vector Int) -> Map Text (Vector Int)
+updateTags :: Album -> Map Text [Int] -> Map Text [Int]
 updateTags a m = foldr
-            (\k mm -> M.insertWith (V.++) k (V.singleton (albumID a)) mm)
+            (\k mm -> M.insertWith L.union k (one (albumID a)) mm)
             m
             (albumTags a)
 
@@ -193,7 +195,7 @@ envFromFiles = do
 
   -- create the Tags index
   putTextLn "-------------- Updating Tags index"
-  let tagsMap :: Map Text (Vector Int)
+  let tagsMap :: Map Text [Int]
       tagsMap = foldr updateTags M.empty (M.elems albums')
   putTextLn "---------------------- list of Tags found: "
   print (M.keys tagsMap)
@@ -222,6 +224,7 @@ envFromFiles = do
   sr <- newIORef "Default"
   so <- newIORef Asc
   tr <- newIORef tagsMap
+  fr <- newIORef []
   -- define sort functions and map to names
   let sDef :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
       sDef _ s l = case s of
@@ -269,6 +272,7 @@ envFromFiles = do
         locsR = lo,
         listNamesR = lnr,
         tagsR = tr,
+        focusR = fr,
         sortNameR = sr,
         sortOrderR = so,
         url = "/",
@@ -335,14 +339,15 @@ envGetEnvr env = do
       so <- readIORef (sortOrderR env)
       di <- readIORef (discogsR env)
       tm <- readIORef (tagsR env)
-      pure $ EnvR am lm lcs lns sn so di tm
+      fs <- readIORef (focusR env)
+      pure $ EnvR am lm lcs lns sn so di tm fs
 
-envGetTag :: Env -> Text -> IO (Vector Int)
+envGetTag :: Env -> Text -> IO [Int]
 envGetTag env t = do
   tm <- readIORef (tagsR env)
   case M.lookup t tm of
     Just v  -> pure v
-    Nothing -> pure V.empty
+    Nothing -> pure []
 
 envUpdateSort :: Env -> Maybe Text -> Maybe Text -> IO EnvR
 envUpdateSort env msb mso = do
@@ -352,6 +357,7 @@ envUpdateSort env msb mso = do
   lcs <- liftIO (readIORef (locsR env))
   di <- liftIO (readIORef (discogsR env))
   tm <- liftIO (readIORef (tagsR env))
+  fs <- liftIO (readIORef (focusR env))
   sn <- case msb of
     Nothing -> readIORef (sortNameR env)
     Just sb -> do
@@ -365,5 +371,5 @@ envUpdateSort env msb mso = do
             _ -> Asc
       _ <- writeIORef (sortOrderR env) so
       pure so
-  pure $ EnvR am lm lcs lns sn so di tm
+  pure $ EnvR am lm lcs lns sn so di tm fs
 

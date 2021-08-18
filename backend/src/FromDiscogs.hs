@@ -9,6 +9,7 @@ module FromDiscogs
   ( rereadLists,
     readDiscogsRelease,
     readDiscogsReleases,
+    readSomeDiscogsReleases,
     readDiscogsReleasesCache,
     readDiscogsLists,
     readDiscogsListsCache,
@@ -26,7 +27,8 @@ import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
-import Data.Text as T (stripPrefix, filter, null, toCaseFold, take)
+import Data.Text as T (stripPrefix, filter, null, toCaseFold
+                      , take, intercalate, append)
 import Data.Char as Ch (isDigit)
 -- import Control.Applicative
 -- import Control.Monad
@@ -203,8 +205,8 @@ type DiscogsAPI =
     :> "folders"
     :> Capture "folder_id" Int
     :> "releases"
-    -- :> QueryParam "sort" Text
-    -- :> QueryParam "sort_order" Text
+    :> QueryParam "sort" Text
+    :> QueryParam "sort_order" Text
     :> QueryParam "page" Int
     :> QueryParam "per_page" Int
     :> QueryParam "token" Token
@@ -260,11 +262,11 @@ type DiscogsAPI =
 
 discogsGetReleases ::
   UserName ->
-  Int ->
-  -- -> Maybe Text
-  -- -> Maybe Text
-  Maybe Int ->
-  Maybe Int ->
+  Int ->        -- folder ID
+  Maybe Text -> -- sort (label artist title catno format rating added year)
+  Maybe Text -> -- sort_order (asc desc)
+  Maybe Int ->  -- page# 1..
+  Maybe Int ->  -- per page, max 500?
   Maybe Token ->
   Maybe UserAgent ->
   ClientM WReleases
@@ -380,10 +382,37 @@ getR _menv dr = r
     plays = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 7 then Nothing else Just v) $ ns of
       Just a -> fromMaybe 0 (readMaybe . toString $ a)
       _ -> 0
-    fs = (\WFormat {name = n} -> n) <$> dfs
+-- format is special for certain folders
+-- LATB Hack, needs to be fixed!!!! XXXXXXXX
+-- should maybe rather go through the "Streaming" and "File" lists and change the format
+    fs :: [Text]
+    fs = case dfolder_id of
+           3292597 -> one "Streaming"
+           3141493 -> one "File"
+           _       -> (\WFormat {name = n} -> n) <$> dfs
     -- tags from notes, genres, styles, formats, if there is a tidal or apple music version, discogs
+    -- add opera if style is opera
+    tagsGenres :: [Text] -> [Text]
+    tagsGenres ts = map (T.append "genre." . T.toCaseFold)
+                  $ ts <> (maybe [] one
+                          . find (( "opera" == ) . T.toCaseFold)
+                          $ dstls)
+    tagsRated :: Int -> [Text]
+    tagsRated i = case i of
+      0 -> one "rated.not"
+      1 -> ["rated.", "rated.*"]
+      2 -> ["rated.", "rated.**"]
+      3 -> ["rated.", "rated.***"]
+      4 -> ["rated.", "rated.****"]
+      _ -> ["rated.", "rated.*****"]
+    tagsPlays :: Int -> [Text]
+    tagsPlays i = case i of
+      0 -> one "played.never"
+      1 -> ["played.", "played.once"]
+      2 -> ["played.", "played.twice"]
+      _ -> ["played.", "played.often"]
     tagsList :: Vector Text
-    tagsList = V.uniq . V.fromList . sort $ ["discogs"] <> maybe [] (const ["applemusic"]) amid <> maybe [] (const ["tidal"]) tidalid <> map T.toCaseFold fs <> tags <> map T.toCaseFold dgens <> map T.toCaseFold dstls
+    tagsList = V.uniq . V.fromList . sort $ ["discogs"] <> maybe [] (const ["applemusic"]) amid <> maybe [] (const ["tidal"]) tidalid <> map T.toCaseFold fs <> tags <> tagsGenres dgens <> map T.toCaseFold dstls <> tagsPlays plays <> tagsRated drat
     r =
       Release
         { daid      = did,
@@ -393,7 +422,7 @@ getR _menv dr = r
           dadded    = da,
           dcover    = dcov,
           dfolder   = dfolder_id,
-          dformat   = fs,
+          dformat   = T.intercalate ", " fs,
           dtidalid  = tidalid,
           damid     = amid,
           dlocation = if loc == Just "" then Nothing else loc,
@@ -402,21 +431,26 @@ getR _menv dr = r
           dplays    = plays
         }
 
-releasesFromDiscogsApi :: DiscogsInfo -> IO (Either String [WRelease])
-releasesFromDiscogsApi di = do
+releasesFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String [WRelease])
+releasesFromDiscogsApi di nreleases = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
   let DiscogsSession tok un = di
   let dc = mkClientEnv m discogsBaseUrl
       query :: ClientM [WRelease]
-      query = do
-        r0 <- discogsGetReleases un 0 (Just 1) (Just 500) (Just tok) userAgent
-        let rs0 = getWr r0
-        r1 <- discogsGetReleases un 0 (Just 2) (Just 500) (Just tok) userAgent
-        let rs1 = getWr r1
-        r2 <- discogsGetReleases un 0 (Just 3) (Just 500) (Just tok) userAgent
-        let rs2 = getWr r2
-        pure $ rs0 <> rs1 <> rs2
-  putTextLn "-----------------Getting Collection from Discogs-----"
+      query = if nreleases == 0
+        then do
+          r0 <- discogsGetReleases un 0 Nothing Nothing (Just 1) (Just 500) (Just tok) userAgent
+          let rs0 = getWr r0
+          r1 <- discogsGetReleases un 0 Nothing Nothing (Just 2) (Just 500) (Just tok) userAgent
+          let rs1 = getWr r1
+          r2 <- discogsGetReleases un 0 Nothing Nothing (Just 3) (Just 500) (Just tok) userAgent
+          let rs2 = getWr r2
+          pure $ rs0 <> rs1 <> rs2
+        else do -- only read nreleases, newest first
+          r0 <- discogsGetReleases un 0 (Just "added") (Just "desc") (Just 1) (Just nreleases) (Just tok) userAgent
+          let rs0 = getWr r0
+          pure rs0
+  putTextLn $ "-----------------Getting Collection from Discogs (asked for " <> show nreleases <> " releases)-----"
   res <- runClientM query dc
   case res of
     Left err -> pure $ Left (show err)
@@ -441,10 +475,22 @@ readDiscogsReleasesCache fn = do
         Right d -> getR Nothing <$> d
   pure rs
 
+readSomeDiscogsReleases :: Env -> Int -> IO [Release]
+readSomeDiscogsReleases env nreleases= do
+  p <- envGetDiscogs env
+  res <- releasesFromDiscogsApi (getDiscogs p) nreleases
+  case res of
+    Left err -> putTextLn $ "Error: " <> show err
+    Right _ -> pure ()
+  let rs = case res of
+        Left _ -> []
+        Right d -> getR (Just env) <$> d
+  pure rs
+
 readDiscogsReleases :: Env -> IO [Release]
 readDiscogsReleases env = do
   p <- envGetDiscogs env
-  res <- releasesFromDiscogsApi (getDiscogs p)
+  res <- releasesFromDiscogsApi (getDiscogs p) 0
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()

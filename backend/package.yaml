@@ -23,25 +23,25 @@ default-extensions:
   - OverloadedStrings
 
 dependencies:
-- base >= 4.7 && < 5
-- relude
-- aeson
-- servant
-- servant-server
-- servant-client
-- wai
-- warp
-- lucid
-- http-media
-- bytestring
-- vector
-- containers
-- text
-- raw-strings-qq
-- http-client
-- http-client-tls
-- lens
-- time
+  - base >= 4.14 && < 5
+  - relude
+  - aeson
+  - servant
+  - servant-server
+  - servant-client
+  - wai
+  - warp
+  - lucid
+  - http-media
+  - bytestring
+  - vector
+  - containers
+  - text
+  - raw-strings-qq
+  - http-client
+  - http-client-tls
+  - lens
+  - time
 
 library:
   source-dirs: src
@@ -56,7 +56,7 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - base
+    - base >= 4.14 && < 5
     - backend
 
 tests:
@@ -68,7 +68,7 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - base
+    - base >= 4.14 && < 5
     - backend
     - hspec
     - hspec-wai
