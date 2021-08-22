@@ -6,12 +6,13 @@ module Provider
   (
     readListAids,
     readAlbum,
+    readAlbumsCache,
     readAlbums,
-    readSomeAlbums,
-    readLists,
+    readListsCache,
     readFolders,
+    readFoldersCache,
     readFolderAids,
-    rereadLists,
+    readLists,
     readTidalAlbums,
     updateTidalFolderAids,
   )
@@ -25,14 +26,12 @@ import qualified Data.Vector as V
 import qualified FromDiscogs as FD
   ( readDiscogsFolders,
     readDiscogsFoldersCache,
-    readDiscogsLists,
     readDiscogsListsCache,
     readDiscogsRelease,
     readDiscogsReleases,
-    readSomeDiscogsReleases,
     readDiscogsReleasesCache,
     readListAids,
-    rereadLists,
+    readLists,
   )
 import qualified FromTidal as FT (readTidalReleases, readTidalReleasesCache)
 import Relude
@@ -44,7 +43,7 @@ import Types
     TagFolder (..),
     Tidal (..),
     TidalInfo (..),
-    Env (..),
+    AppM,
     envGetDiscogs,
     getDiscogs,
     getTidal,
@@ -74,64 +73,66 @@ dToAlbum r =
   where
     makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
 
-readLists :: Env -> IO (Map Text (Int, Vector Int))
-readLists env = do
-  p <- envGetDiscogs env
-  case getDiscogs p of
+readListsCache :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
+readListsCache di = do
+  case di of
     DiscogsFile fn -> FD.readDiscogsListsCache fn
-    _ -> FD.readDiscogsLists (getDiscogs p)
+    _ -> error "readListsCache no file"
 
-rereadLists :: Env -> IO (Map Text (Int, Vector Int))
-rereadLists env = do
-  p <- envGetDiscogs env
+readLists :: AppM (Map Text (Int, Vector Int))
+readLists = do
+  p <- envGetDiscogs
   case getDiscogs p of
-    DiscogsFile fn -> error $ "Bug: Provider Discogs does not reread lists from files " <> toText fn
-    _ -> FD.rereadLists (getDiscogs p)
+    DiscogsFile fn -> error $ "Bug: Provider Discogs does not read lists from files " <> toText fn
+    _ -> liftIO $ FD.readLists (getDiscogs p)
 
-readAlbum :: Env -> Int -> IO (Maybe Album)
-readAlbum env aid = do
-  p <- envGetDiscogs env
+readAlbum :: Int -> AppM (Maybe Album)
+readAlbum aid = do
+  p <- envGetDiscogs
   d <- case getDiscogs p of
-    DiscogsSession _ _ -> FD.readDiscogsRelease (getDiscogs p) aid
+    DiscogsSession _ _ -> liftIO $ FD.readDiscogsRelease (getDiscogs p) aid
     _ -> pure Nothing
   let a = dToAlbum <$> d
   putTextLn $ "Retrieved Discogs Album " <> show (albumTitle <$> a)
   pure a
 
-readSomeAlbums :: Env -> Int -> IO (Vector Album)
-readSomeAlbums env nreleases = do
-    ds <- FD.readSomeDiscogsReleases env nreleases
+readAlbums :: Int -> AppM (Vector Album)
+readAlbums nreleases = do
+    ds <- FD.readDiscogsReleases nreleases
     let as = dToAlbum <$> ds
     putTextLn $ "Total # Discogs Albums read: " <> show (length as)
     pure $ V.fromList as
 
-readAlbums :: Env -> IO (Vector Album)
-readAlbums env = do
-    p <- envGetDiscogs env
-    ds <- case getDiscogs p of
+readAlbumsCache :: DiscogsInfo -> IO (Vector Album)
+readAlbumsCache di = do
+    ds <- case di of
       DiscogsFile fn -> FD.readDiscogsReleasesCache fn
-      _ -> FD.readDiscogsReleases env
-
+      _ -> error "readAlbumsCache no file"
     let as = dToAlbum <$> ds
 
     putTextLn $ "Total # Discogs Albums: " <> show (length as)
-    -- print $ drop ( length as - 4 ) as
 
     pure $ V.fromList as
 
-readListAids :: Env -> Int -> IO (Vector Int)
-readListAids env i = do
-  p <- envGetDiscogs env
+readListAids :: Int -> AppM (Vector Int)
+readListAids i = do
+  p <- envGetDiscogs
   case getDiscogs p of
         DiscogsFile _ -> pure V.empty -- maybe not ok
-        _ -> FD.readListAids env i
+        _ -> FD.readListAids i
 
-readFolders :: Env -> IO (Map Text Int)
-readFolders env = do
-  p <- envGetDiscogs env
+readFolders :: AppM (Map Text Int)
+readFolders = do
+  p <- envGetDiscogs
   case getDiscogs p of
+    DiscogsFile fn -> liftIO $ FD.readDiscogsFoldersCache fn
+    _ -> liftIO $ FD.readDiscogsFolders (getDiscogs p)
+
+readFoldersCache :: DiscogsInfo -> IO (Map Text Int)
+readFoldersCache di = do
+  case di of
     DiscogsFile fn -> FD.readDiscogsFoldersCache fn
-    _ -> FD.readDiscogsFolders (getDiscogs p)
+    _ -> error "readFoldersCache no file"
 
 -- populate the aids for folders from the folder+id in each Album
 -- special treatment for Tidal, Discogs, and All folders

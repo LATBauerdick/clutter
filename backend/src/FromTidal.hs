@@ -24,6 +24,36 @@ import qualified Data.Vector as V (empty)
   
 import Types ( Release (..), TagFolder (..), TidalInfo (..) )
 
+{-
+https://github.com/yaronzz/Tidal-Media-Downloader/blob/master/TIDALDL-PY/tidal_dl/tidal.py
+
+__URL_PRE__ = 'https://api.tidalhifi.com/v1/'
+__AUTH_URL__ = 'https://auth.tidal.com/v1/oauth2'
+# known API key for Fire Stick HD(MQA, Dolby Vision enabled)
+__API_KEY__ = {'clientId': 'aR7gUaTK1ihpXOEP', 'clientSecret': 'eVWBEkuL2FCjxgjOkR3yK0RYZEbcrMXRc2l8fU3ZCdE='}
+
+    def getDeviceCode(self):
+        data = {
+            'client_id': __API_KEY__['clientId'],
+            'scope': 'r_usr+w_usr+w_sub'
+        }
+        e, result = self.__post__(__AUTH_URL__ + '/device_authorization', data)
+        if e is not None:
+            return str(e), False
+
+        if 'status' in result and result['status'] != 200:
+            return "Device authorization failed. Please try again.", False
+
+        self.key.deviceCode = result['deviceCode']
+        self.key.userCode = result['userCode']
+        self.key.verificationUrl = result['verificationUri']
+        self.key.authCheckTimeout = result['expiresIn']
+        self.key.authCheckInterval = result['interval']
+        return None, True
+ - -}
+
+
+
 
 data WTidal = WTidal
                 { limit :: Int

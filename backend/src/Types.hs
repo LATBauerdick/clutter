@@ -9,8 +9,10 @@ module Types ( Tidal (..)
              , Release (..)
              , Album (..)
              , SortOrder (..)
+             , AppM
              , Env (..)
              , EnvR (..)
+             , envGetEnvr
              , envGetDiscogs
              , envGetListName
              ) where
@@ -19,6 +21,7 @@ import Relude
 import qualified Text.Show
 import Data.Vector ( Vector )
 import qualified Data.Map.Strict as M
+import Servant (Handler)
 
 data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
   deriving Show
@@ -45,6 +48,7 @@ newtype Tidal = Tidal { getTidal :: TidalInfo }
 
 newtype Discogs = Discogs { getDiscogs :: DiscogsInfo } deriving Show
 
+type AppM = ReaderT Env Handler
 data Env
   = Env
   { albumsR     :: IORef ( Map Int Album )
@@ -58,21 +62,35 @@ data Env
   , focusR      :: IORef [Text]
   , sorts       :: Vector Text
   , url         :: Text
-  , getList     :: Env -> Text -> IO ( Vector Int )
+  , getList     :: Text -> AppM ( Vector Int )
   , getSort     :: Map Int Album -> Text -> (SortOrder -> Vector Int -> Vector Int )
   }
 instance Show Env where
   show :: Env -> String
   show _ = "This is an Env"
 
-envGetDiscogs :: Env -> IO Discogs
-envGetDiscogs env = do readIORef (discogsR env)
+envGetDiscogs :: AppM Discogs
+envGetDiscogs = asks discogsR >>= readIORef
 
-envGetListName :: Env -> Int -> IO (Maybe Text)
-envGetListName env i = do
-  lns <- readIORef (listNamesR env)
+envGetListName :: Int -> AppM (Maybe Text)
+envGetListName i = do
+  lns <- asks listNamesR >>= readIORef
   let ln :: Maybe Text; ln = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
   pure ln
+
+envGetEnvr :: AppM EnvR
+envGetEnvr = do
+  env <- ask
+  am  <- readIORef (albumsR env)
+  lm  <- readIORef (listsR env)
+  lcs <- readIORef (locsR env)
+  lns <- readIORef (listNamesR env)
+  sn  <- readIORef (sortNameR env)
+  so  <- readIORef (sortOrderR env)
+  di  <- readIORef (discogsR env)
+  tm  <- readIORef (tagsR env)
+  fs  <- readIORef (focusR env)
+  pure $ EnvR am lm lcs lns sn so di tm fs
 
 data EnvR
   = EnvR

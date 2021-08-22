@@ -6,12 +6,10 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 
 module FromDiscogs
-  ( rereadLists,
+  ( readLists,
     readDiscogsRelease,
     readDiscogsReleases,
-    readSomeDiscogsReleases,
     readDiscogsReleasesCache,
-    readDiscogsLists,
     readDiscogsListsCache,
     readListAids,
     readDiscogsFolders,
@@ -42,7 +40,7 @@ import Types
   ( DiscogsInfo (..),
     Discogs (..),
     Release (..),
-    Env (..),
+    AppM,
     envGetDiscogs,
     envGetListName,
   )
@@ -307,8 +305,8 @@ getWr wr = rs
         releases = rs
       } = wr
 
-getR :: Maybe Env -> WRelease -> Release
-getR _menv dr = r
+getR :: WRelease -> Release
+getR dr = r
   where
     WRelease
       { id = did,
@@ -472,32 +470,32 @@ readDiscogsReleasesCache fn = do
     Right _ -> pure ()
   let rs = case res of
         Left _ -> []
-        Right d -> getR Nothing <$> d
+        Right d -> getR <$> d
   pure rs
 
-readSomeDiscogsReleases :: Env -> Int -> IO [Release]
-readSomeDiscogsReleases env nreleases= do
-  p <- envGetDiscogs env
-  res <- releasesFromDiscogsApi (getDiscogs p) nreleases
+readDiscogsReleases :: Int -> AppM [Release]
+readDiscogsReleases nreleases= do
+  p <- envGetDiscogs
+  res <- liftIO $ releasesFromDiscogsApi (getDiscogs p) nreleases
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
   let rs = case res of
         Left _ -> []
-        Right d -> getR (Just env) <$> d
+        Right d -> getR <$> d
   pure rs
 
-readDiscogsReleases :: Env -> IO [Release]
-readDiscogsReleases env = do
-  p <- envGetDiscogs env
-  res <- releasesFromDiscogsApi (getDiscogs p) 0
-  case res of
-    Left err -> putTextLn $ "Error: " <> show err
-    Right _ -> pure ()
-  let rs = case res of
-        Left _ -> []
-        Right d -> getR (Just env) <$> d
-  pure rs
+-- readDiscogsReleases :: AppM [Release]
+-- readDiscogsReleases = do
+--   p <- envGetDiscogs
+--   res <- liftIO $ releasesFromDiscogsApi (getDiscogs p) 0
+--   case res of
+--     Left err -> putTextLn $ "Error: " <> show err
+--     Right _ -> pure ()
+--   let rs = case res of
+--         Left _ -> []
+--         Right d -> getR <$> d
+--   pure rs
 
 releaseFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String WRelease)
 releaseFromDiscogsApi di aid = do
@@ -523,7 +521,7 @@ readDiscogsRelease di rid = do
     Right _ -> pure ()
   pure $ case res of
     Left _ -> Nothing
-    Right d -> Just (getR Nothing d)
+    Right d -> Just (getR d)
 
 listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
 listsFromDiscogsApi di = do
@@ -541,20 +539,20 @@ listsFromDiscogsApi di = do
 listsFromCacheFile :: FilePath -> IO (Either String WLists)
 listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") :: IO (Either String WLists)
 
-readDiscogsLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
-readDiscogsLists di = do
-  putTextLn "-----------------Getting Lists from Discogs-----"
-  res <- listsFromDiscogsApi di
-  case res of
-    Left err -> putTextLn $ "Error: " <> show err
-    Right _ -> pure ()
-  let ls = case res of
-        Left _ -> []
-        Right wls -> lists wls
+-- readDiscogsLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
+-- readDiscogsLists di = do
+--   putTextLn "-----------------Getting Lists from Discogs-----"
+--   res <- listsFromDiscogsApi di
+--   case res of
+--     Left err -> putTextLn $ "Error: " <> show err
+--     Right _ -> pure ()
+--   let ls = case res of
+--         Left _ -> []
+--         Right wls -> lists wls
 
-  let lm :: [(Text, (Int, Vector Int))]
-      lm = (\WList {id = i, name = n} -> (n, (i, V.empty))) <$> ls
-  pure $ M.fromList lm
+--   let lm :: [(Text, (Int, Vector Int))]
+--       lm = (\WList {id = i, name = n} -> (n, (i, V.empty))) <$> ls
+--   pure $ M.fromList lm
 
 readDiscogsListsCache :: FilePath -> IO (Map Text (Int, Vector Int))
 readDiscogsListsCache fn = do
@@ -630,15 +628,15 @@ readDiscogsFoldersCache fn = do
 -- we're treating Discog folders like lists,
 -- also assuming that their IDs are unique
 -- NB: the JSON required to extract album id info is different between them
-readListAids :: Env -> Int -> IO (Vector Int)
-readListAids env i = do
-  di <- envGetDiscogs env
+readListAids :: Int -> AppM (Vector Int)
+readListAids i = do
+  di <- envGetDiscogs
   let DiscogsSession tok _ = getDiscogs di
-  m <- newManager tlsManagerSettings
+  m <- liftIO $ newManager tlsManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
-  ln <- envGetListName env i
+  ln <- envGetListName i
   putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
-  res <- runClientM (discogsGetList i (Just tok) userAgent) dc
+  res <- liftIO $ runClientM (discogsGetList i (Just tok) userAgent) dc
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
@@ -662,14 +660,14 @@ readListAidsCache fn i = do
 readWLItemsCache :: FilePath -> IO (Either String WLItems)
 readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
 
-rereadLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
-rereadLists di = do
+readLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
+readLists di = do
   let DiscogsSession tok un = di
   m <- newManager tlsManagerSettings -- defaultManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
   let query :: ClientM WLists
       query = discogsGetLists un (Just tok) userAgent
-  putTextLn "-----------------rereading Lists from Discogs-----"
+  putTextLn "-----------------reading Lists from Discogs-----"
   res <- runClientM query dc
   case res of
     Left err -> putTextLn $ "Error: " <> show err
