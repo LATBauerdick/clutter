@@ -182,6 +182,30 @@ li a:hover {
   text-align: left;
 }
 
+.focus-on {
+  display: inline;
+  float: none;
+  color: black;
+  background-color: green;
+  padding: 5px 5px;
+  margin: 0px 0px;
+  border-radius: 6px;
+  text-decoration: none;
+  text-align: left;
+}
+
+.focus-not {
+  display: inline;
+  float: none;
+  color: black;
+  background-color: red;
+  padding: 5px 5px;
+  margin: 0px 0px;
+  border-radius: 6px;
+  text-decoration: none;
+  text-align: left;
+}
+
 #navbar .dropdown .focus-content a:hover {
   background-color: orange;
 }

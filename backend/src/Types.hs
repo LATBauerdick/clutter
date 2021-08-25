@@ -28,11 +28,11 @@ data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
 data DiscogsInfo = DiscogsEnv Env | DiscogsFile FilePath | DiscogsSession Text Text
   deriving Show
 
-class ATags f where toInt :: f -> Int
 data TagFolder = TDiscogs | TNotUsed | TTidal | TAll
     deriving (Enum, Read, Show, Eq, Ord)
-instance ATags TagFolder where
-    toInt = fromEnum
+-- class ATags f where toInt :: f -> Int
+-- instance ATags TagFolder where
+--     toInt = fromEnum
 
 data SortOrder = Asc | Desc
   deriving (Enum, Read, Show, Eq, Ord)

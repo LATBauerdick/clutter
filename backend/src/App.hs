@@ -27,14 +27,16 @@ import Network.HTTP.Media ((//), (/:))
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Data.Text as T (stripPrefix)
-import Data.Vector as V (fromList, toList)
-import Data.List as L (intersect)
+import qualified Data.Vector as V (fromList, toList)
+-- import Data.List as L (intersect)
+import qualified Data.IntSet as Set
+import Control.Monad (foldM)
 import Relude
 import Render ( renderAlbumView, renderAlbumsView )
 import Servant
 import Types (AppM, Env (..), EnvR (..))
 
-data HTML = HTML
+data HTML
 
 newtype RawHtml = RawHtml {unRaw :: BL.ByteString}
 
@@ -110,11 +112,38 @@ clutterServer = serveAlbum
                       -- (fromMaybe "" (T.stripPrefix "#" tag))
         Nothing  -> getList env listName
     -- filter with focus if any
-      aids'' <- case viaNonEmpty head fs of
-        Just t -> V.fromList
-                  . L.intersect (V.toList aids')
-                    <$> envGetTag (fromMaybe "" (T.stripPrefix "#" t))
-        Nothing -> pure aids'
+      -- aids'' <- case viaNonEmpty head fs of
+        -- Just t -> V.fromList
+        --           . L.intersect (V.toList aids')
+        --             <$> envGetTag (fromMaybe "" (T.stripPrefix "#" t))
+        -- Nothing -> pure aids'
+      let xxx = Set.fromList . V.toList $ aids'
+      print xxx
+      xx <- (\ s t -> Set.intersection s . Set.fromList <$> envGetTag t) xxx "classical"
+      print xx
+      aids'' <- if null fs then pure aids'
+                  else
+                    V.fromList . Set.toList <$>
+                      foldM
+                        (\ s t -> Set.intersection s . Set.fromList <$> envGetTag t)
+                        (Set.fromList . V.toList $ aids')
+                        (mapMaybe (T.stripPrefix "#") fs)
+
+-- f n = do
+--     s <- foldM fn [] [1..n]
+--     return (reverse s)
+
+--   where fn acc _ = do x <- getLine
+--                       return (x:acc)
+-- And finally, apply some functor and pointfree shortcuts:
+
+-- f n = reverse `fmap` foldM fn [] [1..n]
+--     where fn acc _ = (: acc) `fmap` getLine
+
+
+
+
+      
       envr <- envUpdateSort msb mso
       let EnvR am _ _ _ sn so _ _ _ = envr
       let doSort = getSort env am sn

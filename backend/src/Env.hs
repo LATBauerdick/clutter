@@ -295,7 +295,7 @@ envUpdateAlbum aid = do
       let am = M.insert aid a am'
       liftIO $ writeIORef (albumsR env) am
       -- insert aid into its folder
-      let folder = albumFolder a
+      -- let folder = albumFolder a
       -- update folder "lists" and invalidate lists
   -- also update Tidal "special" list
       liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)

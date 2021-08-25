@@ -11,8 +11,9 @@ import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import qualified Data.Vector as V
+import Data.List (union)
 import qualified Lucid as L
-import qualified Data.Text as T (take, stripPrefix, find)
+import qualified Data.Text as T (take, stripPrefix, find, intercalate, cons)
 import Relude
 import Text.RawString.QQ
 import Types (Env (..), EnvR (..), envGetEnvr, AppM, Album (..), SortOrder (..), pLocList)
@@ -30,12 +31,7 @@ renderAlbumsView ln fs aids = do
                             (T.stripPrefix "#" =<< viaNonEmpty head fs)
       albumBody :: L.Html ()
       albumBody = do
-        let topMenu = True
-        if topMenu then "" else renderTopMenu
-        L.div_ [L.class_ (if topMenu
-                            then "albums"
-                            else "albums12perc"
-                          )] $
+        L.div_ [L.class_ "albums"] $
         -- grid of Albums
           L.div_ [L.class_ "row"] $ do
             F.traverse_ renderAlbumTN
@@ -44,7 +40,7 @@ renderAlbumsView ln fs aids = do
                       (`M.lookup` albums envr)
                       (V.toList aids)
                     )
-        if topMenu then renderTopMenu else ""
+        renderTopMenu
 
       renderTopMenu :: L.Html ()
       renderTopMenu =
@@ -63,7 +59,6 @@ renderAlbumsView ln fs aids = do
       addLink t0 t1 =
         L.a_ [L.href_ (url env <> t0 <> t1)] $ do
           L.toHtml t1
-
 
       renderButtonList = do
         L.button_ [L.class_ "dropbtn"] $do
@@ -108,35 +103,40 @@ renderAlbumsView ln fs aids = do
               Desc -> L.i_ [ L.class_ "fa fa-chevron-circle-up" ] ""
 
 
-      -- renderButtonFocus = do
-      --   L.button_ [L.class_ "dropbtn"] $do
-      --     L.toHtml $ if  fs /= []
-      --                  then "Focus " <> fromMaybe "" (viaNonEmpty head fs)
-      --                  else "Focus "
-      --     L.i_ [ L.class_ "fa fa-caret-down" ] ""
-      --   L.div_ [L.class_ "dropdown-content"] $ do
-      --     F.traverse_ (addLink ("albums/" <> lnq <> "&focus=%23"))
-      --                 $ filter (isJust . T.find ('.' ==)) (M.keys (tags envr)) <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
-
       renderFocus = do
+        let fqs :: [Text]; fqs = mapMaybe (T.stripPrefix "#") fs
+        let bu :: [Text] -> Text
+            bu ts = url env <> "albums/"
+                  <> lnq
+                  <> "&focus=%23"
+                  <> T.intercalate "&focus=%23" ts
+        let lnk :: [Text] -> Text -> L.Html ()
+            lnk ts t = do
+              let p = t `elem` ts -- this tag is selected
+                  nt = fromMaybe "" (T.stripPrefix "-" t) -- t is a .not. tag
+                  pp = nt `elem` ts -- .not. tag is selected
+                  nts
+                    | p         = ts `union` [T.cons '-' t ]
+                    | pp        = ts `union` [nt]
+                    | otherwise = ts `union` [t]
+                  tc :: Text; tc
+                    | p         = "focus-on"
+                    | pp        = "focus-not"
+                    | otherwise = "focus"
+              L.a_  [ L.class_ tc
+                    , L.href_ (bu nts)] $ do
+                L.toHtml t
+        let sts :: [Text] -- sorted tags
+            sts = filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
+               <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
+
         L.button_ [L.class_ "dropbtn"] $do
           L.toHtml $ if  fs /= []
-                      then "Focus " <> fromMaybe "" (viaNonEmpty head fs)
+                      then "Focus (" <> T.intercalate " " fs <> ")"
                       else "Focus "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "focus-content"] $ do
-          F.traverse_ (addLink ("albums/" <> lnq <> "&focus=%23"))
-                      $ filter (isJust . T.find ('.' ==)) (M.keys (tags envr)) <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
-
-      renderLeftMenu :: L.Html ()
-      renderLeftMenu =
-        L.ul_ $ do
-          L.li_ [L.class_ "dropdown"] renderButtonList
-          L.li_ [L.class_ "dropdown"] renderButtonLocation
-          L.li_ [L.class_ "dropdown"] renderButtonTags
-          L.li_ [L.class_ "dropdown"] renderButtonSort
-          L.li_ [L.class_ "dropdown"] renderButtonOrder
-          L.li_ [L.class_ "dropdown"] renderFocus
+          F.traverse_ (lnk fqs) sts
 
       renderAlbumTN :: (Int, Album) -> L.Html ()
       renderAlbumTN (idx, a) = do

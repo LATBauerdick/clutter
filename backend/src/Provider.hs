@@ -212,8 +212,8 @@ readTidalAlbums p = do
               T.intercalate "/" $ T.splitOn "-" (dcover r),
               T.pack "/320x320.jpg"
             ]
-        tgetAlbumURL :: Album -> Text
-        tgetAlbumURL a = makeTidalURL (albumID a)
+        -- tgetAlbumURL :: Album -> Text
+        -- tgetAlbumURL a = makeTidalURL (albumID a)
         makeTidalURL :: Int -> Text
         makeTidalURL tid =
           T.pack $ "https://listen.tidal.com/album/" ++ show tid

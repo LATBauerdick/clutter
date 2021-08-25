@@ -523,21 +523,18 @@ readDiscogsRelease di rid = do
     Left _ -> Nothing
     Right d -> Just (getR d)
 
-listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
-listsFromDiscogsApi di = do
-  m <- newManager tlsManagerSettings -- defaultManagerSettings
-  let DiscogsSession tok un = di
-  let dc = mkClientEnv m discogsBaseUrl
-  -- get list and folder names and ids
-  let query :: ClientM WLists
-      query = discogsGetLists un (Just tok) userAgent
-  res <- runClientM query dc
-  pure $ case res of
-    Left err -> Left (show err)
-    Right r -> Right r
-
-listsFromCacheFile :: FilePath -> IO (Either String WLists)
-listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") :: IO (Either String WLists)
+-- listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
+-- listsFromDiscogsApi di = do
+--   m <- newManager tlsManagerSettings -- defaultManagerSettings
+--   let DiscogsSession tok un = di
+--   let dc = mkClientEnv m discogsBaseUrl
+--   -- get list and folder names and ids
+--   let query :: ClientM WLists
+--       query = discogsGetLists un (Just tok) userAgent
+--   res <- runClientM query dc
+--   pure $ case res of
+--     Left err -> Left (show err)
+--     Right r -> Right r
 
 -- readDiscogsLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
 -- readDiscogsLists di = do
@@ -553,6 +550,9 @@ listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") ::
 --   let lm :: [(Text, (Int, Vector Int))]
 --       lm = (\WList {id = i, name = n} -> (n, (i, V.empty))) <$> ls
 --   pure $ M.fromList lm
+
+listsFromCacheFile :: FilePath -> IO (Either String WLists)
+listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") :: IO (Either String WLists)
 
 readDiscogsListsCache :: FilePath -> IO (Map Text (Int, Vector Int))
 readDiscogsListsCache fn = do
