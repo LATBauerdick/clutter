@@ -90,7 +90,7 @@ readAlbum :: Int -> AppM (Maybe Album)
 readAlbum aid = do
   p <- envGetDiscogs
   d <- case getDiscogs p of
-    DiscogsSession _ _ -> liftIO $ FD.readDiscogsRelease (getDiscogs p) aid
+    DiscogsSession _ _ -> FD.readDiscogsRelease (getDiscogs p) aid
     _ -> pure Nothing
   let a = dToAlbum <$> d
   putTextLn $ "Retrieved Discogs Album " <> show (albumTitle <$> a)
@@ -103,10 +103,11 @@ readAlbums nreleases = do
     putTextLn $ "Total # Discogs Albums read: " <> show (length as)
     pure $ V.fromList as
 
-readAlbumsCache :: DiscogsInfo -> IO (Vector Album)
-readAlbumsCache di = do
+readAlbumsCache :: DiscogsInfo -> Map Text Int -> IO (Vector Album)
+readAlbumsCache di lns = do
+-- need to pass down Map of list/folder names for decoding when we fill Albums
     ds <- case di of
-      DiscogsFile fn -> FD.readDiscogsReleasesCache fn
+      DiscogsFile fn -> FD.readDiscogsReleasesCache fn lns
       _ -> error "readAlbumsCache no file"
     let as = dToAlbum <$> ds
 
@@ -236,7 +237,7 @@ readTidalAlbums p = do
             (Just (show (daid r)))
             Nothing
             Nothing
-            (V.singleton "tidal")
+            (dtags r)
             0
             0
 

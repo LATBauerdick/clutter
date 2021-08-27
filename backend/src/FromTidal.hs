@@ -20,8 +20,6 @@ import Servant
 -- import Servant.API
 import Servant.Client
 
-import qualified Data.Vector as V (empty)
-  
 import Types ( Release (..), TagFolder (..), TidalInfo (..) )
 
 {-
@@ -210,7 +208,7 @@ getReleases t = getRelease <$> tis where
                        , dtidalid  = Just (show tid)
                        , damid     = Nothing
                        , dlocation = Nothing
-                       , dtags     = V.empty
+                       , dtags     = ["provider.tidal"]
                        , drating   = 0
                        , dplays    = 0
                        }

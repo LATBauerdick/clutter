@@ -103,14 +103,31 @@ li a:hover {
 }
 
 #navbar .dropdown .dropbtn {
+  padding: 14px 16px 14px 16px;
   font-size: 16px;
   border: none;
   outline: none;
   color: white;
-  padding: 14px 16px;
   background-color: inherit;
   font-family: inherit;
   margin: 0;
+}
+
+#navbar .dropdown .dropbtn a {
+  padding: 0px 4px;
+}
+#navbar .dropdown .dropbtn-order {
+  padding: 14px 16px 14px 2px;
+  font-size: 16px;
+  border: none;
+  outline: none;
+  color: white;
+  background-color: inherit;
+  font-family: inherit;
+  margin: 0;
+}
+#navbar .dropdown .dropbtn-order a {
+  padding: 0px 4px;
 }
 
 #navbar a:hover, #navbar .dropdown:hover .dropbtn {

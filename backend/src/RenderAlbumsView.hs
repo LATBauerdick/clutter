@@ -11,7 +11,6 @@ import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-import Data.List (union)
 import qualified Lucid as L
 import qualified Data.Text as T (take, stripPrefix, find, intercalate, cons)
 import Relude
@@ -24,64 +23,81 @@ renderAlbumsView :: Text -> [Text] -> Vector Int -> AppM ( L.Html () )
 renderAlbumsView ln fs aids = do
   envr <- envGetEnvr
   env <- ask
-  -- L.doctype_ "html"
+  let ffs :: [Text]
+      ffs = mapMaybe (T.stripPrefix "#") fs
+  let fqs :: Map Text Bool
+      fqs = M.fromList
+                . map (\t ->  (fromMaybe t (T.stripPrefix "-" t)
+                              , isNothing (T.stripPrefix "-" t)))
+                $ ffs
+  let uhq :: Text; uhq = url env <> "albums/"
+      qry' :: [Text] -> Text -> Text -- create the query url
+      qry' ts n = uhq <> maybe n ( "%23" <> ) (T.stripPrefix "#" n) <> "?"
+              <> if null ts then "" else "&focus=%23"
+              <> T.intercalate "&focus=%23" ts
+      qry :: Text; qry = qry' ffs ln
+  let sts :: [Text] -- sorted tags
+      sts = filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
+          <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
+
   let
-      lnq = maybe ln ( "%23" <> ) (T.stripPrefix "#" ln) <> "?"
-      lnqq = lnq <> maybe "" ("&focus=%23" <>)
-                            (T.stripPrefix "#" =<< viaNonEmpty head fs)
       albumBody :: L.Html ()
       albumBody = do
         L.div_ [L.class_ "albums"] $
         -- grid of Albums
           L.div_ [L.class_ "row"] $ do
-            F.traverse_ renderAlbumTN
-              $ zip [1..]
-                    (mapMaybe
-                      (`M.lookup` albums envr)
-                      (V.toList aids)
-                    )
+            F.traverse_ renderAlbumTN . zip [1..]
+                                      . mapMaybe (`M.lookup` albums envr)
+                                      . V.toList $ aids
         renderTopMenu
 
       renderTopMenu :: L.Html ()
       renderTopMenu =
         L.div_ [L.id_ "navbar"] $ do
+          L.div_ [L.class_ "dropdown"] renderShow
           L.div_ [L.class_ "dropdown"] renderFocus
-          L.a_  [L.class_ "active"
-                , L.href_ (url env <> "albums/2021%20Listened?sortOrder=Desc")] "Listened"
-          L.a_  [L.href_ (url env <> "albums/Discogs")] "Discogs"
+          L.div_ [L.class_ "dropdown"] renderButtonSort
+          L.div_ [L.class_ "dropdown"] renderButtonOrder
+          L.a_   [L.class_ "active"
+                 , L.href_ (uhq <> "2021%20Listened?sortOrder=Desc")] "Listened"
+          L.a_   [L.class_ "active", L.href_ (uhq <> "Discogs")] "Discogs"
           L.div_ [L.class_ "dropdown"] renderButtonList
           L.div_ [L.class_ "dropdown"] renderButtonLocation
           L.div_ [L.class_ "dropdown"] renderButtonTags
-          L.div_ [L.class_ "dropdown"] renderButtonSort
-          L.div_ [L.class_ "dropdown"] renderButtonOrder
 
       addLink :: Text -> Text -> L.Html ()
       addLink t0 t1 =
-        L.a_ [L.href_ (url env <> t0 <> t1)] $ do
+        L.a_ [L.href_ (t0 <> t1)] $ do
           L.toHtml t1
 
-      renderButtonList = do
+      renderShow = do
         L.button_ [L.class_ "dropbtn"] $do
-          L.toHtml $ if pLocList ln || isJust (T.stripPrefix "#" ln) then "List " else  "List " <> ln <> " "
+          L.a_  [L.class_ "dropbtn", L.href_ qry] $ L.toHtml $ "Showing " <> ln
+
+      renderButtonList = do
+        L.button_ [L.class_ "dropbtn"] $ do
+          "List "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (addLink "albums/") . filter (not . pLocList) $ M.keys (listNames envr)
+          F.traverse_ (\x -> L.a_ [L.href_ (qry' ffs x)] $ do L.toHtml x)
+            . filter (not . pLocList) $ M.keys (listNames envr)
 
       renderButtonLocation = do
-        L.button_ [L.class_ "dropbtn"] $do
-          L.toHtml $ if not (pLocList ln) then "Location " else "Location " <> ln <> " "
+        L.button_ [L.class_ "dropbtn"] $ do
+          "Location "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (addLink "albums/") . filter pLocList $ M.keys (listNames envr)
+          F.traverse_ (\x -> L.a_ [L.href_ (qry' ffs x)] $ do L.toHtml x)
+            . filter pLocList $ M.keys (listNames envr)
 
       renderButtonTags = do
         L.button_ [L.class_ "dropbtn"] $do
-          L.toHtml $ if isJust (T.stripPrefix "#" ln)
-                      then "Tags " <> ln <> " "
-                      else "Tags"
+          "Tags "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (addLink "albums/%23") $ M.keys (tags envr)
+          F.traverse_ (\x -> L.a_ [L.href_ (qry' ffs ("%23" <> x))] $ do L.toHtml x)
+          -- F.traverse_ (addLink (uhq <> "%23"))
+            sts -- M.keys (tags envr)
 
       renderButtonSort = do
         L.button_ [L.class_ "dropbtn"] $ do
@@ -89,52 +105,47 @@ renderAlbumsView ln fs aids = do
                       then "by " <> sortName envr <> " "
                       else ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (addLink ("albums/" <> lnqq <> "&sortBy=")) (sorts env)
+          F.traverse_ (addLink (qry <> "&sortBy=")) (sorts env)
 
       renderButtonOrder = do
-        let sso = case sortOrder envr of
-                    Asc  -> Desc
-                    Desc -> Asc
-        L.a_  [L.href_ (url env <> "albums/"
-                          <> lnqq <> "&sortOrder=" <> show sso
-                          )] $
-            case sortOrder envr of
-              Asc ->  L.i_ [ L.class_ "fa fa-chevron-circle-down" ] ""
-              Desc -> L.i_ [ L.class_ "fa fa-chevron-circle-up" ] ""
-
+        L.button_ [L.class_ "dropbtn-order"] $ do
+          let sso = case sortOrder envr of
+                      Asc  -> Desc
+                      Desc -> Asc
+          L.a_  [L.href_ (qry <> "&sortOrder=" <> show sso)] $
+              case sortOrder envr of
+                Asc ->  L.i_ [ L.class_ "fa fa-chevron-circle-down" ] ""
+                Desc -> L.i_ [ L.class_ "fa fa-chevron-circle-up" ] ""
 
       renderFocus = do
-        let fqs :: [Text]; fqs = mapMaybe (T.stripPrefix "#") fs
-        let bu :: [Text] -> Text
-            bu ts = url env <> "albums/"
-                  <> lnq
-                  <> "&focus=%23"
-                  <> T.intercalate "&focus=%23" ts
-        let lnk :: [Text] -> Text -> L.Html ()
+        let lnk :: Map Text Bool -> Text -> L.Html ()
             lnk ts t = do
-              let p = t `elem` ts -- this tag is selected
-                  nt = fromMaybe "" (T.stripPrefix "-" t) -- t is a .not. tag
-                  pp = nt `elem` ts -- .not. tag is selected
-                  nts
-                    | p         = ts `union` [T.cons '-' t ]
-                    | pp        = ts `union` [nt]
-                    | otherwise = ts `union` [t]
+              let nts = map (\(it, ip) -> if ip then it else T.cons '-' it
+                            )
+                        . M.toList
+                        . ttt $ ts
+                        -- . M.insertWith xor t True $ ts
+                  p = isJust $ t `M.lookup` ts -- this tag was selected
+                  pp = fromMaybe False $ t `M.lookup` ts -- tag was True
+                  ttt:: Map Text Bool -> Map Text Bool; ttt tts
+                    | p && pp   = M.insert t False tts
+                    | p         = M.delete t tts
+                    | otherwise = M.insert t True tts
                   tc :: Text; tc
-                    | p         = "focus-on"
-                    | pp        = "focus-not"
+                    | p && pp   = "focus-on"
+                    | p         = "focus-not"
                     | otherwise = "focus"
               L.a_  [ L.class_ tc
-                    , L.href_ (bu nts)] $ do
+                    , L.href_ (qry' nts ln)] $ do
                 L.toHtml t
-        let sts :: [Text] -- sorted tags
-            sts = filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
-               <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
 
         L.button_ [L.class_ "dropbtn"] $do
-          L.toHtml $ if  fs /= []
-                      then "Focus (" <> T.intercalate " " fs <> ")"
-                      else "Focus "
-          L.i_ [ L.class_ "fa fa-caret-down" ] ""
+          L.a_  [L.class_ "dropbtn", L.href_ (qry' [] ln) ] $ do --L.toHtml $ "Showing " <> ln
+            L.toHtml $ if  ffs /= []
+                        then "Focus (#" <> T.intercalate " #" ffs <> ")"
+                        else "Focus "
+            L.i_ [ L.class_ "fa fa-caret-down" ] ""
+
         L.div_ [L.class_ "focus-content"] $ do
           F.traverse_ (lnk fqs) sts
 
@@ -180,7 +191,7 @@ renderAlbumsView ln fs aids = do
                     L.div_ [L.class_ "cover-obackground"] $ do
                       L.a_ [L.href_ (albumURL a)] $ do
                         L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
-                  "File" ->
+                  "Files" ->
                     L.div_ [L.class_ "cover-obackground"] $ do
                       L.a_ [L.href_ (albumURL a)] $ do
                         L.span_ [ L.class_ "far fa-file-audio fa-sm" ] ""
@@ -211,21 +222,21 @@ renderAlbumsView ln fs aids = do
                   case M.lookup (albumID a) (locs envr) of
                     Just (loc, pos) ->
                       L.div_ [L.class_ "cover-obackground2"] $ do
-                        L.a_ [L.href_ (url env <> "albums/" <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
+                        L.a_ [L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                           -- L.i_ [ L.class_ "fa fa-align-justify fa-rotate-90" ] ""
                           L.i_ [ L.class_ "fa fa-barcode" ] ""
                         L.span_ [L.class_ "loctext"] $ do
                           "Location: "
-                          L.a_ [L.class_ "loclink", L.href_ (url env <> "albums/" <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
+                          L.a_ [L.class_ "loclink", L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                             L.toHtml $ loc <> " #" <> show pos
                     _ -> ""
                 Just loc ->
                   L.div_ [L.class_ "cover-obackground2"] $ do
-                    L.a_ [L.href_ (url env <> "albums/" <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
+                    L.a_ [L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                       L.i_ [ L.class_ "fa fa-barcode", L.style_ "color:red" ] ""
                     L.span_ [L.class_ "loctext"] $ do
                       "Location: "
-                      L.a_ [L.class_ "loclink", L.href_ (url env <> "albums/" <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
+                      L.a_ [L.class_ "loclink", L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                         L.toHtml $ if loc == ln
                                       then loc <> " #" <> show idx
                                       else loc

@@ -153,8 +153,8 @@ envInit = do
   fns <- readFoldersCache (getDiscogs dci)
 
   -- vda/vta :: Vector of Album
-  vta <- liftIO $ readTidalAlbums tidal
-  vda <- readAlbumsCache (getDiscogs dci)
+  vta <- readTidalAlbums tidal
+  vda <- readAlbumsCache (getDiscogs dci) fns
 
   let albums' :: Map Int Album
       albums' =

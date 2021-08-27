@@ -118,7 +118,7 @@ data Release
   , dtidalid  :: Maybe Text
   , damid     :: Maybe Text
   , dlocation :: Maybe Text
-  , dtags     :: Vector Text
+  , dtags     :: [Text]
   , drating   :: Int
   , dplays    :: Int
   } deriving (Show)
@@ -137,7 +137,7 @@ data Album
   , albumTidal    :: Maybe Text
   , albumAM       :: Maybe Text
   , albumLocation :: Maybe Text
-  , albumTags     :: Vector Text
+  , albumTags     :: [Text]
   , albumRating   :: Int
   , albumPlays    :: Int
   } deriving (Show)

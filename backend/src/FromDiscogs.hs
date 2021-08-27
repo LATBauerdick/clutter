@@ -20,14 +20,15 @@ where
 import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.!=), (.:), (.:?))
 import qualified Data.Map as M
 import Data.Vector (Vector)
-import qualified Data.Vector as V (empty, fromList, uniq)
+import qualified Data.Vector as V (empty, fromList)
 import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
 import Data.Text as T (stripPrefix, filter, null, toCaseFold
-                      , take, intercalate, append)
+                      , take, intercalate)
 import Data.Char as Ch (isDigit)
+import Data.List (nub)
 -- import Control.Applicative
 -- import Control.Monad
 -- import Control.Monad.IO.Class
@@ -41,6 +42,7 @@ import Types
     Discogs (..),
     Release (..),
     AppM,
+    Env (..),
     envGetDiscogs,
     envGetListName,
   )
@@ -305,8 +307,8 @@ getWr wr = rs
         releases = rs
       } = wr
 
-getR :: WRelease -> Release
-getR dr = r
+getR :: (Int -> Maybe Text) -> WRelease -> Release
+getR folderName dr = r
   where
     WRelease
       { id = did,
@@ -381,17 +383,20 @@ getR dr = r
       Just a -> fromMaybe 0 (readMaybe . toString $ a)
       _ -> 0
 -- format is special for certain folders
--- LATB Hack, needs to be fixed!!!! XXXXXXXX
--- should maybe rather go through the "Streaming" and "File" lists and change the format
+-- should maybe rather go through the "Streaming" and "File" lists and change the format?
     fs :: [Text]
-    fs = case dfolder_id of
-           3292597 -> one "Streaming"
-           3141493 -> one "File"
-           _       -> (\WFormat {name = n} -> n) <$> dfs
+    fs = case folderName dfolder_id of
+           Just "Streaming" -> one "Streaming"
+           Just "Files"      -> one "Files"
+           _                -> (\WFormat {name = n} -> n) <$> dfs
     -- tags from notes, genres, styles, formats, if there is a tidal or apple music version, discogs
+    tagsFormats :: [Text] -> [Text]
+    tagsFormats ts = map (("format." <>) . T.toCaseFold) ts
+    tagsFolder :: Int -> [Text]
+    tagsFolder i = one . T.toCaseFold . ("folder." <>) . fromMaybe "???" . folderName $ i
     -- add opera if style is opera
     tagsGenres :: [Text] -> [Text]
-    tagsGenres ts = map (T.append "genre." . T.toCaseFold)
+    tagsGenres ts = map (("genre." <>) . T.toCaseFold)
                   $ ts <> (maybe [] one
                           . find (( "opera" == ) . T.toCaseFold)
                           $ dstls)
@@ -409,8 +414,10 @@ getR dr = r
       1 -> ["played.", "played.once"]
       2 -> ["played.", "played.twice"]
       _ -> ["played.", "played.often"]
-    tagsList :: Vector Text
-    tagsList = V.uniq . V.fromList . sort $ ["discogs"] <> maybe [] (const ["applemusic"]) amid <> maybe [] (const ["tidal"]) tidalid <> map T.toCaseFold fs <> tags <> tagsGenres dgens <> map T.toCaseFold dstls <> tagsPlays plays <> tagsRated drat
+    tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
+
+    tagsList :: [Text]
+    tagsList = nub . sort $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres dgens <> map T.toCaseFold dstls <> tagsPlays plays <> tagsRated drat <> tagsFolder dfolder_id
     r =
       Release
         { daid      = did,
@@ -462,40 +469,31 @@ releasesFromCacheFile fn = do
   res3 <- (eitherDecode <$> readFileLBS (fn <> "draw3.json")) :: IO (Either String WReleases)
   pure . Right . concatMap getWr . rights $ [res1, res2, res3]
 
-readDiscogsReleasesCache :: FilePath -> IO [Release]
-readDiscogsReleasesCache fn = do
-  res <- releasesFromCacheFile fn
+readDiscogsReleasesCache :: FilePath -> Map Text Int -> IO [Release]
+readDiscogsReleasesCache fn lns = do
+  let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
+  res <- liftIO $ releasesFromCacheFile fn
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
   let rs = case res of
         Left _ -> []
-        Right d -> getR <$> d
+        Right d -> getR ln <$> d
   pure rs
 
 readDiscogsReleases :: Int -> AppM [Release]
 readDiscogsReleases nreleases= do
   p <- envGetDiscogs
+  lns <- asks listNamesR >>= readIORef
+  let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
   res <- liftIO $ releasesFromDiscogsApi (getDiscogs p) nreleases
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
   let rs = case res of
         Left _ -> []
-        Right d -> getR <$> d
+        Right d -> getR ln <$> d
   pure rs
-
--- readDiscogsReleases :: AppM [Release]
--- readDiscogsReleases = do
---   p <- envGetDiscogs
---   res <- liftIO $ releasesFromDiscogsApi (getDiscogs p) 0
---   case res of
---     Left err -> putTextLn $ "Error: " <> show err
---     Right _ -> pure ()
---   let rs = case res of
---         Left _ -> []
---         Right d -> getR <$> d
---   pure rs
 
 releaseFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String WRelease)
 releaseFromDiscogsApi di aid = do
@@ -513,15 +511,17 @@ releaseFromDiscogsApi di aid = do
       Nothing -> Left $ "No Release Found for " <> show aid
       Just r -> Right r
 
-readDiscogsRelease :: DiscogsInfo -> Int -> IO (Maybe Release)
+readDiscogsRelease :: DiscogsInfo -> Int -> AppM (Maybe Release)
 readDiscogsRelease di rid = do
-  res <- releaseFromDiscogsApi di rid
+  lns <- asks listNamesR >>= readIORef
+  let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
+  res <- liftIO $ releaseFromDiscogsApi di rid
   case res of
     Left err -> putTextLn $ "Error in readDiscogsRelease: " <> show err
     Right _ -> pure ()
   pure $ case res of
     Left _ -> Nothing
-    Right d -> Just (getR d)
+    Right d -> Just (getR ln d)
 
 -- listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
 -- listsFromDiscogsApi di = do
