@@ -12,12 +12,17 @@ import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import qualified Lucid as L
-import qualified Data.Text as T (take, stripPrefix, find, intercalate, cons)
+import qualified Data.Text as T (take, stripPrefix, find, intercalate, cons, concat)
+import qualified Network.HTTP.Base as NHB (urlEncode)
 import Relude
 import Text.RawString.QQ
 import Types (Env (..), EnvR (..), envGetEnvr, AppM, Album (..), SortOrder (..), pLocList)
 
 import RenderUtil ( renderHead )
+
+
+urlEncode :: Text -> Text
+urlEncode = toText . NHB.urlEncode . toString
 
 renderAlbumsView :: Text -> [Text] -> Vector Int -> AppM ( L.Html () )
 renderAlbumsView ln fs aids = do
@@ -32,9 +37,9 @@ renderAlbumsView ln fs aids = do
                 $ ffs
   let uhq :: Text; uhq = url env <> "albums/"
       qry' :: [Text] -> Text -> Text -- create the query url
-      qry' ts n = uhq <> maybe n ( "%23" <> ) (T.stripPrefix "#" n) <> "?"
-              <> if null ts then "" else "&focus=%23"
-              <> T.intercalate "&focus=%23" ts
+      qry' ts n = uhq
+                <> urlEncode n
+                <> "?" <> (T.concat . map ( ("&focus=" <>) . urlEncode . ("#" <>) ) $ ts)
       qry :: Text; qry = qry' ffs ln
   let sts :: [Text] -- sorted tags
       sts = filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
@@ -45,7 +50,7 @@ renderAlbumsView ln fs aids = do
       albumBody = do
         L.div_ [L.class_ "albums"] $
         -- grid of Albums
-          L.div_ [L.class_ "row"] $ do
+          L.div_ [L.class_ "row"] $
             F.traverse_ renderAlbumTN . zip [1..]
                                       . mapMaybe (`M.lookup` albums envr)
                                       . V.toList $ aids
@@ -59,7 +64,7 @@ renderAlbumsView ln fs aids = do
           L.div_ [L.class_ "dropdown"] renderButtonSort
           L.div_ [L.class_ "dropdown"] renderButtonOrder
           L.a_   [L.class_ "active"
-                 , L.href_ (uhq <> "2021%20Listened?sortOrder=Desc")] "Listened"
+                 , L.href_ (uhq <> urlEncode "2021 Listened?sortOrder=Desc")] "Listened"
           L.a_   [L.class_ "active", L.href_ (uhq <> "Discogs")] "Discogs"
           L.div_ [L.class_ "dropdown"] renderButtonList
           L.div_ [L.class_ "dropdown"] renderButtonLocation
@@ -95,8 +100,7 @@ renderAlbumsView ln fs aids = do
           "Tags "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (\x -> L.a_ [L.href_ (qry' ffs ("%23" <> x))] $ do L.toHtml x)
-          -- F.traverse_ (addLink (uhq <> "%23"))
+          F.traverse_ (\x -> L.a_ [L.href_ (qry' ffs ("#" <> x))] $ do L.toHtml x)
             sts -- M.keys (tags envr)
 
       renderButtonSort = do

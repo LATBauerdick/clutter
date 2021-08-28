@@ -143,6 +143,7 @@ li a:hover {
   margin: 1px 0px;
   border-radius: 6px;
   min-width: 160px;
+  max-width: 600px;
   max-height: 600px;
   overflow: auto;
   box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);

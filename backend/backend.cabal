@@ -46,7 +46,8 @@ library
       OverloadedStrings
   ghc-options: -Wall -fno-warn-unused-binds -fwrite-ide-info -hiedir=.hie
   build-depends:
-      aeson
+      HTTP
+    , aeson
     , base >=4.14 && <5
     , bytestring
     , containers
@@ -78,7 +79,8 @@ executable backend-exe
       OverloadedStrings
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
+      HTTP
+    , aeson
     , backend
     , base >=4.14 && <5
     , bytestring
@@ -112,7 +114,8 @@ test-suite backend-test
       OverloadedStrings
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
+      HTTP
+    , aeson
     , backend
     , base >=4.14 && <5
     , bytestring
