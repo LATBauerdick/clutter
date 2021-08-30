@@ -378,6 +378,12 @@ getR folderName dr = r
                           else Nothing
       _ -> Nothing
 
+    -- parse Order# (field 5)
+    ordn :: Maybe Text
+    ordn = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 5 then Nothing else Just v) $ ns of
+      Just a -> if a /= "" then Just a else Nothing
+      _ -> Nothing
+
     plays :: Int
     plays = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 7 then Nothing else Just v) $ ns of
       Just a -> fromMaybe 0 (readMaybe . toString $ a)
@@ -389,7 +395,7 @@ getR folderName dr = r
            Just "Streaming" -> one "Streaming"
            Just "Files"      -> one "Files"
            _                -> (\WFormat {name = n} -> n) <$> dfs
-    -- tags from notes, genres, styles, formats, if there is a tidal or apple music version, discogs
+    -- tags from notes, genres, styles, formats, order#, if there is a tidal or apple music version, discogs
     tagsFormats :: [Text] -> [Text]
     tagsFormats ts = map (("format." <>) . T.toCaseFold) ts
     tagsFolder :: Int -> [Text]
