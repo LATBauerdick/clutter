@@ -28,10 +28,6 @@ import Relude
 import Data.Text as T (stripPrefix, filter, null, toCaseFold
                       , take, intercalate)
 import Data.Char as Ch (isDigit)
-import Data.List (nub)
--- import Control.Applicative
--- import Control.Monad
--- import Control.Monad.IO.Class
 
 -- import Data.Proxy
 import Servant
@@ -423,7 +419,7 @@ getR folderName dr = r
     tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
 
     tagsList :: [Text]
-    tagsList = nub . sort $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres dgens <> map T.toCaseFold dstls <> tagsPlays plays <> tagsRated drat <> tagsFolder dfolder_id
+    tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres dgens <> map T.toCaseFold dstls <> tagsPlays plays <> tagsRated drat <> tagsFolder dfolder_id
     r =
       Release
         { daid      = did,
