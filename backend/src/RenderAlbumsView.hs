@@ -38,7 +38,8 @@ renderAlbumsView ln fs aids = do
   let uhq :: Text; uhq = url env <> "albums/"
       qry' :: [Text] -> Text -> Text -- create the query url
       qry' ts n = uhq
-                <> urlEncode n
+                -- <> urlEncode n
+                <> n
                 <> "?" <> (T.concat . map ( ("&focus=" <>) . urlEncode . ("#" <>) ) $ ts)
       qry :: Text; qry = qry' ffs ln
   let sts :: [Text] -- sorted tags

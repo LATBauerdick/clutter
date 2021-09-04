@@ -375,8 +375,8 @@ getR folderName dr = r
       _ -> Nothing
 
     -- parse Order# (field 5)
-    ordn :: Maybe Text
-    ordn = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 5 then Nothing else Just v) $ ns of
+    _ordn :: Maybe Text
+    _ordn = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 5 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
 

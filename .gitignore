@@ -4,5 +4,7 @@ backend/stack.yaml.lock
 backend/data
 backend/dist-newstyle
 backend/update-json
+backend/cabal.project.local
+backend/result
 .hie
 .DS_Store

@@ -5,4 +5,4 @@ import App (startApp)
 
 main :: IO ()
 main = do
-  startApp
+  startApp 8080
