@@ -12,17 +12,12 @@ import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import qualified Lucid as L
-import qualified Data.Text as T (take, stripPrefix, find, intercalate, cons, concat)
-import qualified Network.HTTP.Base as NHB (urlEncode)
+import qualified Data.Text as T (take, stripPrefix, find, intercalate )
 import Relude
 import Text.RawString.QQ
 import Types (Env (..), EnvR (..), envGetEnvr, AppM, Album (..), SortOrder (..), pLocList)
 
-import RenderUtil ( renderHead )
-
-
-urlEncode :: Text -> Text
-urlEncode = toText . NHB.urlEncode . toString
+import RenderUtil ( renderHead, formUrlEncodeQuery )
 
 renderAlbumsView :: Text -> [Text] -> Vector Int -> AppM ( L.Html () )
 renderAlbumsView ln fs aids = do
@@ -38,10 +33,11 @@ renderAlbumsView ln fs aids = do
   let uhq :: Text; uhq = url env <> "albums/"
       qry' :: [Text] -> Text -> Text -- create the query url
       qry' ts n = uhq
-                -- <> urlEncode n
                 <> n
-                <> "?" <> (T.concat . map ( ("&focus=" <>) . urlEncode . ("#" <>) ) $ ts)
-      qry :: Text; qry = qry' ffs ln
+                <> "?"
+                <> ( decodeUtf8 . formUrlEncodeQuery
+                    . map (\t -> ("focus", toString t))
+                    $ ts )
   let sts :: [Text] -- sorted tags
       sts = filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
           <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
@@ -65,7 +61,7 @@ renderAlbumsView ln fs aids = do
           L.div_ [L.class_ "dropdown"] renderButtonSort
           L.div_ [L.class_ "dropdown"] renderButtonOrder
           L.a_   [L.class_ "active"
-                 , L.href_ (uhq <> urlEncode "2021 Listened?sortOrder=Desc")] "Listened"
+                 , L.href_ (uhq <> "2021 Listened?&sortBy=Default&sortOrder=Desc")] "Listened"
           L.a_   [L.class_ "active", L.href_ (uhq <> "Discogs")] "Discogs"
           L.div_ [L.class_ "dropdown"] renderButtonList
           L.div_ [L.class_ "dropdown"] renderButtonLocation
@@ -78,14 +74,14 @@ renderAlbumsView ln fs aids = do
 
       renderShow = do
         L.button_ [L.class_ "dropbtn"] $do
-          L.a_  [L.class_ "dropbtn", L.href_ qry] $ L.toHtml $ "Showing " <> ln
+          L.a_  [L.class_ "dropbtn", L.href_ (qry' fs ln)] $ L.toHtml $ "Showing " <> ln
 
       renderButtonList = do
         L.button_ [L.class_ "dropbtn"] $ do
           "List "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (\x -> L.a_ [L.href_ (qry' ffs x)] $ do L.toHtml x)
+          F.traverse_ (\x -> L.a_ [L.href_ (qry' fs x)] $ do L.toHtml x)
             . filter (not . pLocList) $ M.keys (listNames envr)
 
       renderButtonLocation = do
@@ -93,7 +89,7 @@ renderAlbumsView ln fs aids = do
           "Location "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (\x -> L.a_ [L.href_ (qry' ffs x)] $ do L.toHtml x)
+          F.traverse_ (\x -> L.a_ [L.href_ (qry' fs x)] $ do L.toHtml x)
             . filter pLocList $ M.keys (listNames envr)
 
       renderButtonTags = do
@@ -101,7 +97,7 @@ renderAlbumsView ln fs aids = do
           "Tags "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (\x -> L.a_ [L.href_ (qry' ffs ("#" <> x))] $ do L.toHtml x)
+          F.traverse_ (\x -> L.a_ [L.href_ (qry' fs ("#" <> x))] $ do L.toHtml x)
             sts -- M.keys (tags envr)
 
       renderButtonSort = do
@@ -110,14 +106,14 @@ renderAlbumsView ln fs aids = do
                       then "by " <> sortName envr <> " "
                       else ""
         L.div_ [L.class_ "dropdown-content"] $ do
-          F.traverse_ (addLink (qry <> "&sortBy=")) (sorts env)
+          F.traverse_ (addLink ((qry' fs ln) <> "&sortBy=")) (sorts env)
 
       renderButtonOrder = do
         L.button_ [L.class_ "dropbtn-order"] $ do
           let sso = case sortOrder envr of
                       Asc  -> Desc
                       Desc -> Asc
-          L.a_  [L.href_ (qry <> "&sortOrder=" <> show sso)] $
+          L.a_  [L.href_ ((qry' fs ln) <> "&sortOrder=" <> show sso)] $
               case sortOrder envr of
                 Asc ->  L.i_ [ L.class_ "fa fa-chevron-circle-down" ] ""
                 Desc -> L.i_ [ L.class_ "fa fa-chevron-circle-up" ] ""
@@ -125,8 +121,7 @@ renderAlbumsView ln fs aids = do
       renderFocus = do
         let lnk :: Map Text Bool -> Text -> L.Html ()
             lnk ts t = do
-              let nts = map (\(it, ip) -> if ip then it else T.cons '-' it
-                            )
+              let nts = map (\(it, ip) -> if ip then "#" <> it else "#-" <> it)
                         . M.toList
                         . ttt $ ts
                         -- . M.insertWith xor t True $ ts

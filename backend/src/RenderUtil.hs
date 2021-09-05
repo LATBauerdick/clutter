@@ -4,11 +4,75 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
-module RenderUtil ( renderHead ) where
+module RenderUtil ( renderHead, formUrlEncodeQuery ) where
 
 import qualified Lucid as L
-import Relude
+import Relude hiding (ord)
 import Text.RawString.QQ
+
+import qualified Data.Char as Char
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as LB
+import           Data.ByteString.Builder (Builder)
+import qualified Data.ByteString.Builder as Builder
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+-- import           Network.HTTP.Types
+
+
+formUrlEncodeQuery :: [(String, String)] -> LB.ByteString
+formUrlEncodeQuery = Builder.toLazyByteString . mconcat . intersperse amp . map encodePair
+  where
+    equals = Builder.word8 (ord '=')
+    amp = Builder.word8 (ord '&')
+    percent = Builder.word8 (ord '%')
+    plus = Builder.word8 (ord '+')
+
+    encodePair :: (String, String) -> Builder
+    encodePair (key, value) = encode key <> equals <> encode value
+
+    encode :: String -> Builder
+    encode = escape . T.encodeUtf8 . T.pack . newlineNormalize
+
+    newlineNormalize :: String -> String
+    newlineNormalize input = case input of
+      [] -> []
+      '\n' : xs -> '\r' : '\n': newlineNormalize xs
+      x : xs -> x : newlineNormalize xs
+
+    escape :: ByteString -> Builder
+    escape = mconcat . map f . B.unpack
+      where
+        f :: Word8 -> Builder
+        f c
+          | p c = Builder.word8 c
+          | c == ord ' ' = plus
+          | otherwise = percentEncode c
+
+        p :: Word8 -> Bool
+        p c =
+             ord 'a' <= c && c <= ord 'z'
+          || c == ord '_'
+          || c == ord '*'
+          || c == ord '-'
+          || c == ord '.'
+          || ord '0' <= c && c <= ord '9'
+          || ord 'A' <= c && c <= ord 'Z'
+
+    ord :: Char -> Word8
+    ord = fromIntegral . Char.ord
+
+    percentEncode :: Word8 -> Builder
+    percentEncode n = percent <> hex hi <> hex lo
+      where
+        (hi, lo) = n `divMod` 16
+
+    hex :: Word8 -> Builder
+    hex n = Builder.word8 (offset + n)
+      where
+        offset
+          | n < 10    = 48
+          | otherwise = 55
 
 renderHead :: Text -> L.Html ()
 renderHead t =
