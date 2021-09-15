@@ -41,12 +41,16 @@ dependencies:
   - raw-strings-qq
   - http-client
   - http-client-tls
-  - lens
   - time
+
+ghc-options:
+  - -Wall
+  - -fno-warn-unused-binds
+  - -fwrite-ide-info
+  - -hiedir=.hie
 
 library:
   source-dirs: src
-  ghc-options: -Wall -fno-warn-unused-binds -fwrite-ide-info -hiedir=.hie
 
 executables:
   backend-exe:
@@ -57,7 +61,6 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - base >= 4.14 && < 5
     - backend
 
 tests:
@@ -69,7 +72,6 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - base >= 4.14 && < 5
     - backend
     - hspec
     - hspec-wai

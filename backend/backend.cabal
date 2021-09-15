@@ -54,7 +54,6 @@ library
     , http-client
     , http-client-tls
     , http-media
-    , lens
     , lucid
     , raw-strings-qq
     , relude
@@ -77,7 +76,7 @@ executable backend-exe
   default-extensions:
       NoImplicitPrelude
       OverloadedStrings
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -fno-warn-unused-binds -fwrite-ide-info -hiedir=.hie -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HTTP
     , aeson
@@ -88,7 +87,6 @@ executable backend-exe
     , http-client
     , http-client-tls
     , http-media
-    , lens
     , lucid
     , raw-strings-qq
     , relude
@@ -112,7 +110,7 @@ test-suite backend-test
   default-extensions:
       NoImplicitPrelude
       OverloadedStrings
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -fno-warn-unused-binds -fwrite-ide-info -hiedir=.hie -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HTTP
     , aeson
@@ -126,7 +124,6 @@ test-suite backend-test
     , http-client
     , http-client-tls
     , http-media
-    , lens
     , lucid
     , raw-strings-qq
     , relude
