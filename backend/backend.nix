@@ -2,8 +2,11 @@
 , hspec-wai, hspec-wai-json, HTTP, http-client, http-client-tls
 , http-media, lens, lib, lucid, raw-strings-qq, relude, servant
 , servant-client, servant-server, text, time, vector, wai, warp
+, executableSystemDepends
+, pkgs ? import <nixpkgs> {},
 }:
 mkDerivation {
+  inherit executableSystemDepends;
   pname = "backend";
   version = "0.1.0.0";
   src = ./.;

@@ -1,4 +1,5 @@
 { nixpkgs ? import <nixpkgs> {},
-  compiler ? "ghc8107"
-  }: nixpkgs.pkgs.haskell.packages.${compiler}.callPackage ./backend.nix { }
+  compiler ? "ghc8107",
+  executableSystemDepends ? []
+  }: nixpkgs.pkgs.haskell.packages.${compiler}.callPackage ./backend.nix { inherit executableSystemDepends; }
 
