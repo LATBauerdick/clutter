@@ -3,7 +3,7 @@
 
 module Main where
 import Relude
-import System.Environment (getProgName, getArgs)
+import System.Environment (getProgName)
 import System.IO (hPutStrLn, stderr)
 
 import App (startApp)

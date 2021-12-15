@@ -6,5 +6,6 @@ backend/dist-newstyle
 backend/update-json
 backend/cabal.project.local
 backend/result
+__pycache__
 .hie
 .DS_Store

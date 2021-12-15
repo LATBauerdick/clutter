@@ -55,7 +55,44 @@ import Types
 
 
 envTidalConnect :: Int -> AppM Env
-envTidalConnect _nalbums = ask
+envTidalConnect _nalbums = do
+  t <- readFileText "data/tok.dat" -- for debug, get from file with authentication data
+  let [t0, t1, t2, t3, t4, t5] = words t
+      countryCode = t4
+      sessionId = t3
+      userId = fromMaybe 0 $ readMaybe (toString t2) :: Int
+      accessToken = t5
+  let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
+
+  env <- ask
+  oldAlbums <- readIORef $ albumsR env
+  vta <- liftIO $ readTidalAlbums tidal
+  newFolders <- readFolders -- readDiscogsFolders
+  let tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
+  let allAlbums = oldAlbums <> tidalAlbums
+  _ <- liftIO $ writeIORef (albumsR env) allAlbums
+
+  -- create the Tags index
+  putTextLn "-------------- Updating Tags index"
+  let tagsMap :: Map Text [Int]
+      tagsMap = foldr updateTags M.empty (M.elems allAlbums)
+  putTextLn "---------------------- list of Tags found: "
+  print (M.keys tagsMap)
+
+  -- reread Discogs lists info
+  lm <- readLists
+  -- reread folder album ids
+  let fm :: Map Text (Int, Vector Int)
+      fm = readFolderAids newFolders allAlbums
+  let allLists = lm <> fm
+  _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) allLists
+
+  _ <- writeIORef (listsR env) allLists
+  _ <- writeIORef (listNamesR env) $ M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList allLists
+  _ <- writeIORef (sortNameR env) "Default"
+  _ <- writeIORef (sortOrderR env) Asc
+
+  pure env
 
 envUpdate :: Text -> Text -> Int -> AppM ()
 envUpdate tok un nreleases = do
