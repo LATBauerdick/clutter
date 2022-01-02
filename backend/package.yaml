@@ -1,7 +1,7 @@
 name:                backend
 version:             0.1.0.0
 github:              "LATBauerdick/backend"
-license:             BSD3
+license:             BSD-3-Clause
 author:              "LATBauerdick"
 maintainer:          "github@bauerdick.org"
 copyright:           "2021 LATBauerdick"

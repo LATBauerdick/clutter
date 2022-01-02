@@ -1,25 +1,27 @@
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Parse where
 
--- import Relude
-import Prelude
+import Relude
+import Data.List (span)
+-- import Prelude
 
 import Data.Char
-import Control.Applicative
+-- import Control.Applicative
+import qualified Relude.Unsafe as Unsafe
 
-type Text = String
+-- type Text = String
 
 data JsonValue = JsonNull
                | JsonBool Bool
                | JsonNumber Int
-               | JsonString Text
+               | JsonString String
                | JsonArray [JsonValue]
-               | JsonObject [(Text, JsonValue)]
+               | JsonObject [(String, JsonValue)]
                deriving (Show, Eq)
 
 -- no error reporting
 newtype Parser a = Parser
-  { runParser :: Text -> Maybe (Text, a)
+  { runParser :: String -> Maybe (String, a)
   }
 
 instance Functor Parser where
@@ -79,7 +81,7 @@ notNull (Parser p) =
 jsonNumber :: Parser JsonValue
 jsonNumber = f <$> notNull (spanP isDigit)
   where
-    f ds = JsonNumber $ read ds
+    f ds = JsonNumber $ Unsafe.read ds
 
 stringLiteral :: Parser String
 stringLiteral = charP '"' *> spanP (/= '"') <* charP '"'
@@ -119,4 +121,4 @@ parseFile fileName parser = do
 testParser :: IO ()
 testParser = do
   Just (JsonArray xs) <- parseFile "./dall.json" jsonValue
-  print $ head xs
+  print $ Unsafe.head xs

@@ -1,16 +1,18 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Main where
+
 import Relude
-import System.Environment (getProgName)
-import System.IO (hPutStrLn, stderr)
+import System.Environment (getArgs, getProgName)
+import System.IO (hPutStrLn)
 
 import App (startApp)
 
 main :: IO ()
 main = do
-  args <- getArgs
+  args <- System.Environment.getArgs
   putStrLn "Clutter app starting... arguments are:"
   name <- getProgName
   hPutStrLn stderr $ "usage: " ++ name ++ " <port number>"
