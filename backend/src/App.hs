@@ -27,7 +27,7 @@ import Network.HTTP.Media ((//), (/:))
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Data.Text as T (stripPrefix)
-import qualified Data.Vector as V (fromList, toList)
+import qualified Data.Vector as V
 import qualified Data.IntSet as Set
 import Control.Monad (foldM)
 import Relude
@@ -108,14 +108,10 @@ clutterServer = serveAlbum
     -- get ids from either list or tags (#tag)
       aids' <- case T.stripPrefix "#" listName of
         Just tag -> V.fromList <$> envGetTag tag
-                      -- (fromMaybe "" (T.stripPrefix "#" tag))
         Nothing  -> getList env listName
 ---------------------------------------------------------------------------------------
     -- filter with focus if any
-      aids'' <- if null fs then pure aids' else
-                  V.fromList . Set.toList
-                  <$> (
-                    foldM (\ s (t, p) ->  (if p
+      aidset <- foldM (\ s (t, p) ->  (if p
                                             then Set.intersection s
                                             else Set.difference s
                                           ) . Set.fromList
@@ -127,12 +123,12 @@ clutterServer = serveAlbum
                           )
                     . mapMaybe (T.stripPrefix "#")
                     $ fs
-                  )
+      let aids''' = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) $ aids'
 ---------------------------------------------------------------------------------------
       envr <- envUpdateSort msb mso
       let EnvR am _ _ _ sn so _ _ _ = envr
       let doSort = getSort env am sn
-      let aids = doSort so aids''
+      let aids = doSort so aids'''
       -- pure . RawHtml $
       --   L.renderBS (renderAlbumsView env envr listName fs aids)
       html <- renderAlbumsView listName fs aids
