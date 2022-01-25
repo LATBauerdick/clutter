@@ -107,8 +107,9 @@ clutterServer = serveAlbum
       liftIO $ print (listName, msb, mso, fs )
     -- get ids from either list or tags (#tag)
       aids' <- case T.stripPrefix "#" listName of
-        Just tag -> V.fromList <$> envGetTag tag
-        Nothing  -> getList env listName
+                    Just tag -> envGetTag tag
+                    Nothing  -> V.toList <$> getList env listName
+      let aidset' = Set.fromList aids'
 ---------------------------------------------------------------------------------------
     -- filter with focus if any
       aidset <- foldM (\ s (t, p) ->  (if p
@@ -116,22 +117,18 @@ clutterServer = serveAlbum
                                             else Set.difference s
                                           ) . Set.fromList
                                           <$> envGetTag t
-                      )
-                      (Set.fromList . V.toList $ aids')
+                      ) aidset'
                     . map (\t ->  ( fromMaybe t (T.stripPrefix "-" t)
                                   , isNothing (T.stripPrefix "-" t) )
                           )
                     . mapMaybe (T.stripPrefix "#")
                     $ fs
-      let aids''' = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) $ aids'
+      let aids = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) . V.fromList $ aids'
 ---------------------------------------------------------------------------------------
       envr <- envUpdateSort msb mso
       let EnvR am _ _ _ sn so _ _ _ = envr
       let doSort = getSort env am sn
-      let aids = doSort so aids'''
-      -- pure . RawHtml $
-      --   L.renderBS (renderAlbumsView env envr listName fs aids)
-      html <- renderAlbumsView listName fs aids
+      html <- renderAlbumsView listName fs . doSort so $ aids
       pure . RawHtml $ L.renderBS html
 
     serveDiscogs :: Text -> Text -> Maybe Int -> AppM RawHtml

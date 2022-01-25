@@ -2,7 +2,7 @@
 module Parse where
 
 import Relude
-import Data.List (span)
+-- import Data.List (span)
 -- import Prelude
 
 import Data.Char
