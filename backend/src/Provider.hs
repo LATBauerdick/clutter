@@ -6,10 +6,13 @@ module Provider
   (
     readListAids,
     readAlbum,
-    readAlbumsCache,
     readAlbums,
+    readDiscogsAlbums,
+    readAlbumsCache,
+    readDiscogsLists,
     readListsCache,
     readFolders,
+    readDiscogsFolders,
     readFoldersCache,
     readFolderAids,
     readLists,
@@ -28,6 +31,7 @@ import qualified FromDiscogs as FD
     readDiscogsFoldersCache,
     readDiscogsListsCache,
     readDiscogsRelease,
+    readReleases,
     readDiscogsReleases,
     readDiscogsReleasesCache,
     readListAids,
@@ -73,18 +77,20 @@ dToAlbum r =
   where
     makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
 
-readListsCache :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
-readListsCache di = do
-  case di of
-    DiscogsFile fn -> FD.readDiscogsListsCache fn
-    _ -> error "readListsCache no file"
-
 readLists :: AppM (Map Text (Int, Vector Int))
 readLists = do
   p <- envGetDiscogs
   case getDiscogs p of
     DiscogsFile fn -> error $ "Bug: Provider Discogs does not read lists from files " <> toText fn
     _ -> liftIO $ FD.readLists (getDiscogs p)
+
+readDiscogsLists = FD.readLists
+
+readListsCache :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
+readListsCache di = do
+  case di of
+    DiscogsFile fn -> FD.readDiscogsListsCache fn
+    _ -> error "readListsCache no file"
 
 readAlbum :: Int -> AppM (Maybe Album)
 readAlbum aid = do
@@ -98,7 +104,14 @@ readAlbum aid = do
 
 readAlbums :: Int -> AppM (Vector Album)
 readAlbums nreleases = do
-    ds <- FD.readDiscogsReleases nreleases
+    ds <- FD.readReleases nreleases
+    let as = dToAlbum <$> ds
+    putTextLn $ "Total # Discogs Albums read: " <> show (length as)
+    pure $ V.fromList as
+
+readDiscogsAlbums :: DiscogsInfo -> Map Text Int -> IO (Vector Album)
+readDiscogsAlbums di lns = do
+    ds <- FD.readDiscogsReleases di lns
     let as = dToAlbum <$> ds
     putTextLn $ "Total # Discogs Albums read: " <> show (length as)
     pure $ V.fromList as
@@ -128,6 +141,8 @@ readFolders = do
   case getDiscogs p of
     DiscogsFile fn -> liftIO $ FD.readDiscogsFoldersCache fn
     _ -> liftIO $ FD.readDiscogsFolders (getDiscogs p)
+
+readDiscogsFolders = FD.readDiscogsFolders
 
 readFoldersCache :: DiscogsInfo -> IO (Map Text Int)
 readFoldersCache di = do

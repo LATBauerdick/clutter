@@ -8,8 +8,10 @@
 module FromDiscogs
   ( readLists,
     readDiscogsRelease,
+    readReleases,
     readDiscogsReleases,
     readDiscogsReleasesCache,
+    readDiscogsLists,
     readDiscogsListsCache,
     readListAids,
     readDiscogsFolders,
@@ -483,8 +485,21 @@ readDiscogsReleasesCache fn lns = do
         Right d -> getR ln <$> d
   pure rs
 
-readDiscogsReleases :: Int -> AppM [Release]
-readDiscogsReleases nreleases= do
+readDiscogsReleases :: DiscogsInfo -> Map Text Int -> IO [Release]
+readDiscogsReleases di lns = do
+  putTextLn "-----------------Getting Releases from Discogs-----"
+  let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
+  res <- liftIO $ releasesFromDiscogsApi di 0
+  case res of
+    Left err -> putTextLn $ "Error: " <> show err
+    Right _ -> pure ()
+  let rs = case res of
+        Left _ -> []
+        Right d -> getR ln <$> d
+  pure rs
+
+readReleases :: Int -> AppM [Release]
+readReleases nreleases= do
   p <- envGetDiscogs
   lns <- asks listNamesR >>= readIORef
   let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
@@ -525,33 +540,33 @@ readDiscogsRelease di rid = do
     Left _ -> Nothing
     Right d -> Just (getR ln d)
 
--- listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
--- listsFromDiscogsApi di = do
---   m <- newManager tlsManagerSettings -- defaultManagerSettings
---   let DiscogsSession tok un = di
---   let dc = mkClientEnv m discogsBaseUrl
---   -- get list and folder names and ids
---   let query :: ClientM WLists
---       query = discogsGetLists un (Just tok) userAgent
---   res <- runClientM query dc
---   pure $ case res of
---     Left err -> Left (show err)
---     Right r -> Right r
+listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
+listsFromDiscogsApi di = do
+  m <- newManager tlsManagerSettings -- defaultManagerSettings
+  let DiscogsSession tok un = di
+  let dc = mkClientEnv m discogsBaseUrl
+  -- get list and folder names and ids
+  let query :: ClientM WLists
+      query = discogsGetLists un (Just tok) userAgent
+  res <- runClientM query dc
+  pure $ case res of
+    Left err -> Left (show err)
+    Right r -> Right r
 
--- readDiscogsLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
--- readDiscogsLists di = do
---   putTextLn "-----------------Getting Lists from Discogs-----"
---   res <- listsFromDiscogsApi di
---   case res of
---     Left err -> putTextLn $ "Error: " <> show err
---     Right _ -> pure ()
---   let ls = case res of
---         Left _ -> []
---         Right wls -> lists wls
+readDiscogsLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
+readDiscogsLists di = do
+  putTextLn "-----------------Getting Lists from Discogs-----"
+  res <- listsFromDiscogsApi di
+  case res of
+    Left err -> putTextLn $ "Error: " <> show err
+    Right _ -> pure ()
+  let ls = case res of
+        Left _ -> []
+        Right wls -> lists wls
 
---   let lm :: [(Text, (Int, Vector Int))]
---       lm = (\WList {id = i, name = n} -> (n, (i, V.empty))) <$> ls
---   pure $ M.fromList lm
+  let lm :: [(Text, (Int, Vector Int))]
+      lm = (\WList {id = i, name = n} -> (n, (i, V.empty))) <$> ls
+  pure $ M.fromList lm
 
 listsFromCacheFile :: FilePath -> IO (Either String WLists)
 listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") :: IO (Either String WLists)

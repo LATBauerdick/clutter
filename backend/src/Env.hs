@@ -29,11 +29,14 @@ import Provider
   ( readAlbum,
     readAlbumsCache,
     readAlbums,
+    readDiscogsAlbums,
     readTidalAlbums,
     readFolderAids,
     readFolders,
+    readDiscogsFolders,
     readFoldersCache,
     readListAids,
+    readDiscogsLists,
     readListsCache,
     readLists,
     updateTidalFolderAids,
@@ -94,6 +97,8 @@ envTidalConnect _nalbums = do
 
   pure env
 
+-- get laters n releases from Discogs
+-- also update folders and lists, update other metadata
 envUpdate :: Text -> Text -> Int -> AppM ()
 envUpdate tok un nreleases = do
   env <- ask
@@ -112,7 +117,7 @@ envUpdate tok un nreleases = do
   _ <- writeIORef (discogsR env) discogs'
 
   -- reread Discogs folders info
-  newFolders <- readFolders -- readDiscogsFolders
+  newFolders <- readFolders
 
   -- reread Discogs albums info, overwriting with changes
   -- newAlbums <- if nreleases == 0
@@ -157,17 +162,13 @@ updateTags a m = foldr
             m
             (albumTags a)
 
-envInit :: IO Env
-envInit = do
-  putTextLn "-------------envInit from cached JSON files------------------"
-  -- set up the sort functions
-  -- and populate the initial env maps from cache files
-  --
-  --
-  -- get Map of all albums from Providers:
-  -- retrieve database from files
-  --
-  -- debug: get web credentials etc
+-- initialize Env
+-- get info from Tidal
+-- get tolder and list info from Discogs, read release info from cached JSON
+--
+
+initInit :: IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
+initInit = do
   t <- readFileText "data/tok.dat" -- for debug, get from file with authentication data
   let [t0, t1, t2, t3, t4, t5] = words t
       countryCode = t4
@@ -178,20 +179,22 @@ envInit = do
       accessToken = t5
 
   -- from cache file or from Tidal API
-  let _tidal = Tidal $ TidalFile "data/traw2.json"
+  -- let _tidal = Tidal $ TidalFile "data/traw2.json"
   let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
 
   -- from cache file or from Discogs API
-  let dci = Discogs $ DiscogsFile "data/"
-  -- let _dci = Discogs $ DiscogsSession discogsToken discogsUser
+  let dci_ = Discogs $ DiscogsFile "data/"
+  let dci = Discogs $ DiscogsSession discogsToken discogsUser
 
   -- read the map of Discogs folder names and ids
   -- fns :: Map Text Int
-  fns <- readFoldersCache (getDiscogs dci)
+  -- fns <- liftIO $ readFoldersCache (getDiscogs dci_)
+  fns <- liftIO $ readDiscogsFolders (getDiscogs dci)
 
   -- vda/vta :: Vector of Album
-  vta <- readTidalAlbums tidal
-  vda <- readAlbumsCache (getDiscogs dci) fns
+  vta <- liftIO $ readTidalAlbums tidal
+  vda <- liftIO $ readAlbumsCache (getDiscogs dci_) fns -- from cache
+  -- vda <- liftIO $ readDiscogsAlbums (getDiscogs dci) fns -- Discogs query, long
 
   let albums' :: Map Int Album
       albums' =
@@ -205,9 +208,33 @@ envInit = do
   putTextLn "---------------------- list of Tags found: "
   print (M.keys tagsMap)
 
-
   -- read the map of Discogs lists (still empty album ids)
-  lm <- readListsCache (getDiscogs dci)
+  -- lm <- liftIO $ readListsCache (getDiscogs dci_)
+  lm <- liftIO $ readDiscogsLists (getDiscogs dci)
+
+  pure (dci, albums', fns, lm)
+
+
+envInit :: IO Env
+envInit = do
+  putTextLn "-------------envInit from cached JSON files or Discogs/Tidal------------------"
+  -- set up the sort functions
+  -- and populate the initial env maps from cache files
+  --
+  -- get Map of all albums from Providers:
+  -- retrieve database from files
+  --
+  -- get initial database info from providers and/or cached JSON
+  --  dc :: Discogs                     -- discogs credentials
+  --  albums' :: Map Int Album          -- map of Albums indexed with their IDs
+  --  fns :: Map Text Int               -- map of folder names with their IDs
+  --  lm :: Map Text (Int, Vector Int)  -- map of list names with IDs and contents
+  (dc,albums',fns,lm) <- initInit
+
+  -- create the Tags index
+  putTextLn "-------------- Updating Tags index"
+  let tagsMap :: Map Text [Int]
+      tagsMap = foldr updateTags M.empty (M.elems albums')
 
   let fm :: Map Text (Int, Vector Int)
       fm = readFolderAids fns albums'
@@ -217,9 +244,6 @@ envInit = do
       listNames' =  M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList lists'
   _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) lists'
   let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
-
-  -- store DiscogsSession after reading from cache files
-  let dc = Discogs $ DiscogsSession discogsToken discogsUser
 
   dr <- newIORef dc
   ar <- newIORef albums'
