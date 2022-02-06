@@ -153,6 +153,6 @@ clutterServer = serveAlbum
 --}}}clutterServer
 
 -- init env from files (only AppM not yet available) and run app
-startApp :: Int -> IO ()
-startApp p = envInit >>= (run p . app)
+startApp :: Int -> Bool -> IO ()
+startApp p c = envInit c >>= (run p . app)
 

@@ -167,8 +167,8 @@ updateTags a m = foldr
 -- get tolder and list info from Discogs, read release info from cached JSON
 --
 
-initInit :: IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
-initInit = do
+initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
+initInit c = do
   t <- readFileText "data/tok.dat" -- for debug, get from file with authentication data
   let [t0, t1, t2, t3, t4, t5] = words t
       countryCode = t4
@@ -193,8 +193,11 @@ initInit = do
 
   -- vda/vta :: Vector of Album
   vta <- liftIO $ readTidalAlbums tidal
-  vda <- liftIO $ readAlbumsCache (getDiscogs dci_) fns -- from cache
-  -- vda <- liftIO $ readDiscogsAlbums (getDiscogs dci) fns -- Discogs query, long
+  vda <- if c
+            then liftIO $ readAlbumsCache (getDiscogs dci_) fns -- from cache
+            else liftIO $ readDiscogsAlbums (getDiscogs dci) fns -- Discogs query, long
+    -- then putTextLn "-----------------using cached Discogs collection info"
+    -- else putTextLn "-----------------reading Discogs collection info from the web"
 
   let albums' :: Map Int Album
       albums' =
@@ -215,9 +218,8 @@ initInit = do
   pure (dci, albums', fns, lm)
 
 
-envInit :: IO Env
-envInit = do
-  putTextLn "-------------envInit from cached JSON files or Discogs/Tidal------------------"
+envInit :: Bool -> IO Env
+envInit c = do
   -- set up the sort functions
   -- and populate the initial env maps from cache files
   --
@@ -229,7 +231,7 @@ envInit = do
   --  albums' :: Map Int Album          -- map of Albums indexed with their IDs
   --  fns :: Map Text Int               -- map of folder names with their IDs
   --  lm :: Map Text (Int, Vector Int)  -- map of list names with IDs and contents
-  (dc,albums',fns,lm) <- initInit
+  (dc,albums',fns,lm) <- initInit c
 
   -- create the Tags index
   putTextLn "-------------- Updating Tags index"

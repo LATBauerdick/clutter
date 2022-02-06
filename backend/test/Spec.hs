@@ -23,7 +23,7 @@ main = do
       discogsUser = t1
       accessToken = t5
   -- vta <- readAlbums $ Tidal $ TidalSession userId sessionId countryCode
-  testEnv <- envInit
+  testEnv <- envInit True
 
   let spec :: Spec
       spec = with (return (app testEnv)) $ do
