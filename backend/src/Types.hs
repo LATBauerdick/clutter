@@ -1,11 +1,13 @@
 {-# LANGUAGE NoImplicitPrelude, OverloadedStrings, InstanceSigs #-}
 
 module Types ( Tidal (..)
+             , AMusic (..)
              , Discogs (..)
              , DiscogsInfo (..)
              , TagFolder (..)
              , pLocList
              , TidalInfo (..)
+             , AMusicInfo (..)
              , Release (..)
              , Album (..)
              , SortOrder (..)
@@ -25,8 +27,11 @@ import Servant (Handler)
 
 data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
   deriving Show
+data AMusicInfo = AMusicSession Text Text
+  deriving Show
 data DiscogsInfo = DiscogsEnv Env | DiscogsFile FilePath | DiscogsSession Text Text
   deriving Show
+
 
 data TagFolder = TDiscogs | TNotUsed | TTidal | TAll
     deriving (Enum, Read, Show, Eq, Ord)
@@ -45,6 +50,8 @@ pLocList n = case viaNonEmpty head . words $ n of
                     _             -> False
 
 newtype Tidal = Tidal { getTidal :: TidalInfo }
+
+newtype AMusic = AMusic { getAMusic :: AMusicInfo }
 
 newtype Discogs = Discogs { getDiscogs :: DiscogsInfo } deriving Show
 

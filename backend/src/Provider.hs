@@ -18,6 +18,7 @@ module Provider
     readLists,
     readTidalAlbums,
     updateTidalFolderAids,
+    readAMusicAlbums,
   )
 where
 
@@ -38,6 +39,7 @@ import qualified FromDiscogs as FD
     readLists,
   )
 import qualified FromTidal as FT (readTidalReleases, readTidalReleasesCache)
+import qualified FromAMusic as FA (readAMusicReleases)
 import Relude
 import Types
   ( Album (..),
@@ -47,10 +49,12 @@ import Types
     TagFolder (..),
     Tidal (..),
     TidalInfo (..),
+    getTidal,
+    AMusic (..),
+    getAMusic,
     AppM,
     envGetDiscogs,
     getDiscogs,
-    getTidal,
   )
 -- import Relude.Debug ( trace )
 debug :: a -> Text -> a
@@ -222,7 +226,8 @@ readFolderAids fm am = fam
 
 readTidalAlbums :: Tidal -> IO (Vector Album)
 readTidalAlbums p = do
-    let ttoCoverURL r =
+    let
+        ttoCoverURL r =
           T.concat
             [ T.pack "https://resources.tidal.com/images/",
               T.intercalate "/" $ T.splitOn "-" (dcover r),
@@ -234,10 +239,6 @@ readTidalAlbums p = do
         makeTidalURL tid =
           T.pack $ "https://listen.tidal.com/album/" ++ show tid
 
-    ds <- case getTidal p of
-      TidalFile fn -> FT.readTidalReleasesCache fn
-      _ -> FT.readTidalReleases (getTidal p)
-    let as = toAlbum <$> ds
         toAlbum r =
           Album
             (daid r)
@@ -256,7 +257,20 @@ readTidalAlbums p = do
             0
             0
 
+    ds <- case getTidal p of
+      TidalFile fn -> FT.readTidalReleasesCache fn
+      _ -> FT.readTidalReleases (getTidal p)
+    let as = toAlbum <$> ds
     putTextLn $ "Total # Tidal Albums: " <> show (length as)
     -- print $ drop (length as - 4) as
-
     pure $ V.fromList as
+
+readAMusicAlbums :: AMusic -> IO (Vector Album)
+readAMusicAlbums p = do
+  ds <- case getAMusic p of
+    _ -> FA.readAMusicReleases (getAMusic p)
+  let as = []
+  putTextLn $ "Total # Apple Music Albums: " <> show (length as)
+  pure $ V.fromList as
+
+

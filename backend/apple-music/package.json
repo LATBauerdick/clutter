@@ -1,0 +1,8 @@
+{
+  "name": "musickit-token-encoder",
+  "version": "1.0.3",
+  "description": "Very Basic Apple MusicKit example",
+  "dependencies": {
+    "jsonwebtoken": "^8.3.0"
+  }
+}
