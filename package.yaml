@@ -54,7 +54,7 @@ library:
   source-dirs: src
 
 executables:
-  backend-exe:
+  clutter-exe:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -62,10 +62,10 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - backend
+    - clutter
 
 tests:
-  backend-test:
+  clutter-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -73,7 +73,7 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - backend
+    - clutter
     - hspec
     - hspec-wai
     - hspec-wai-json
