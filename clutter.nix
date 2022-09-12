@@ -7,7 +7,7 @@
 }:
 mkDerivation {
   inherit executableSystemDepends;
-  pname = "backend";
+  pname = "clutter";
   version = "0.1.0.0";
   src = ./.;
   isLibrary = true;
@@ -30,7 +30,7 @@ mkDerivation {
     time vector wai warp
   ];
   prePatch = "hpack";
-  homepage = "https://github.com/LATBauerdick/backend#readme";
-  description = "backend for Clutter";
+  homepage = "https://github.com/LATBauerdick/clutter#readme";
+  description = "server for Clutter";
   license = lib.licenses.bsd3;
 }

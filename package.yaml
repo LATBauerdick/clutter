@@ -1,22 +1,22 @@
-name:                backend
-version:             0.1.0.0
-github:              "LATBauerdick/backend"
+name:                clutter
+version:             0.1.1.0
+github:              "LATBauerdick/clutter-hs"
 license:             BSD-3-Clause
 author:              "LATBauerdick"
 maintainer:          "github@bauerdick.org"
-copyright:           "2021 LATBauerdick"
+copyright:           "2022 LATBauerdick"
 
 extra-source-files:
 - README.md
 
 # Metadata used when publishing your package
-synopsis:            backend for Clutter
+synopsis:            server for Clutter
 category:            Web
 
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/LATBauerdick/backend#readme>
+description:         Please see the README on GitHub at <https://github.com/LATBauerdick/clutter-hs#readme>
 
 default-extensions:
   - NoImplicitPrelude
@@ -34,6 +34,7 @@ dependencies:
   - lucid
   - HTTP
   - http-media
+  - hashable
   - bytestring
   - vector
   - containers
