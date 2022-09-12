@@ -33,7 +33,7 @@ data DiscogsInfo = DiscogsEnv Env | DiscogsFile FilePath | DiscogsSession Text T
   deriving Show
 
 
-data TagFolder = TDiscogs | TNotUsed | TTidal | TAll
+data TagFolder = TDiscogs | TNotUsed | TTidal | TAll | TAMusic
     deriving (Enum, Read, Show, Eq, Ord)
 -- class ATags f where toInt :: f -> Int
 -- instance ATags TagFolder where
@@ -142,7 +142,7 @@ data Album
   , albumURL      :: Text
   , albumFormat   :: Text
   , albumTidal    :: Maybe Text
-  , albumAM       :: Maybe Text
+  , albumAMusic   :: Maybe Text
   , albumLocation :: Maybe Text
   , albumTags     :: [Text]
   , albumRating   :: Int

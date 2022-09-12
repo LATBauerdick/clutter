@@ -208,7 +208,7 @@ renderAlbumsView ln fs aids = do
               Just tid -> L.div_ [L.class_ "cover-obackground1"] $ do
                     L.a_ [L.href_ ("https://listen.tidal.com/album/" <> tid)] $ do
                       L.img_ [L.src_ "/tidal-icon.png", L.alt_ "T", L.class_ "cover-oimage"]
-            case albumAM a of
+            case albumAMusic a of
               Nothing -> ""
               Just amid -> L.div_ [L.class_ "cover-obackground3"] $ do
                     if T.take 2 amid == "l."

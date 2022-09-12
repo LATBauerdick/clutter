@@ -41,6 +41,7 @@ import Provider
     readListsCache,
     readLists,
     updateTidalFolderAids,
+    updateAMusicFolderAids,
   )
 
 import Relude
@@ -71,13 +72,16 @@ envTidalConnect _nalbums = do
       musicDevToken = t6
       musicUserToken = t7
   let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
+  let aMusic = AMusic $ AMusicSession musicDevToken musicUserToken
 
   env <- ask
   oldAlbums <- readIORef $ albumsR env
   vta <- liftIO $ readTidalAlbums tidal
+  vma <- liftIO $ readAMusicAlbums aMusic
   newFolders <- readFolders -- readDiscogsFolders
   let tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
-  let allAlbums = oldAlbums <> tidalAlbums
+  let aMusicAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vma
+  let allAlbums = oldAlbums <> tidalAlbums <> aMusicAlbums
   _ <- liftIO $ writeIORef (albumsR env) allAlbums
 
   -- create the Tags index
@@ -212,7 +216,7 @@ initInit c = do
   let albums' :: Map Int Album
       albums' =
         M.fromList $
-          (\a -> (albumID a, a)) <$> V.toList (vda <> vta)
+          (\a -> (albumID a, a)) <$> V.toList (vda <> vta <> vma)
 
   -- create the Tags index
   putTextLn "-------------- Updating Tags index"
@@ -370,8 +374,9 @@ envUpdateAlbum aid = do
       -- insert aid into its folder
       -- let folder = albumFolder a
       -- update folder "lists" and invalidate lists
-  -- also update Tidal "special" list
+  -- also update Tidal and AMusic "special" list
       liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
+      liftIO $ writeIORef (listsR env) (updateAMusicFolderAids am ls)
 
 -- update the tags map with tags from this album
       tm <- readIORef (tagsR env)

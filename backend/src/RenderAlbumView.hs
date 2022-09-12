@@ -71,7 +71,7 @@ renderAlbumView mAlbum now = L.html_ $ do
                 -- reference-style link to album page
                 L.br_ []
                 L.samp_ $ L.toHtml ("[1]: " <> albumURL a)
-                case albumAM a of
+                case albumAMusic a of
                   Nothing -> ""
                   Just amid -> do
                                 L.br_ []
@@ -86,7 +86,7 @@ renderAlbumView mAlbum now = L.html_ $ do
                 -- icon with link to album page
                 L.br_ []
                 L.br_ []
-                case albumAM a of
+                case albumAMusic a of
                   Nothing -> ""
                   Just _ -> do
                                 L.samp_ $ L.toHtml ("[![[attachments/am-is.png]]][2]" :: Text)
@@ -96,7 +96,7 @@ renderAlbumView mAlbum now = L.html_ $ do
                                 L.samp_ $ L.toHtml ("[![[attachments/tidal-is.png]]][3]" :: Text)
                 -- embeded player for album
                 L.br_ []
-                case albumAM a of
+                case albumAMusic a of
                   Nothing -> ""
                   Just amid -> do
                                 L.br_ []

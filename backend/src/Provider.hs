@@ -18,6 +18,7 @@ module Provider
     readLists,
     readTidalAlbums,
     updateTidalFolderAids,
+    updateAMusicFolderAids,
     readAMusicAlbums,
   )
 where
@@ -178,12 +179,36 @@ updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal) where
         asi :: [(Int, Maybe Album)]
         asi = map (\aid -> (aid, M.lookup aid am)) $ V.toList aids
 
+-- populate the aids for folders from the folder+id in each Album
+updateAMusicFolderAids :: Map Int Album -> Map Text (Int, Vector Int) -> Map Text (Int, Vector Int)
+updateAMusicFolderAids am = M.insert "Apple Music" (fromEnum TAMusic, allAMusic) where
+    -- for "AppleMusic" folder, replace anything that's also on Discogs
+    xxx :: [(Int, Int)]
+    xxx = mapMaybe (\a -> case readMaybe . toString =<< albumAMusic a of
+                            Just i -> if i == albumID a then Nothing else Just (i , albumID a)
+                            Nothing -> Nothing
+                   )
+        $ M.elems am
+    aMusicToDiscogs = M.fromList xxx `debug` show xxx
+    allAMusic  = V.map (\i -> fromMaybe i (i `M.lookup` aMusicToDiscogs))
+              . sAdded
+              .  V.map fst
+              . V.filter (\(_, f) -> f == fromEnum TAMusic)
+              . V.map (\a -> (albumID a, albumFolder a))
+              .  V.fromList $ M.elems am
+    sAdded :: Vector Int -> Vector Int
+    sAdded aids = V.fromList (fst <$> sortBy (\(_, a) (_, b) -> comparing (fmap albumAdded) b a) asi)
+      where
+        asi :: [(Int, Maybe Album)]
+        asi = map (\aid -> (aid, M.lookup aid am)) $ V.toList aids
+
 
 readFolderAids :: Map Text Int -> Map Int Album -> Map Text (Int, Vector Int)
 readFolderAids fm am = fam
   where
     fam' = M.map getFolder fm
     fam = updateTidalFolderAids am
+        . updateAMusicFolderAids am
         . M.insert "Discogs" (fromEnum TDiscogs, allDiscogs)
         . M.insert "All" (fromEnum TAll, allAlbums)
         $ fam'
@@ -267,9 +292,30 @@ readTidalAlbums p = do
 
 readAMusicAlbums :: AMusic -> IO (Vector Album)
 readAMusicAlbums p = do
+  let
+      atoCoverURL r = T.replace "{h}" "320" $ T.replace "{w}" "320" (dcover r)
+      makeAMusicURL cid = "https://beta.music.apple.com/us/album/" <> cid
+      toAlbum r =
+        Album
+          (daid r)
+          (dtitle r)
+          (T.intercalate ", " $ dartists r)
+          (dreleased r)
+          (atoCoverURL r)
+          (dadded r)
+          (fromEnum TAMusic)
+          (makeAMusicURL $ fromMaybe "" (damid r))
+          "AppleMusic"
+          Nothing
+          (damid r)
+          Nothing
+          (dtags r)
+          0
+          0
   ds <- case getAMusic p of
     _ -> FA.readAMusicReleases (getAMusic p)
-  let as = []
+  let as = toAlbum <$> ds
+  print as
   putTextLn $ "Total # Apple Music Albums: " <> show (length as)
   pure $ V.fromList as
 
