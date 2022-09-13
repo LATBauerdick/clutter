@@ -135,14 +135,14 @@ readAMusicReleases ainf = do
                           ( Just (amut aenv) )
   putTextLn "-----------------Getting Library Albums from Apple Music -----"
   res <- runClientM aquery ( aclient aenv )
-  print res
+  -- print res
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
   let (rs, tot) = case res of
         Left _ -> ([],0)
         Right a -> getReleases a
-  print rs
+  -- print rs
   putTextLn $ "-----------------Got " <> show (length rs) <> " of " <> show tot <> " Library Albums from Apple Music -----"
   pure rs
 
