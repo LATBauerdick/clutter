@@ -35,6 +35,7 @@ dependencies:
   - HTTP
   - http-media
   - hashable
+  - monad-loops
   - bytestring
   - vector
   - containers

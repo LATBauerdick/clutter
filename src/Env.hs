@@ -397,7 +397,7 @@ envUpdateAlbum aid = do
       pure ()
     Nothing -> pure ()
   -- let mAlbum = M.lookup aid am
-  print ma
+  -- print ma
   pure ma
 
 envGetTag :: Text -> AppM [Int]

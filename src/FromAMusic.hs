@@ -13,7 +13,9 @@ import Relude
 -- import Relude.File
 import qualified Relude.Unsafe as Unsafe
 
+import qualified Data.Text as T
 import Data.Hashable (hash)
+import Control.Monad.Loops (unfoldrM)
 
 import Network.HTTP.Client ( newManager )
 import Network.HTTP.Client.TLS ( tlsManagerSettings )
@@ -28,17 +30,20 @@ import Servant.Client
 
 import Types ( Release (..), TagFolder (..), AMusicInfo (..) )
 
+readInt :: String -> Int -- crash if not an integer
+readInt = Unsafe.fromJust . readMaybe
+
 data WAMusic = WAMusic
                 {
                   data_ :: [WAMData]
                 , meta_ :: WAMMeta
-                , next :: !Text
+                , next_ :: !Text
                 } deriving (Show, Generic)
 instance FromJSON WAMusic where
   parseJSON = withObject "wamusic" $ \ o -> do
-    d_      <- o .: "data"
-    m_      <- o .: "meta"
-    n_      <- o .: "next"
+    d_      <- o .:  "data"
+    m_      <- o .:  "meta"
+    n_      <- o .:? "next" .!= ""
     pure $ WAMusic  d_ m_ n_
 data WAMData = WAMData
                 { id :: !Text
@@ -57,7 +62,14 @@ data WAMAttr = WAMAttr
                 , dateAdded :: !Text
                 , releaseDate :: !Text
                 } deriving (Show, Generic)
-instance FromJSON WAMAttr
+instance FromJSON WAMAttr where
+  parseJSON = withObject "attr" $ \o -> do
+    name_        <- o .: "name"
+    artistName_  <- o .: "artistName"
+    artwork_     <- o .:? "artwork" .!= WAMArt 0 0 ""
+    dateAdded_   <- o .: "dateAdded"
+    releaseDate_ <- o .:? "releaseDate" .!= ""
+    pure $ WAMAttr name_ artistName_ artwork_ dateAdded_ releaseDate_
 data WAMArt = WAMArt
                 { width :: Int
                 , height :: Int
@@ -115,41 +127,54 @@ data AEnv = AEnv { adevt :: AMusicDeveloperToken
                  , aclient :: ClientEnv
                  }
 readAMusicReleases :: AMusicInfo -> IO [Release]
-readAMusicReleases ainf = do
-  m <- newManager tlsManagerSettings  -- defaultManagerSettings
-  let AMusicSession devt mut = ainf
-      aenv :: AEnv
-      aenv = AEnv { adevt = "Bearer " <> devt
-                  , amut = mut
-                  , alimit = 50
-                  , aoffset = 90 -- 1563 -- error at 1565
-                  , aclient = mkClientEnv m ( BaseUrl Https "api.music.apple.com" 443 "v1" )
-                  }
-      aquery :: ClientM WAMusic
-      aquery  = getAMusic
-                          ( Just "catalog" )
-                          ( Just (alimit aenv) )
-                          ( Just (aoffset aenv) )
-                          ( Just "ClutterApp/0.1" )
-                          ( Just (adevt aenv) )
-                          ( Just (amut aenv) )
-  putTextLn "-----------------Getting Library Albums from Apple Music -----"
-  res <- runClientM aquery ( aclient aenv )
-  -- print res
-  case res of
-    Left err -> putTextLn $ "Error: " <> show err
-    Right _ -> pure ()
-  let (rs, tot) = case res of
-        Left _ -> ([],0)
-        Right a -> getReleases a
-  -- print rs
-  putTextLn $ "-----------------Got " <> show (length rs) <> " of " <> show tot <> " Library Albums from Apple Music -----"
-  pure rs
+readAMusicReleases inf = concat <$> unfoldrM (ramr inf) 0
+
+ramr :: AMusicInfo -> Int -> IO (Maybe ( [Release] , Int))
+ramr ainf off
+ | off == -1 = pure Nothing
+ | otherwise = do
+    m <- newManager tlsManagerSettings  -- defaultManagerSettings
+    let AMusicSession devt mut = ainf
+        aenv :: AEnv
+        aenv = AEnv { adevt = "Bearer " <> devt
+                    , amut = mut
+                    , alimit = 100
+                    , aoffset = off
+                    , aclient = mkClientEnv m ( BaseUrl Https "api.music.apple.com" 443 "v1" )
+                    }
+        aquery :: ClientM WAMusic
+        aquery  = getAMusic
+                            ( Just "catalog" )
+                            ( Just (alimit aenv) )
+                            ( Just (aoffset aenv) )
+                            ( Just "ClutterApp/0.1" )
+                            ( Just (adevt aenv) )
+                            ( Just (amut aenv) )
+    putTextLn "-----------------Getting Library Albums from Apple Music -----"
+    res <- runClientM aquery ( aclient aenv )
+    -- print res
+    case res of
+      Left err -> putTextLn $ "Error: " <> show err
+      Right _ -> pure ()
+    let (rs, next, tot) = case res of
+          Left _ -> ([],-1,0)
+          Right a -> getReleases a
+    -- print rs
+    putTextLn $ "-----------------Got " <> show (if next == 0 then off + length rs else next) <> " of " <> show tot <> " Library Albums from Apple Music -----"
+    pure $ if next > 0 then
+                        Just (rs, next)
+                          else if next == 0 then
+                            Just (rs, -1) -- last page
+                              else if next == -1 then
+                                Just ([], off) -- error, try again
+                                  else
+                                    Nothing -- this should never happen
 
 
-getReleases :: WAMusic -> ([Release], Int)
-getReleases t = (getRelease <$> tis, tot) where
-        WAMusic {data_=tis, meta_=meta } = t
+getReleases :: WAMusic -> ([Release], Int, Int)
+getReleases t = (getRelease <$> ams, nxt, tot) where
+        WAMusic {data_=ams, meta_=meta, next_=nt} = t
+        nxt = if nt == "" then 0 else readInt . toString . snd . T.breakOnEnd "=" $ nt
         WAMMeta {total=tot} = meta
         getRelease :: WAMData -> Release
         getRelease ti = r where

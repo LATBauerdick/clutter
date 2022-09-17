@@ -315,7 +315,7 @@ readAMusicAlbums p = do
   ds <- case getAMusic p of
     _ -> FA.readAMusicReleases (getAMusic p)
   let as = toAlbum <$> ds
-  print as
+  -- print as
   putTextLn $ "Total # Apple Music Albums: " <> show (length as)
   pure $ V.fromList as
 

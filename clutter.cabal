@@ -59,6 +59,7 @@ library
     , http-client-tls
     , http-media
     , lucid
+    , monad-loops
     , raw-strings-qq
     , relude >=1.0.0.0
     , servant
@@ -95,6 +96,7 @@ executable clutter-exe
     , http-client-tls
     , http-media
     , lucid
+    , monad-loops
     , raw-strings-qq
     , relude >=1.0.0.0
     , servant
@@ -135,6 +137,7 @@ test-suite clutter-test
     , http-client-tls
     , http-media
     , lucid
+    , monad-loops
     , raw-strings-qq
     , relude >=1.0.0.0
     , servant
