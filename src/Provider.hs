@@ -160,13 +160,14 @@ readFoldersCache di = do
 updateTidalFolderAids :: Map Int Album -> Map Text (Int, Vector Int) -> Map Text (Int, Vector Int)
 updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal) where
     -- for Tidal folder, replace anything that's also on Discogs
-    xxx :: [(Int, Int)]
-    xxx = mapMaybe (\a -> case readMaybe . toString =<< albumTidal a of
-                            Just i -> if i == albumID a then Nothing else Just (i , albumID a)
-                            Nothing -> Nothing
-                   )
-        $ M.elems am
-    tidalToDiscogs = M.fromList xxx `debug` show xxx
+    tidalToDiscogs :: Map Int Int
+    tidalToDiscogs = M.fromList
+                      . mapMaybe (\a
+                          -> case readMaybe . toString =<< albumTidal a of
+                                Just i  -> if i == albumID a then Nothing else Just (i , albumID a)
+                                Nothing -> Nothing)
+                      . M.elems
+                      $ am
     allTidal  = V.map (\i -> fromMaybe i (i `M.lookup` tidalToDiscogs))
               . sAdded
               .  V.map fst
@@ -183,13 +184,14 @@ updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal) where
 updateAMusicFolderAids :: Map Int Album -> Map Text (Int, Vector Int) -> Map Text (Int, Vector Int)
 updateAMusicFolderAids am = M.insert "Apple Music" (fromEnum TAMusic, allAMusic) where
     -- for "AppleMusic" folder, replace anything that's also on Discogs
-    xxx :: [(Int, Int)]
-    xxx = mapMaybe (\a -> case readMaybe . toString =<< albumAMusic a of
-                            Just i -> if i == albumID a then Nothing else Just (i , albumID a)
-                            Nothing -> Nothing
-                   )
-        $ M.elems am
-    aMusicToDiscogs = M.fromList xxx `debug` show xxx
+    aMusicToDiscogs :: Map Int Int
+    aMusicToDiscogs = M.fromList
+                      . mapMaybe (\a
+                          -> case readMaybe . toString =<< albumAMusic a of
+                                Just i  -> if i == albumID a then Nothing else Just (i , albumID a)
+                                Nothing -> Nothing)
+                      . M.elems
+                      $ am
     allAMusic  = V.map (\i -> fromMaybe i (i `M.lookup` aMusicToDiscogs))
               . sAdded
               .  V.map fst
@@ -217,7 +219,7 @@ readFolderAids fm am = fam
               . V.fromList $ M.elems am
     allDiscogs  = sAdded
                 . V.map fst
-                . V.filter (\(_, f) -> f /= fromEnum TTidal)
+                . V.filter (\(_, f) -> f /= fromEnum TTidal && f /= fromEnum TAMusic )
                 . V.map (\a -> (albumID a, albumFolder a))
                 . V.fromList $ M.elems am
     getFolder :: Int -> (Int, Vector Int)
@@ -294,7 +296,7 @@ readAMusicAlbums :: AMusic -> IO (Vector Album)
 readAMusicAlbums p = do
   let
       atoCoverURL r = T.replace "{h}" "320" $ T.replace "{w}" "320" (dcover r)
-      makeAMusicURL cid = "https://beta.music.apple.com/us/album/" <> cid
+      makeAMusicURL cid = "https://beta.music.apple.com/library/albums/" <> cid
       toAlbum r =
         Album
           (daid r)
@@ -304,11 +306,11 @@ readAMusicAlbums p = do
           (atoCoverURL r)
           (dadded r)
           (fromEnum TAMusic)
-          (makeAMusicURL $ fromMaybe "" (damid r))
+          (makeAMusicURL $ fromMaybe "" (dlocation r))
           "AppleMusic"
           Nothing
           (damid r)
-          Nothing
+          (dlocation r)
           (dtags r)
           0
           0

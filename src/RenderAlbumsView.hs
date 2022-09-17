@@ -168,6 +168,10 @@ renderAlbumsView ln fs aids = do
                         L.span_ [ L.class_ "fas fa-record-vinyl fa-sm" ] ""
                     -- L.img_ [ L.src_ "/discogs-icon.png", L.alt_ "D", L.class_ "cover-oimage" ]
                   "Tidal" -> L.div_ ""
+                  "AppleMusic" -> L.div_ [L.class_ "cover-obackground"] $ do
+                      L.a_ [L.href_ (albumURL a)] $ do
+                        L.img_ [L.src_ "/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
+                        L.div_ ""
                   "CD" ->
                     L.div_ [L.class_ "cover-obackground"] $ do
                       L.a_ [L.href_ (albumURL a)] $ do

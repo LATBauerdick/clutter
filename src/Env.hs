@@ -359,8 +359,9 @@ envUpdateAlbum aid = do
   -- check if this release id is already known / in the Map
   let ma' :: Maybe Album
       ma' = M.lookup aid am'
-  -- if it's not a Tidal album, update album info from Discogs
+  -- if it's not a Tidal or AppleMusic album, update album info from Discogs
   ma <- case fmap albumFormat ma' of
+    Just "AppleMusic" -> pure ma'
     Just "Tidal" -> pure ma'
     -- Just _ -> pure ma' -- already known, nothing do add
     _ -> case getDiscogs di of
@@ -397,7 +398,7 @@ envUpdateAlbum aid = do
       pure ()
     Nothing -> pure ()
   -- let mAlbum = M.lookup aid am
-  -- print ma
+  print ma
   pure ma
 
 envGetTag :: Text -> AppM [Int]

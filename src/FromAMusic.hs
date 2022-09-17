@@ -20,7 +20,7 @@ import Control.Monad.Loops (unfoldrM)
 import Network.HTTP.Client ( newManager )
 import Network.HTTP.Client.TLS ( tlsManagerSettings )
 
-import Data.Aeson ( (.:), (.:?), (.!=), FromJSON (..), withObject, eitherDecode )
+import Data.Aeson ( (.:), (.:?), (.!=), FromJSON (..), withObject )
 -- import GHC.Generics
 
 -- import Data.Proxy
@@ -56,20 +56,24 @@ data WAMMeta = WAMMeta
                 } deriving (Show, Generic)
 instance FromJSON WAMMeta
 data WAMAttr = WAMAttr
-                { name :: !Text
+                { trackCount :: Int
+                , genreNames :: [Text]
+                , releaseDate :: !Text
+                , name :: !Text
                 , artistName :: !Text
                 , artwork :: WAMArt
                 , dateAdded :: !Text
-                , releaseDate :: !Text
                 } deriving (Show, Generic)
 instance FromJSON WAMAttr where
   parseJSON = withObject "attr" $ \o -> do
+    trackCount_  <- o .: "trackCount"
+    genreNames_  <- o .: "genreNames"
+    releaseDate_ <- o .:? "releaseDate" .!= ""
     name_        <- o .: "name"
     artistName_  <- o .: "artistName"
     artwork_     <- o .:? "artwork" .!= WAMArt 0 0 ""
     dateAdded_   <- o .: "dateAdded"
-    releaseDate_ <- o .:? "releaseDate" .!= ""
-    pure $ WAMAttr name_ artistName_ artwork_ dateAdded_ releaseDate_
+    pure $ WAMAttr trackCount_ genreNames_ releaseDate_ name_ artistName_ artwork_ dateAdded_
 data WAMArt = WAMArt
                 { width :: Int
                 , height :: Int
@@ -89,8 +93,13 @@ instance FromJSON WAMCat where
     pure $ WAMCat  d_
 data WAMCatData = WAMCatData
                 { id :: !Text
+                , attributes :: WAMCatDataAttr
                 } deriving (Show, Generic)
 instance FromJSON WAMCatData
+data WAMCatDataAttr = WAMCatDataAttr
+                { trackCount :: Int
+                } deriving (Show, Generic)
+instance FromJSON WAMCatDataAttr
 
 type UserAgent = Text
 type AMusicInclude = Text
@@ -131,6 +140,7 @@ readAMusicReleases inf = concat <$> unfoldrM (ramr inf) 0
 
 ramr :: AMusicInfo -> Int -> IO (Maybe ( [Release] , Int))
 ramr ainf off
+ | off >= 9000 = pure Nothing -- max number of albums to fetch
  | off == -1 = pure Nothing
  | otherwise = do
     m <- newManager tlsManagerSettings  -- defaultManagerSettings
@@ -172,42 +182,45 @@ ramr ainf off
 
 
 getReleases :: WAMusic -> ([Release], Int, Int)
-getReleases t = (getRelease <$> ams, nxt, tot) where
+getReleases t = (mapMaybe getRelease ams, nxt, tot) where
         WAMusic {data_=ams, meta_=meta, next_=nt} = t
         nxt = if nt == "" then 0 else readInt . toString . snd . T.breakOnEnd "=" $ nt
         WAMMeta {total=tot} = meta
-        getRelease :: WAMData -> Release
+        getRelease :: WAMData -> Maybe Release
         getRelease ti = r where
-          WAMData { id = tid
+          WAMData { id = lid  -- library id
                   , attributes = tattr
                   , relationships = trel
                   } = ti
-          WAMAttr { name = ttitle
+          WAMAttr { trackCount = tcnt
+                  , genreNames = gns
+                  , releaseDate = treleased
+                  , name = ttitle
                   , artistName = tartist
                   , artwork = tartwork
-                  , releaseDate = treleased
                   , dateAdded = tcreated
                   } = tattr
           WAMArt { url = tcoverurl } = tartwork
           WAMRel { catalog = tcat } = trel
           WAMCat { catdata = cds } = tcat
-          cid = if length cds == 0 then "" else ccc where
-            WAMCatData { id = ccc  } = Unsafe.fromJust $ viaNonEmpty head cds
+          (cid, ctcnt) = if length cds == 0 then ("", 0) else (cdid, cdtcnt) where -- catalog id, trackCount
+            WAMCatData { id = cdid, attributes = cdattr } = Unsafe.fromJust $ viaNonEmpty head cds
+            WAMCatDataAttr { trackCount = cdtcnt } = cdattr
 
-          tfolder = fromEnum TAMusic
-
-          r = Release  { daid      = hash $ toString tid --Q!!!!!
+          r = if tcnt /= ctcnt then Nothing else -- only complete albums
+            Just
+              Release  { daid      = if cid == "" then hash . toString $ lid else readInt . toString $ cid
                        , dtitle    = ttitle
                        , dartists  = [tartist]
                        , dreleased = treleased
                        , dadded    = tcreated
                        , dcover    = tcoverurl
-                       , dfolder   = tfolder
+                       , dfolder   = fromEnum TAMusic
                        , dformat   = "Streaming"
                        , dtidalid  = Nothing
                        , damid     = Just cid
-                       , dlocation = Nothing
-                       , dtags     = ["provider.appleMusic"]
+                       , dlocation = Just lid
+                       , dtags     = ["provider.applemusic"] <> map (("genre." <>) . T.toCaseFold) gns
                        , drating   = 0
                        , dplays    = 0
                        }

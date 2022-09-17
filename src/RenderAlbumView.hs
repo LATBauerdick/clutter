@@ -27,6 +27,14 @@ renderAlbumView mAlbum now = L.html_ $ do
             L.a_ [L.href_ "/albums/All"] "Please see all Albums"
         Just a ->
           case albumFormat a of
+            "AppleMusic" ->
+              L.div_ [L.class_ "login-message"] $ do
+              L.p_ $ "Apple Music Album <" <> show (albumID a) <>  ">."
+              L.br_ []
+              let qry = T.replace " " "+" $ albumArtist a <> "+-+" <> albumTitle a
+              L.p_ $ do
+                L.toHtml ("Search \"" <> albumTitle a <> "\" by " <> albumArtist a <> " on ")
+                L.a_ [L.href_ $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"] "DISCOGS"
             "Tidal" ->
               L.div_ [L.class_ "login-message"] $ do
               L.p_ $ "Tidal Album <" <> show (albumID a) <>  ">."
