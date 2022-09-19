@@ -341,14 +341,23 @@ getR folderName dr = r
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
     tidalid :: Maybe Text  -- T<number>
-    tidalid = viaNonEmpty head
-            . mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
-            . mapMaybe (T.stripPrefix "T")
-            . words
-            $ fromMaybe "" loct
+    -- or https://tidal.com/album/<id>
+    tidalid = 
+      viaNonEmpty head (
+        ( mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
+        . mapMaybe (T.stripPrefix  "https://tidal.com/album/")
+        . words
+        $ fromMaybe "" loct
+        ) <> (
+        mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
+        . mapMaybe (T.stripPrefix "T")
+        . words
+        $ fromMaybe "" loct
+        ))
     amid :: Maybe Text
     -- A<number> -> https://music.apple.com/us/album/<number>
     -- or Al.<string> -> https://music.apple.com/library/albums/l.<string>
+    -- or https://music.apple.com/us/album/schools-out/<id>
     amid = viaNonEmpty head
           . mapMaybe  (\t ->  if T.null (T.filter (not . Ch.isDigit) t) || (T.take 2 t == "l.")
                                 then Just t
