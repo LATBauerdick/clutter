@@ -29,7 +29,7 @@ import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
 import Relude.File
 import Data.Text as T (stripPrefix, filter, null, toCaseFold
-                      , take, intercalate)
+                      , take, intercalate, breakOnEnd )
 import Data.Char as Ch (isDigit)
 
 -- import Data.Proxy
@@ -342,10 +342,10 @@ getR folderName dr = r
       _ -> Nothing
     tidalid :: Maybe Text  -- T<number>
     -- or https://tidal.com/album/<id>
-    tidalid = 
+    tidalid =
       viaNonEmpty head (
         ( mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
-        . mapMaybe (T.stripPrefix  "https://tidal.com/album/")
+        . mapMaybe ( maybe Nothing ( Just . snd . T.breakOnEnd "/" ) . T.stripPrefix  "https://tidal.com/" )
         . words
         $ fromMaybe "" loct
         ) <> (
@@ -357,20 +357,33 @@ getR folderName dr = r
     amid :: Maybe Text
     -- A<number> -> https://music.apple.com/us/album/<number>
     -- or Al.<string> -> https://music.apple.com/library/albums/l.<string>
-    -- or https://music.apple.com/us/album/schools-out/<id>
-    amid = viaNonEmpty head
-          . mapMaybe  (\t ->  if T.null (T.filter (not . Ch.isDigit) t) || (T.take 2 t == "l.")
+    -- or https://music.apple.com/us/album/<...>/<id>
+    amid =
+      viaNonEmpty head ((
+        mapMaybe ( maybe Nothing ( Just . snd . T.breakOnEnd "/" ) . T.stripPrefix  "https://music.apple.com/us/album/" )
+        . words
+        $ fromMaybe "" loct
+        ) <> (
+        mapMaybe  (\t ->  if T.null (T.filter (not . Ch.isDigit) t) || (T.take 2 t == "l.")
                                 then Just t
                                 else Nothing
-                      )
+                    )
           . mapMaybe (T.stripPrefix "A")
           . words
           $ fromMaybe "" loct
+        )
+      )
     -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
+    xxx :: Maybe Text
+    xxx = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
+      Just a -> if a /= "" then Just a else Nothing
+      _ -> Nothing
     loc :: Maybe Text
     loc = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just (unwords
-                                    . mapMaybe (\t -> case stripPrefix "T" t of
+                                    . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://music.apple.com/us/album/" $ t)
+                                    . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://tidal.com/" $ t)
+                                    . mapMaybe (\t -> case T.stripPrefix "T" t of
                                         Nothing -> Just t
                                         Just ta -> if T.null (T.filter (not . Ch.isDigit) ta)
                                                     then Nothing
