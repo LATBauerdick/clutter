@@ -118,6 +118,7 @@ type AMusicAPI =
        :> Header "Authorization" AMusicDeveloperToken
        :> Header "Music-User-Token" AMusicUserToken
        :> Get '[JSON] WAMusic
+     --  :<|> me/library/recently-added?include=catalog
 aMusicAPI :: Proxy AMusicAPI
 aMusicAPI = Proxy
 getAMusic :: Maybe AMusicInclude
