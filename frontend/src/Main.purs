@@ -9,7 +9,6 @@ import Effect.Class.Console as Console
 import Effect.Exception (throw)
 
 import Effect.Aff (launchAff_)
-import Effect.Aff.Class (liftAff)
 
 import Web.DOM.NonElementParentNode (getElementById)
 import Web.HTML (window)
@@ -17,13 +16,13 @@ import Web.HTML.HTMLDocument (toNonElementParentNode)
 import Web.HTML.Window (document)
 
 import React.Basic.DOM as D
-import React.Basic.Hooks (ReactComponent, reactComponent, element, useState)
+import React.Basic.Hooks (ReactComponent, reactComponent, element)
 
 import GetStuff (getUrl)
 
 mkClutterApp :: Effect (ReactComponent {})
 mkClutterApp = do
-  reactComponent "ClutterApp" \props -> R.do
+  reactComponent "ClutterApp" \_ -> R.do
     pure
     $ D.div
     { className: "container"

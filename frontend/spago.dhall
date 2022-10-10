@@ -19,13 +19,10 @@ to generate this file without the comments in this block.
   , "effect"
   , "either"
   , "exceptions"
-  , "foldable-traversable"
   , "maybe"
   , "prelude"
   , "react-basic-dom"
   , "react-basic-hooks"
-  , "strings"
-  , "validation"
   , "web-dom"
   , "web-html"
   ]
