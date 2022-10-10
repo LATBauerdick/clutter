@@ -12,3 +12,14 @@ stuff
 __pycache__
 .hie
 .DS_Store
+bower_components
+.pulp-cache
+dist
+output
+generated-docs
+.parcel-cache
+.psc-package
+.psc*
+.purs*
+.psa*
+.spago
