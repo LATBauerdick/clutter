@@ -13,4 +13,4 @@ getUrl url = do
            Left err -> "GET / api response failed to decode: " <> AN.printError err
            Right response -> response.body
 
--- foreign import _encodeURIComponent :: String -> String
+foreign import _encodeURIComponent :: String -> String

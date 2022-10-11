@@ -1,4 +1,5 @@
 {-# LANGUAGE NoImplicitPrelude, OverloadedStrings, InstanceSigs #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Types ( Tidal (..)
              , AMusic (..)
@@ -147,6 +148,6 @@ data Album
   , albumTags     :: [Text]
   , albumRating   :: Int
   , albumPlays    :: Int
-  } deriving (Show)
+  } deriving (Show, Generic)
 instance Eq Album where
   (==) a b = albumID a == albumID b

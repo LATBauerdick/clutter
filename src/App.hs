@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module App
   ( startApp,
@@ -34,7 +35,9 @@ import Control.Monad (foldM)
 import Relude
 import Render ( renderAlbumView, renderAlbumsView )
 import Servant
-import Types (AppM, Env (..), EnvR (..))
+import Types (Album, AppM, Env (..), EnvR (..))
+
+import Data.Aeson (ToJSON (..))
 
 data HTML
 
@@ -72,7 +75,19 @@ type API3 = "provider"
     :> QueryParam "nalbums" Int -- update last n tidal albums, all if null
     :> Get '[HTML] RawHtml
 
-type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> Raw
+type API4 = "albumj"
+    :> Capture "aid" Int
+    :> Get '[JSON] AlbumJ
+
+data AlbumJ = AlbumJ
+  { aid :: Int
+  , album :: Maybe Album
+  } deriving (Eq, Show, Generic)
+
+instance ToJSON Album
+instance ToJSON AlbumJ
+
+type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
 clutterAPI = Proxy
@@ -83,17 +98,40 @@ nt :: Env -> (ReaderT Env) Handler a -> Handler a
 nt env x = do
   runReaderT x env
 
+-- add "Middleware", see
+-- https://mmhaskell.com/blog/2018/10/8/stuck-in-the-middle-adding-middleware-to-a-servant-server
+-- where we modify the response header such that it includes CORS header Access-Control-Allow-Origin: *
+--
+addAllOriginsMiddleware :: Application -> Application
+addAllOriginsMiddleware baseApp = \req responseFunc -> baseApp req (responseFunc . addOriginsAllowed)
+
+addOriginsAllowed :: Response -> Response
+addOriginsAllowed = mapResponseHeaders $
+  (:) ("Access-Control-Allow-Origin", "*")
+
+
 app :: Env -> Application
-app env = serve clutterAPI $ hoistServer clutterAPI (nt env) clutterServer
+app env = addAllOriginsMiddleware $ serve clutterAPI $ hoistServer clutterAPI (nt env) clutterServer
 
 clutterServer :: ServerT ClutterAPI AppM
 clutterServer = serveAlbum
             :<|> serveAlbums
             :<|> serveDiscogs
             :<|> serveTidal
+            :<|> serveAlbumJ
             :<|> serveDirectoryFileServer "static"
   where
 --{{{clutterServer
+    serveAlbumJ :: Int -> AppM AlbumJ
+    serveAlbumJ aid = do
+      liftIO $ print ("-------serveAlbumJ " :: Text, aid )
+      now <- liftIO getZonedTime -- `debugId`
+      ma <- envUpdateAlbum aid
+      let aj = case ma of
+            Just a -> AlbumJ { aid = aid, album =  Just a }
+            _ -> AlbumJ { aid = 0, album = Nothing }
+      pure aj
+
     serveAlbum :: Int -> AppM RawHtml
     serveAlbum aid = do
       liftIO $ print ("-------serveAlbum " :: Text, aid )
