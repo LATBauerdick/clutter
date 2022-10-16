@@ -19,10 +19,15 @@ import Web.HTML (window)
 import Web.HTML.HTMLDocument (toNonElementParentNode)
 import Web.HTML.Window (document)
 
+
 import GetStuff (getUrl, _encodeURIComponent)
 
 import React.Basic.DOM (div, text, h3_, render) as RD
 import React.Basic.Hooks (ReactComponent, reactComponent, element) as RH
+
+import Halogen.Aff as HA
+import Halogen.VDom.Driver (runUI)
+import Counter (counter)
 
 mkClutterApp :: Effect (RH.ReactComponent {})
 mkClutterApp = do
@@ -70,7 +75,8 @@ type Album =  { albumID :: Int
               }
 
 main :: Effect Unit
-main = launchAff_ do
+-- main = launchAff_ do
+main = HA.runHalogenAff do
 -- main = do
   Console.log "🍝 Rendering clutter component"
   Console.log $ _encodeURIComponent "🍝 Rendering clutter component"
@@ -82,11 +88,16 @@ main = launchAff_ do
   let decodedStr = (decodeJson =<< parseJson str) :: Either JsonDecodeError AlbumJ
   Console.logShow $ decodedStr
 
-  ctr <- liftEffect $ window >>= document >>= toNonElementParentNode >>> getElementById "container"
-  case ctr of
-    Nothing -> liftEffect $ throw "Container element not found."
-    Just c -> do
-      Console.log "CLUTTER!!"
-      clutterApp <- liftEffect $ mkClutterApp
-      let app = RH.element clutterApp {}
-      liftEffect $ RD.render app c
+
+  body <- HA.awaitBody
+  runUI counter unit body
+
+
+  -- ctr <- liftEffect $ window >>= document >>= toNonElementParentNode >>> getElementById "container"
+  -- case ctr of
+  --   Nothing -> liftEffect $ throw "Container element not found."
+  --   Just c -> do
+  --     Console.log "CLUTTER!!"
+  --     clutterApp <- liftEffect $ mkClutterApp
+  --     let app = RH.element clutterApp {}
+  --     liftEffect $ RD.render app c
