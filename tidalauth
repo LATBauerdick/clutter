@@ -1,5 +1,7 @@
 #!/usr/bin/env nix-shell
-#!nix-shell -i python3 -p "python3.withPackages(ps: [ ps.requests ps.dateutil ])"
+#!nix-shell -i python3 -p "python3.withPackages(ps: [ ps.requests ps.python-dateutil ])"
+
+# needs git clone https://github.com/tamland/python-tidal
 
 #####!/usr/bin/env python3
 
