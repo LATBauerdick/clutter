@@ -2,46 +2,46 @@ module Main where
 
 import Prelude
 
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe)
 import Data.Either (Either)
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
 import Effect (Effect)
-import Effect.Class (liftEffect)
+-- import Effect.Class (liftEffect)
 import Effect.Class.Console as Console
-import Effect.Exception (throw)
+-- import Effect.Exception (throw)
 
-import Effect.Aff (launchAff_)
+-- import Effect.Aff (launchAff_)
 
-import Web.DOM.NonElementParentNode (getElementById)
-import Web.HTML (window)
-import Web.HTML.HTMLDocument (toNonElementParentNode)
-import Web.HTML.Window (document)
+-- import Web.DOM.NonElementParentNode (getElementById)
+-- import Web.HTML (window)
+-- import Web.HTML.HTMLDocument (toNonElementParentNode)
+-- import Web.HTML.Window (document)
 
 
 import GetStuff (getUrl, _encodeURIComponent)
 
-import React.Basic.DOM (div, text, h3_, render) as RD
-import React.Basic.Hooks (ReactComponent, reactComponent, element) as RH
+-- import React.Basic.DOM (div, text, h3_, render) as RD
+-- import React.Basic.Hooks (ReactComponent, reactComponent, element) as RH
 
 import Halogen.Aff as HA
 import Halogen.VDom.Driver (runUI)
 import Counter (counter)
 
-mkClutterApp :: Effect (RH.ReactComponent {})
-mkClutterApp = do
-  RH.reactComponent "ClutterApp" \_ -> React.do
-    pure
-    $ RD.div
-    { className: "container"
-    , children: [ RD.div
-                { className: "row"
-                , children:
-                  [ RD.h3_ [ RD.text "Hi - this is the ClutterApp!" ] ]
-                }
-      ]
-    }
+-- mkClutterApp :: Effect (RH.ReactComponent {})
+-- mkClutterApp = do
+--   RH.reactComponent "ClutterApp" \_ -> React.do
+--     pure
+--     $ RD.div
+--     { className: "container"
+--     , children: [ RD.div
+--                 { className: "row"
+--                 , children:
+--                   [ RD.h3_ [ RD.text "Hi - this is the ClutterApp!" ] ]
+--                 }
+--       ]
+--     }
 
 type J0 = { data :: { id :: Int
                     , email :: String
