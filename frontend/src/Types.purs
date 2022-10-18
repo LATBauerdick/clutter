@@ -1,7 +1,6 @@
 module Types  ( Album
               ) where
 
-import Prelude
 import Data.Maybe (Maybe)
 
 type Album =  { albumID :: Int
@@ -12,7 +11,7 @@ type Album =  { albumID :: Int
               , albumTitle :: String
               , albumCover :: String
               , albumURL :: String
-              , albumFormat :: Maybe String
+              , albumFormat :: String
               , albumLocation :: Maybe String
               , albumTags :: Array String
               , albumFolder :: Int
