@@ -2,8 +2,8 @@ module Main where
 
 import Prelude
 
-import Data.Maybe (Maybe)
-import Data.Either (Either)
+import Data.Maybe (Maybe(..))
+import Data.Either (Either(..))
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
@@ -21,6 +21,7 @@ import Effect.Class.Console as Console
 
 
 import GetStuff (getUrl, _encodeURIComponent)
+import Types (Album)
 
 -- import React.Basic.DOM (div, text, h3_, render) as RD
 -- import React.Basic.Hooks (ReactComponent, reactComponent, element) as RH
@@ -28,6 +29,7 @@ import GetStuff (getUrl, _encodeURIComponent)
 import Halogen.Aff as HA
 import Halogen.VDom.Driver (runUI)
 import Counter (counter)
+import RenderAlbum (albumView)
 
 -- mkClutterApp :: Effect (RH.ReactComponent {})
 -- mkClutterApp = do
@@ -57,22 +59,6 @@ type J0 = { data :: { id :: Int
 type AlbumJ = { aid :: Int
               , album :: Album
               }
-type Album =  { albumID :: Int
-              , albumAMusic :: Maybe String
-              , albumTidal :: Maybe String
-              , albumAdded :: Maybe String
-              , albumArtist :: String
-              , albumTitle :: String
-              , albumCover :: String
-              , albumURL :: String
-              , albumFormat :: Maybe String
-              , albumLocation :: Maybe String
-              , albumTags :: Array String
-              , albumFolder :: Int
-              , albumPlays :: Int
-              , albumRating :: Int
-              , albumReleased :: String
-              }
 
 main :: Effect Unit
 -- main = launchAff_ do
@@ -86,11 +72,15 @@ main = HA.runHalogenAff do
 
   str <- getUrl "http://localhost:8080/albumj/659642"
   let decodedStr = (decodeJson =<< parseJson str) :: Either JsonDecodeError AlbumJ
-  Console.logShow $ decodedStr
-
+  let aje :: Either JsonDecodeError AlbumJ
+      aje = decodedStr
+  Console.logShow $ aje
+  let a = case aje of --case (decodeJson =<< parseJson str) :: Either JsonDecodeError AlbumJ of
+                    Right { aid: _, album: a } -> Just a -- { _, a } -> Just a
+                    Left err -> Nothing
 
   body <- HA.awaitBody
-  runUI counter unit body
+  runUI (albumView a) unit body
 
 
   -- ctr <- liftEffect $ window >>= document >>= toNonElementParentNode >>> getElementById "container"

@@ -19,14 +19,9 @@ to generate this file without the comments in this block.
   , "console"
   , "effect"
   , "either"
-  , "exceptions"
   , "halogen"
   , "maybe"
   , "prelude"
-  , "react-basic-dom"
-  , "react-basic-hooks"
-  , "web-dom"
-  , "web-html"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]
