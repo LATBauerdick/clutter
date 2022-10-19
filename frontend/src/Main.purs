@@ -10,8 +10,8 @@ import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 import Effect (Effect)
 import Effect.Class.Console as Console
 
-import GetStuff (getUrl, _encodeURIComponent)
-import Types (Album)
+import GetStuff (getUrl, getNow, _encodeURIComponent)
+import Types (AlbumJ)
 
 import Halogen.Aff as HA
 import Halogen.VDom.Driver (runUI)
@@ -25,10 +25,6 @@ type J0 = { data :: { id :: Int
                     , j1dummy :: Maybe String
                     }
           }
-
-type AlbumJ = { aid :: Int
-              , album :: Album
-              }
 
 main :: Effect Unit
 main = HA.runHalogenAff do
@@ -45,9 +41,11 @@ main = HA.runHalogenAff do
                     Right { aid: _, album: a } -> Just a
                     Left _ -> Nothing
   Console.logShow aje
+  now <- getNow
+  Console.logShow now
 
   body <- HA.awaitBody
-  runUI ( aComponent am ) unit body
+  runUI ( aComponent am now ) unit body
 
 type State =
   { getResponse :: String

@@ -4,6 +4,8 @@ module AlbumComponent (
 
 import Prelude
 import Data.Maybe (Maybe(..))
+import Data.Either (Either(..), fromRight)
+import Effect.Class.Console as Console
 
 import Halogen as H
 import Halogen.HTML as HH
@@ -12,9 +14,16 @@ import Halogen.HTML.Events as HE
 import Effect.Aff.Class (class MonadAff)
 import Web.Event.Event (Event)
 import Web.Event.Event as Event
+import Data.DateTime (DateTime)
+import Data.Formatter.DateTime (formatDateTime)
+import Data.String (take) as S
+import Data.String.Common (replaceAll)
+import Data.String.Pattern (Pattern(..), Replacement(..))
 
-import Types (Album)
-import GetStuff (getUrl)
+import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
+
+import Types (Album, AlbumJ)
+import GetStuff (getUrl, getNow)
 
 noAlbum :: forall w i. HH.HTML w i
 noAlbum =
@@ -33,9 +42,9 @@ noAlbum =
       ]
     ]
 
-albumElement :: forall w i. Album -> HH.HTML w i
-albumElement { albumID: aid, albumFormat: af, albumCover: _ } =
-  case af of
+albumElement :: forall w i. Album -> DateTime -> HH.HTML w i
+albumElement a now =
+  case a.albumFormat of
             "AppleMusic" -> appleMusicView
             "Tidal" -> tidalView
             _ -> discogsView
@@ -43,60 +52,131 @@ albumElement { albumID: aid, albumFormat: af, albumCover: _ } =
   appleMusicView = discogsView
   tidalView = discogsView
 
+  ttl = replaceAll (Pattern ":") (Replacement "_") <<< replaceAll (Pattern "/") (Replacement "·") $ a.albumArtist <> " - " <> a.albumTitle
+  dt = fromRight "???????" <<< formatDateTime "YYYYMMDD" $ now -- "2022-10-19T20:01"
+  dtl = fromRight "???????" <<< formatDateTime "YYYY-MM-DDTHH:mm" $ now -- "2022-10-19T20:01"
   discogsView =
     HH.div
-      [ HP.id "root" ]
-      [
-        HH.h1 [ ] [ HH.text "This is the Clutter App!" ]
-      , HH.div
-        [ HP.class_ $ HH.ClassName "login-message" ]
-        [ HH.span_
+      [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
+      [ HH.div
+        [ HP.class_ $ HH.ClassName "cover-container" ]
+        [ HH.p_
           [ HH.text "Great album! Have a look on Clutter "
           , HH.a
-            [ HP.href $ "http://localhost:8080/album/" <> show aid ]
+            [ HP.href $ "http://localhost:8080/album/" <> show a.albumID ]
             [ HH.text "here" ]
           ]
+        , HH.a
+          [ HP.href a.albumURL]
+          [ HH.img [ HP.src a.albumCover
+                   , HP.alt "cover image"
+                   --, HP.onerror "this.onerror=null;this.src='/no-cover.png';"
+                   , HP.class_ $ HH.ClassName "cover-image"
+                   ]
+          ]
         ]
+      , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
+      , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
+      , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]
+      , HH.br_
+      , HH.div
+          [ HP.class_ $ HH.ClassName "quoteable" ]
+          ([ HH.samp_ [ HH.text $ dt <> "-" <> ttl ]
+          , HH.br_
+          , HH.samp_ [ HH.text "---" ]
+          , HH.br_
+          , HH.samp_ [ HH.text $ "date: " <> dtl ]
+          , HH.br_
+          , HH.samp_ [ HH.text ("title: " <> ttl) ]
+          , HH.br_
+          , HH.samp_ [ HH.text "---" ]
+          , HH.br_
+          , HH.samp_ [ HH.text ("### " <> a.albumArtist <> " – " <> a.albumTitle) ]
+          , HH.br_
+          , HH.samp_ [ HH.text ("[![](" <> a.albumCover <> ")][1] ") ]
+          , HH.br_
+          -- reference-style link to album page
+          , HH.br_
+          , HH.samp_ [ HH.text ("[1]: " <> a.albumURL) ]
+          ]
+          <> case a.albumAMusic of
+                  Nothing -> []
+                  Just amid ->  [ HH.br_
+                                , if S.take 2 amid == "l."
+                                    then HH.samp_ [ HH.text ("[2]: " <> "https://music.apple.com/library/albums/" <> amid) ]
+                                    else HH.samp_ [ HH.text ("[2]: " <> "https://music.apple.com/us/album/" <> amid) ]
+                                ]
+          <> case a.albumTidal of
+                  Nothing -> []
+                  Just tid ->  [ HH.br_
+                               , HH.samp_ [ HH.text ("[3]: " <> "https://listen.tidal.com/album/" <> tid) ]
+                               ]
+          -- icon with link to album page
+          <> [ HH.br_
+             , HH.br_
+             ]
+          <> case a.albumAMusic of
+                  Nothing -> []
+                  Just _ -> [ HH.samp_ [ HH.text "[![[attachments/am-is.png]]][2]"  ]
+                            ]
+          <> case a.albumTidal of
+                  Nothing -> []
+                  Just _ -> [ HH.samp_ [ HH.text "[![[attachments/tidal-is.png]]][3]" ] ]
+          -- embeded player for album
+          <> [ HH.br_ ]
+          <> case a.albumAMusic of
+                  Nothing -> []
+                  Just amid -> [ HH.br_
+                               , HH.samp_ [ HH.text $ "<iframe allow=\"autoplay *; encrypted-media *; fullscreen *\" frameborder=\"0\" height=\"450\" style=\"width:100%;max-width:660px;overflow:hidden;background:transparent;\" sandbox=\"allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation\" src=\"https://embed.music.apple.com/us/album/turn-blue/" <> amid <> "\"></iframe>" ]
+                               ]
+          <> case a.albumTidal of
+                  Nothing -> []
+                  Just tid -> [ HH.br_
+                              , HH.samp_ [ HH.text $ "<div style=\"position: relative; padding-bottom: 100%; height: 0; overflow: hidden; max-width: 100%;\"><iframe src=\"https://embed.tidal.com/albums/" <> tid <> "?layout=gridify\" frameborder= \"0\" allowfullscreen style=\"position: absolute; top: 0; left: 0; width: 100%; height: 1px; min-height: 100%; margin: 0 auto;\"></iframe></div>" ]
+                  ]
+
+          )
       ]
 
-albumView :: forall i w. Maybe Album -> HH.HTML w i
-albumView am = case am of
-                   Just a -> HH.div_ [ albumElement a ]
+albumView :: forall i w. Maybe Album -> DateTime -> HH.HTML w i
+albumView am now = case am of
+                   Just a -> HH.div_ [ albumElement a now ]
                    Nothing -> HH.div_ [ noAlbum ]
 
 type State =  { album :: Maybe Album
               , loading :: Boolean
-              , username :: String
+              , albumID :: String
+              , now :: DateTime
               , result :: Maybe String
               }
-data Action = Increment | Decrement | SetUsername String | MakeRequest Event
+data Action = Increment | Decrement | SetAlbumID String | MakeRequest Event
 
-aComponent :: forall query input output m. MonadAff m => Maybe Album -> H.Component query input output m
-aComponent am =
+aComponent :: forall query input output m. MonadAff m => Maybe Album -> DateTime -> H.Component query input output m
+aComponent am now =
   H.mkComponent
-  { initialState: initialState am
+  { initialState: initialState am now
   , render
   , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
   }
 
-initialState :: forall input. Maybe Album -> input -> State
-initialState am _ = { album: am, loading: false, username: "659642", result: Nothing }
+initialState :: forall input. Maybe Album -> DateTime -> input -> State
+initialState am now _ = { album: am, loading: false, albumID: "659642", now: now, result: Nothing }
 
 render :: forall m. State -> H.ComponentHTML Action () m
 render state = do
-  let am = state.album
   HH.div_
-    [ albumView am
+    [
+      HH.h1_ [ HH.text "This it the Clutter App!" ]
     , HH.button [ HE.onClick \_ -> Decrement ] [ HH.text "-" ]
     , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
     , HH.form
       [ HE.onSubmit \ev -> MakeRequest ev ]
-      [ HH.h1_ [ HH.text "Look up Album ID" ]
+      [ HH.h3_ [ HH.text "Look up Album ID" ]
       , HH.label_
           [ HH.div_ [ HH.text "Enter album id:" ]
           , HH.input
-              [ HP.value state.username
-              , HE.onValueInput \str -> SetUsername str
+              [ HP.value state.albumID
+              , HE.onValueInput \str -> SetAlbumID str
               ]
           ]
       , HH.button
@@ -116,6 +196,7 @@ render state = do
                   [ HH.code_ [ HH.text res ] ]
               ]
       ]
+    , albumView state.album state.now
     ]
 
 handleAction :: forall output m. MonadAff m => Action -> H.HalogenM State Action () output m Unit
@@ -124,13 +205,23 @@ handleAction = case _ of
     H.modify_ _ { album = Nothing }
   Increment ->
     H.modify_ _ { album = Nothing }
-  SetUsername username -> do
-    H.modify_ _ { username = username, result = Nothing }
+  SetAlbumID albumID -> do
+    now <- H.liftAff getNow
+    H.liftAff $ Console.logShow now
+    H.modify_ _ { albumID = albumID, now = now, result = Nothing }
   MakeRequest event -> do
     H.liftEffect $ Event.preventDefault event
-    username <- H.gets _.username
+    albumID <- H.gets _.albumID
+    now <- H.liftAff getNow
     H.modify_ _ { loading = true }
-    r <- H.liftAff $ getUrl ("http://localhost:8080/albumj/" <> username)
-    H.modify_ _ { loading = false, result = Just r }
-    -- response <- H.liftAff $ AX.get ResponseFormat.string ("https://api.github.com/users/" <> username)
+    r <- H.liftAff $ getUrl ("http://localhost:8080/albumj/" <> albumID)
+    H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ)
+    let aje :: Either JsonDecodeError AlbumJ
+        aje = (decodeJson =<< parseJson r) -- :: Either JsonDecodeError AlbumJ
+    let am = case aje of
+                      Right { aid: _, album: a } -> Just a
+                      Left _ -> Nothing
+
+    H.modify_ _ { album = am, loading = false, result = Just r, now = now}
+    -- response <- H.liftAff $ AX.get ResponseFormat.string ("https://api.github.com/users/" <> albumID)
     -- H.modify_ _ { loading = false, result = map _.body (hush response) }

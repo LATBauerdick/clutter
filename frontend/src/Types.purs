@@ -1,4 +1,5 @@
 module Types  ( Album
+              , AlbumJ
               ) where
 
 import Data.Maybe (Maybe)
@@ -18,5 +19,8 @@ type Album =  { albumID :: Int
               , albumPlays :: Int
               , albumRating :: Int
               , albumReleased :: String
+              }
+type AlbumJ = { aid :: Int
+              , album :: Album
               }
 
