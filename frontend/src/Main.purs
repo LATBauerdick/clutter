@@ -13,12 +13,9 @@ import Effect.Class.Console as Console
 import GetStuff (getUrl, _encodeURIComponent)
 import Types (Album)
 
-import Halogen as H
-import Halogen.HTML as HH
 import Halogen.Aff as HA
-import Halogen.HTML.Events as HE
 import Halogen.VDom.Driver (runUI)
-import RenderAlbumView (albumView)
+import AlbumComponent (aComponent)
 
 type J0 = { data :: { id :: Int
                     , email :: String
@@ -50,32 +47,10 @@ main = HA.runHalogenAff do
   Console.logShow aje
 
   body <- HA.awaitBody
-  runUI ( component am ) unit body
+  runUI ( aComponent am ) unit body
 
-type State = Maybe Album
-data Action = Increment | Decrement
+type State =
+  { getResponse :: String
+  , postInfo :: String
+  }
 
-component :: forall query input output m. Maybe Album -> H.Component query input output m
-component am =
-  H.mkComponent
-    { initialState: const am
-    , render
-    , eval: H.mkEval H.defaultEval { handleAction = handleAction }
-    }
-initialState :: forall input. input -> State
-initialState _ = Nothing
-
-render :: forall m. State -> H.ComponentHTML Action () m
-render state =
-  HH.div_
-    [ HH.button [ HE.onClick \_ -> Decrement ] [ HH.text "-" ]
-    , albumView state
-    , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
-    ]
-
-handleAction :: forall output m. Action -> H.HalogenM State Action () output m Unit
-handleAction = case _ of
-  Decrement ->
-    H.modify_ \state -> Nothing
-  Increment ->
-    H.modify_ \state -> state
