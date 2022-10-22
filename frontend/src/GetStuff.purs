@@ -8,7 +8,7 @@ import Affjax.Node as AN
 import Affjax.ResponseFormat as ResponseFormat
 import Data.Either (Either(..))
 import Effect.Aff (Aff)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (fromMaybe)
 import Effect.Now (nowDateTime, getTimezoneOffset)
 import Data.DateTime (DateTime, adjust)
 import Data.Time.Duration (negateDuration)

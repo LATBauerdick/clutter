@@ -25,6 +25,7 @@ to generate this file without the comments in this block.
   , "maybe"
   , "now"
   , "prelude"
+  , "strings"
   , "web-events"
   ]
 , packages = ./packages.dhall
