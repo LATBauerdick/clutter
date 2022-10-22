@@ -11,6 +11,9 @@ import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
+-- import Halogen.HTML.CSS as CSS
+-- import CSS (backgroundColor, fontSize, px)
+
 import Effect.Aff.Class (class MonadAff)
 import Web.Event.Event (Event)
 import Web.Event.Event as Event
@@ -53,7 +56,7 @@ albumElement a now =
   tidalView = discogsView
 
   ttl = replaceAll (Pattern ":") (Replacement "_") <<< replaceAll (Pattern "/") (Replacement "·") $ a.albumArtist <> " - " <> a.albumTitle
-  dt = fromRight "???????" <<< formatDateTime "YYYYMMDD" $ now -- "2022-10-19T20:01"
+  dt = fromRight "???????" <<< formatDateTime "YYMMDD" $ now -- "2022-10-19T20:01"
   dtl = fromRight "???????" <<< formatDateTime "YYYY-MM-DDTHH:mm" $ now -- "2022-10-19T20:01"
   discogsView =
     HH.div
@@ -80,7 +83,11 @@ albumElement a now =
       , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]
       , HH.br_
       , HH.div
-          [ HP.class_ $ HH.ClassName "quoteable" ]
+          [ HP.class_ ( HH.ClassName "quoteable" )
+          -- , CSS.style do
+          --     fontSize $ px 20.0
+          --     backgroundColor orange
+          ]
           ([ HH.samp_ [ HH.text $ dt <> "-" <> ttl ]
           , HH.br_
           , HH.samp_ [ HH.text "---" ]
@@ -136,7 +143,18 @@ albumElement a now =
                   ]
 
           )
+      , HH.iframe
+        [ HP.src ("http://localhost:8080/album/" <> show a.albumID)
+        , HP.title "iframe_a"
+        , HP.style "height:600px;width:100%;"
+        -- , frameborder "0"
+        -- , allow "autoplay *; encrypted-media *; fullscreen *"
+        ]
       ]
+allow :: forall r i. String -> HH.IProp ( allow :: String | r ) i
+allow = HH.prop (HH.PropName "allow")
+frameborder :: forall r i. String -> HH.IProp ( frameborder :: String | r ) i
+frameborder = HH.prop (HH.PropName "frameborder")
 
 albumView :: forall i w. Maybe Album -> DateTime -> HH.HTML w i
 albumView am now = case am of
