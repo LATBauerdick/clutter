@@ -27,6 +27,7 @@ import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
 import Types (Album, AlbumJ)
 import GetStuff (getUrl, getNow)
+import RenderTopMenu (renderTopMenu)
 
 noAlbum :: forall w i. HH.HTML w i
 noAlbum =
@@ -151,10 +152,10 @@ albumElement a now =
         -- , allow "autoplay *; encrypted-media *; fullscreen *"
         ]
       ]
-allow :: forall r i. String -> HH.IProp ( allow :: String | r ) i
-allow = HH.prop (HH.PropName "allow")
-frameborder :: forall r i. String -> HH.IProp ( frameborder :: String | r ) i
-frameborder = HH.prop (HH.PropName "frameborder")
+-- allow :: forall r i. String -> HH.IProp ( allow :: String | r ) i
+-- allow = HH.prop (HH.PropName "allow")
+-- frameborder :: forall r i. String -> HH.IProp ( frameborder :: String | r ) i
+-- frameborder = HH.prop (HH.PropName "frameborder")
 
 albumView :: forall i w. Maybe Album -> DateTime -> HH.HTML w i
 albumView am now = case am of
@@ -184,7 +185,8 @@ render :: forall m. State -> H.ComponentHTML Action () m
 render state = do
   HH.div_
     [
-      HH.h1_ [ HH.text "This it the Clutter App!" ]
+      renderTopMenu
+    , HH.h1_ [ HH.text "This it the Clutter App!" ]
     , HH.button [ HE.onClick \_ -> Decrement ] [ HH.text "-" ]
     , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
     , HH.form
