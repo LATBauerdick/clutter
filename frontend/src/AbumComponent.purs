@@ -25,7 +25,7 @@ import Data.String.Pattern (Pattern(..), Replacement(..))
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types (Album, AlbumJ)
+import Types (Album, AlbumJ, MenuState, SortOrder(..))
 import GetStuff (getUrl, getNow)
 import RenderTopMenu (renderTopMenu)
 
@@ -167,6 +167,7 @@ type State =  { album :: Maybe Album
               , albumID :: String
               , now :: DateTime
               , result :: Maybe String
+              , menu :: MenuState
               }
 data Action = Increment | Decrement | SetAlbumID String | MakeRequest Event
 
@@ -179,13 +180,27 @@ aComponent am now =
   }
 
 initialState :: forall input. Maybe Album -> DateTime -> input -> State
-initialState am now _ = { album: am, loading: false, albumID: "659642", now: now, result: Nothing }
+initialState am now _ = { album: am, loading: false, albumID: "659642", now: now, result: Nothing, menu : initialMenuState }
+
+initialMenuState :: MenuState
+initialMenuState =
+  { uhq : "localhost:8080/albums/"
+  , ln : "Discogs" -- list
+  , ffs : [ "pop" ]
+  , sorts : [ "Added", "Artist", "Default", "Title" ]
+  , sortName : "Default"
+  , sso : Asc
+  , sts : [ "folder.cd", "folder.pop", "genre.classical", "genre.opera", "rated.*****" ] -- sorted tags
+  , listNames : [ "2022 Listened", "All", "Apple Music",  "Discogs", "Pop", "Tidal" ]
+  , locNames : [ "Cube A0", "Cube B0 Pop", "Cube E0 Incoming", "Cube E1 Incoming", "Shelf A1 Opera" ]
+  }
+
 
 render :: forall m. State -> H.ComponentHTML Action () m
 render state = do
   HH.div_
     [
-      renderTopMenu
+      renderTopMenu state.menu
     , HH.h1_ [ HH.text "This it the Clutter App!" ]
     , HH.button [ HE.onClick \_ -> Decrement ] [ HH.text "-" ]
     , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
