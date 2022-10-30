@@ -3,15 +3,25 @@ module Types  ( Album
               , SortOrder (..)
               , State
               , MenuState
+              , MenuParams
+              , ParamsJ
               , Action (..)
               ) where
 
+import Prelude
 import Data.Maybe (Maybe)
 import Data.DateTime (DateTime)
 import Web.Event.Event (Event)
+import Data.Generic.Rep (class Generic)
+import Data.Show.Generic (genericShow)
 
 data SortOrder = Asc | Desc
--- derive instance enumSortOrder :: Enum SortOrder
+
+derive instance genericSortOrder :: Generic SortOrder _
+instance showSortOrder :: Show SortOrder where
+  show = genericShow
+  -- show Asc = "Asc"
+  -- show Desc = "Desc"
 
 type Album =  { albumID :: Int
               , albumAMusic :: Maybe String
@@ -40,15 +50,20 @@ type State =  { album :: Maybe Album
               , result :: Maybe String
               , menu :: MenuState
               }
-type MenuState =  { uhq :: String
-                  , ln :: String
-                  , ffs :: Array String
-                  , sorts :: Array String
-                  , sortName :: String
-                  , sso :: SortOrder
-                  , sts :: Array String
-                  , listNames :: Array String
-                  , locNames :: Array String
+type MenuState = { params :: MenuParams
+                 , ln :: String
+                 , ffs :: Array String
+                 , sortName :: String
+                 , sso :: SortOrder
+                 }
+type MenuParams = { muhq :: String
+                  , msorts :: Array String
+                  , msts :: Array String
+                  , mlistNames :: Array String
+                  , mlocNames :: Array String
                   }
+type ParamsJ = { timeStamp :: String
+               , params :: MenuParams
+               }
 
 data Action = Increment | Decrement | SetAlbumID String | MakeRequest Event

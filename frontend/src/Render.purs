@@ -4,7 +4,7 @@ module Render (
 
 import Prelude
 import Data.Maybe (Maybe(..))
-import Data.Either (Either(..), fromRight)
+import Data.Either (fromRight)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
@@ -18,7 +18,7 @@ import Data.String (take) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
-import Types (Album, State, MenuState, Action(..))
+import Types (Album, State, Action(..))
 import RenderTopMenu (renderTopMenu)
 
 render :: forall m. State -> H.ComponentHTML Action () m

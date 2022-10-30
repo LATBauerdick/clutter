@@ -9,6 +9,7 @@ module Env
     envTidalConnect,
     envGetTag,
     envUpdateSort,
+    envUpdateMenuParams,
   )
 where
 
@@ -35,10 +36,8 @@ import Provider
     readFolderAids,
     readFolders,
     readDiscogsFolders,
-    readFoldersCache,
     readListAids,
     readDiscogsLists,
-    readListsCache,
     readLists,
     updateTidalFolderAids,
     updateAMusicFolderAids,
@@ -52,7 +51,9 @@ import Types
     AppM,
     Env (..),
     EnvR (..),
+    envGetEnvr,
     SortOrder (..),
+    MenuParams(..),
     Tidal (..),
     TidalInfo (..),
     AMusic (..),
@@ -60,6 +61,7 @@ import Types
     pLocList,
   )
 
+import qualified Data.Text as T (find)
 
 envTidalConnect :: Int -> AppM Env
 envTidalConnect _nalbums = do
@@ -105,6 +107,37 @@ envTidalConnect _nalbums = do
   _ <- writeIORef (sortOrderR env) Asc
 
   pure env
+
+envUpdateMenuParams :: AppM MenuParams
+envUpdateMenuParams = do
+  envr <- envGetEnvr
+  env <- ask
+
+  let uhq :: Text; uhq = url env <> "albums/"
+ -- "localhost:8080/albums/"
+
+      ss = sorts env
+ -- [ "Added", "Artist", "Default", "Title" ]
+
+      sts :: [Text] -- sorted tags
+      sts = filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
+          <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
+ -- [ "folder.cd", "folder.pop", "genre.classical", "genre.opera", "rated.*****" ] -- sorted tags
+
+      sli = filter (not . pLocList) $ M.keys (listNames envr)
+ --  [ "2020 Listened", "2021 Listened", "2022 Listened", "All", "Apple Music",  "Discogs", "Pop", "Tidal" ]
+
+      slo = filter pLocList $ M.keys (listNames envr)
+ -- [ "Cube A0", "Cube B0 Pop", "Cube E0 Incoming", "Cube E1 Incoming", "Shelf A1 Opera" ]
+
+
+  let ms = MenuParams { muhq = uhq
+                      , msorts = ss
+                      , msts = sts
+                      , mlistNames = sli
+                      , mlocNames = slo
+                      }
+  pure ms
 
 -- get laters n releases from Discogs
 -- also update folders and lists, update other metadata

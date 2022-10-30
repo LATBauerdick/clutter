@@ -30,16 +30,16 @@ renderTopMenu state =
     ]
   where
 
-  uhq = state.uhq -- "localhost:8080/albums/"
+  uhq = state.params.muhq -- "localhost:8080/albums/"
+  sorts = state.params.msorts
+  sts = state.params.msts
+  listNames = state.params.mlistNames
+  locNames = state.params.mlocNames
+
+  sortName = state.sortName
   ln = state.ln
   ffs = state.ffs
-  sorts = state.sorts
-  sortName = state.sortName
   sso = state.sso
-  sts = state.sts
-  listNames = state.listNames
-  locNames = state.locNames
-
 
   renderShow :: forall w i. Array (HH.HTML w i)
   renderShow = [

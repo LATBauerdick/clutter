@@ -7,48 +7,63 @@ import Data.Either (Either(..))
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
+import Effect.Aff (Aff)
 import Effect (Effect)
 import Effect.Class.Console as Console
-
-import GetStuff (getUrl, getNow, _encodeURIComponent)
-import Types (AlbumJ)
-
 import Halogen.Aff as HA
 import Halogen.VDom.Driver (runUI)
-import AlbumComponent (aComponent)
 
-type J0 = { data :: { id :: Int
-                    , email :: String
-                    , first_name :: String
-                    , last_name :: String
-                    , avatar :: String
-                    , j1dummy :: Maybe String
-                    }
-          }
+import GetStuff (getUrl, getNow, _encodeURIComponent)
+import Types (AlbumJ, State, MenuState, MenuParams, ParamsJ, SortOrder(..))
+
+import AlbumComponent (aComponent)
 
 main :: Effect Unit
 main = HA.runHalogenAff do
   Console.log "🍝 Rendering clutter component"
   Console.log $ _encodeURIComponent "🍝 Rendering clutter component"
 
-  str0 <- getUrl "https://reqres.in/api/users/1"
-  Console.logShow ((decodeJson =<< parseJson str0) :: Either JsonDecodeError J0)
+  is <- initialState
 
-  str <- getUrl "http://localhost:8080/albumj/659642"
+  body <- HA.awaitBody
+
+  runUI ( aComponent is ) unit body
+
+initialState :: Aff State
+initialState = do -- should eventually be saved in preferences
+  let initialAlbumID = 659642 -- 19722988
+  str <- getUrl $ "http://localhost:8080/albumq/" <> show initialAlbumID
   let aje :: Either JsonDecodeError AlbumJ
       aje = (decodeJson =<< parseJson str) -- :: Either JsonDecodeError AlbumJ
   let am = case aje of
-                    Right { aid: _, album: a } -> Just a
+                    Right { album: a } -> Just a
                     Left _ -> Nothing
-  Console.logShow aje
   now <- getNow
-  Console.logShow now
+  sjs <- getUrl $ "http://localhost:8080/paramsq/all"
+  let sje = (decodeJson =<< parseJson sjs) :: Either JsonDecodeError ParamsJ
+  Console.logShow sje
+  let mps = case sje of
+                    Right { params: ps } -> ps
+                    Left _ -> initialMenuParams
+  -- Console.logShow aje
+  -- Console.logShow now
+  let ms :: MenuState
+      ms = { sortName : "Default"
+           , ln : "Discogs" -- list
+           , ffs : [ "pop" ]
+           , sso : Asc
+           , params : mps
+           }
 
-  body <- HA.awaitBody
-  runUI ( aComponent am now ) unit body
+  pure { album: am, loading: false, albumID: show initialAlbumID, now: now, result: Nothing, menu : ms }
 
-type State =
-  { getResponse :: String
-  , postInfo :: String
+initialMenuParams :: MenuParams
+initialMenuParams =
+  { muhq : "localhost:8080/albums/"
+  , msorts : [ "Added", "Artist", "Default", "Title" ]
+  , msts : [ "folder.cd", "folder.pop", "genre.classical", "genre.opera", "rated.*****" ] -- sorted tags
+  , mlistNames : [ "2022 Listened", "All", "Apple Music",  "Discogs", "Pop", "Tidal" ]
+  , mlocNames : [ "Cube A0", "Cube B0 Pop", "Cube E0 Incoming", "Cube E1 Incoming", "Shelf A1 Opera" ]
   }
+
 

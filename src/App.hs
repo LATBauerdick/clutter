@@ -13,7 +13,7 @@ module App
 where
 
 import qualified Data.ByteString.Lazy as BL
-import Data.Time (getZonedTime)
+import Data.Time (getZonedTime, formatTime, defaultTimeLocale)
 
 
 import Env
@@ -23,6 +23,7 @@ import Env
   , envTidalConnect
   , envGetTag
   , envUpdateSort
+  , envUpdateMenuParams
   )
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
@@ -35,7 +36,7 @@ import Control.Monad (foldM)
 import Relude
 import Render ( renderAlbumView, renderAlbumsView )
 import Servant
-import Types (Album, AppM, Env (..), EnvR (..))
+import Types (Album, MenuParams(..), AppM, Env (..), EnvR (..))
 
 import Data.Aeson (ToJSON (..))
 
@@ -75,9 +76,13 @@ type API3 = "provider"
     :> QueryParam "nalbums" Int -- update last n tidal albums, all if null
     :> Get '[HTML] RawHtml
 
-type API4 = "albumj"
+type API4 = "albumq"
     :> Capture "aid" Int
     :> Get '[JSON] AlbumJ
+
+type API5 = "paramsq"
+    :> "all"
+    :> Get '[JSON] ParamsJ
 
 data AlbumJ = AlbumJ
   { aid :: Int
@@ -87,7 +92,15 @@ data AlbumJ = AlbumJ
 instance ToJSON Album
 instance ToJSON AlbumJ
 
-type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> Raw
+data ParamsJ = ParamsJ
+  { timeStamp :: Text
+  , params :: MenuParams
+  } deriving (Eq, Show, Generic)
+
+instance ToJSON ParamsJ
+instance ToJSON MenuParams
+
+type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> API5 :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
 clutterAPI = Proxy
@@ -118,19 +131,30 @@ clutterServer = serveAlbum
             :<|> serveAlbums
             :<|> serveDiscogs
             :<|> serveTidal
-            :<|> serveAlbumJ
+            :<|> serveAlbumq
+            :<|> serveParamsq
             :<|> serveDirectoryFileServer "static"
   where
 --{{{clutterServer
-    serveAlbumJ :: Int -> AppM AlbumJ
-    serveAlbumJ aid = do
-      liftIO $ print ("-------serveAlbumJ " :: Text, aid )
-      now <- liftIO getZonedTime -- `debugId`
+    serveAlbumq :: Int -> AppM AlbumJ
+    serveAlbumq aid = do
+      liftIO $ print ("-------serveAlbumq " :: Text, aid )
       ma <- envUpdateAlbum aid
       let aj = case ma of
             Just a -> AlbumJ { aid = aid, album =  Just a }
             _ -> AlbumJ { aid = 0, album = Nothing }
       pure aj
+
+    serveParamsq :: AppM ParamsJ
+    serveParamsq = do
+      liftIO $ print ("-------serveParamsq " :: Text)
+      now <- liftIO getZonedTime -- `debugId`
+      let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+      ms <- envUpdateMenuParams
+      let sj = ParamsJ  { timeStamp = dtl
+                        , params = ms
+                        }
+      pure sj
 
     serveAlbum :: Int -> AppM RawHtml
     serveAlbum aid = do

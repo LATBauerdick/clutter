@@ -12,6 +12,7 @@ module Types ( Tidal (..)
              , Release (..)
              , Album (..)
              , SortOrder (..)
+             , MenuParams (..)
              , AppM
              , Env (..)
              , EnvR (..)
@@ -42,6 +43,13 @@ data TagFolder = TDiscogs | TNotUsed | TTidal | TAll | TAMusic
 
 data SortOrder = Asc | Desc
   deriving (Enum, Read, Show, Eq, Ord)
+
+data MenuParams = MenuParams { muhq :: Text
+                  , msorts :: Vector Text
+                  , msts :: [Text]
+                  , mlistNames :: [Text]
+                  , mlocNames :: [Text]
+                  } deriving (Eq, Show, Generic)
 
 pLocList :: Text -> Bool  -- lists with location info
 pLocList n = case viaNonEmpty head . words $ n of
