@@ -121,7 +121,7 @@ addAllOriginsMiddleware baseApp = \req responseFunc -> baseApp req (responseFunc
 addOriginsAllowed :: Response -> Response
 addOriginsAllowed = mapResponseHeaders $
   (:) ("Access-Control-Allow-Origin", "*")
-
+  -- (:) ("Content-Security-Policy", "navigate-to * ")
 
 app :: Env -> Application
 app env = addAllOriginsMiddleware $ serve clutterAPI $ hoistServer clutterAPI (nt env) clutterServer

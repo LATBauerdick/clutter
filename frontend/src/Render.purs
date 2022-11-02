@@ -72,9 +72,10 @@ renderListView l =
   HH.div
     [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
     [ HH.iframe
-      [ HP.src ("http://localhost:8080/albums/" <> show l)
-      , HP.title "iframe_a"
-      , HP.style "height:600px;width:100%;"
+      [ HP.src ("http://localhost:8080/albums/" <> l)
+      , HP.id "xFrame"
+      , HP.title "Clutter List View"
+      , HP.style "height:600px;width:100%;border:none;"
       -- , frameborder "0"
       -- , allow "autoplay *; encrypted-media *; fullscreen *"
       ]
@@ -110,7 +111,10 @@ renderAlbumView a now =
             [ HH.text "here" ]
           ]
         , HH.a
-          [ HP.href a.albumURL]
+          [ HP.href a.albumURL
+          , HP.target "_blank"
+          , HP.rel "noopener noreferrer"
+          ]
           [ HH.img [ HP.src a.albumCover
                    , HP.alt "cover image"
                    --, HP.onerror "this.onerror=null;this.src='/no-cover.png';"

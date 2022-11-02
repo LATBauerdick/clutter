@@ -22,14 +22,23 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderFocus
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonSort
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] [renderButtonOrder]
-    , HH.a   [ HP.class_ $ HH.ClassName "active"
-             , HP.href (uhq <> "2022 Listened?&sortBy=Default&sortOrder=Desc")
-             ]
-             [ HH.text "Listened" ]
-    , HH.a   [ HP.class_ $ HH.ClassName "active"
-             , HP.href (uhq <> "Discogs")
-             ]
-             [ HH.text "Discogs" ]
+    -- , HH.a   [ HP.class_ $ HH.ClassName "active"
+    --          , HP.href (uhq <> "2022 Listened?&sortBy=Default&sortOrder=Desc")
+    --          ]
+    --          [ HH.text "Listened" ]
+    -- , HH.a   [ HP.class_ $ HH.ClassName "active"
+    --          , HP.href (uhq <> "Discogs")
+    --          ]
+    --          [ HH.text "Discogs" ]
+    , HH.div [HP.class_ $ HH.ClassName "dropdown"]
+      [ HH.button
+        [ HP.class_ $ HH.ClassName "dropbtn"
+        , HE.onClick \ev -> ShowList ev $ AlbumList (Just "2022 Listened?&sortBy=Default&sortOrder=Desc")
+        , HP.type_ HP.ButtonSubmit
+        , HP.disabled state.loading
+        ]
+        [ HH.text "Listened" ]
+      ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn"
@@ -37,7 +46,7 @@ renderTopMenu state =
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]
-        [ HH.text "Show Discogs" ]
+        [ HH.text "Discogs" ]
       ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonList
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonLocation
@@ -121,24 +130,36 @@ renderTopMenu state =
            ]
     ]
 
-  renderButtonList :: forall w i. Array (HH.HTML w i)
-  renderButtonList = [
-    HH.button [HP.class_ $ HH.ClassName "dropbtn"]
-    [ HH.text "List "
-    , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
+  renderButtonList :: forall m. Array ( H.ComponentHTML Action () m )
+  renderButtonList =
+    [
+      HH.button
+      [ HP.class_ $ HH.ClassName "dropbtn"]
+      [ HH.text "List "
+      , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
+      ]
+    , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
+        ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "xxx"
+                               , HE.onClick (\ev -> ShowList ev ( AlbumList (Just x) ))
+                               ]
+                               [ HH.text x ])
+                     listNames )
     ]
-  , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
-      ( map (\x -> HH.a [ HP.href (uhq <> "" <> x) ] [ HH.text x ]) listNames )
-  ]
 
-  renderButtonLocation :: forall w i. Array (HH.HTML w i)
+  renderButtonLocation :: forall m. Array ( H.ComponentHTML Action () m )
   renderButtonLocation = [
     HH.button [HP.class_ $ HH.ClassName "dropbtn"]
     [ HH.text "Location "
     , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
     ]
   , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
-      ( map (\x -> HH.a [ HP.href (uhq <> "" <> x) ] [ HH.text x ]) locNames )
+        ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "dropdown"
+                               , HE.onClick (\ev -> ShowList ev ( AlbumList (Just x) ))
+                               ]
+                               [ HH.text x ])
+                     locNames )
+      -- ( map (\x -> HH.a [ HP.href (uhq <> "" <> x) ] [ HH.text x ]) locNames )
+      -- ( map (\x -> HH.text x ) locNames )
   ]
 
   renderButtonTags :: forall w i. Array (HH.HTML w i)
