@@ -14,7 +14,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (AlbumJ , State, Action(..))
+import Types  (AlbumJ , State, AlbumList(..), Action(..))
 import GetStuff (getUrl, getNow)
 import Render (render)
 
@@ -38,9 +38,9 @@ handleAction = case _ of
     H.modify_ _ { albumID = albumID, now = now, result = Nothing }
   MakeRequest event -> do
     H.liftEffect $ Event.preventDefault event
+    H.modify_ _ { list = AlbumList Nothing, loading = true }
     albumID <- H.gets _.albumID
     now <- H.liftAff getNow
-    H.modify_ _ { loading = true }
     r <- H.liftAff $ getUrl ("http://localhost:8080/albumq/" <> albumID)
     H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ)
     let aje :: Either JsonDecodeError AlbumJ
@@ -48,5 +48,10 @@ handleAction = case _ of
     let am = case aje of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
-
     H.modify_ _ { album = am, loading = false, result = Just r, now = now}
+  ShowList event alist -> do
+    -- H.liftEffect $ Event.preventDefault event
+    H.modify_ _ { list = alist, loading = true }
+    let AlbumList ml = alist
+    H.liftAff $ Console.logShow ml
+    H.modify_ _ { loading = false }

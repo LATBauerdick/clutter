@@ -4,15 +4,17 @@ module RenderTopMenu (
 
 import Prelude
 
--- import Halogen as H
+import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
+import Halogen.HTML.Events as HE
 
 import Data.Foldable (intercalate)
+import Data.Maybe (Maybe(..))
 
-import Types (SortOrder (..), MenuState)
+import Types (SortOrder (..), State, AlbumList(..),  Action(..))
 
-renderTopMenu :: forall w' i'. MenuState -> HH.HTML w' i'
+renderTopMenu :: forall m. State -> H.ComponentHTML Action () m
 renderTopMenu state =
   HH.div
     [ HP.id "navbar" ]
@@ -21,31 +23,47 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonSort
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] [renderButtonOrder]
     , HH.a   [ HP.class_ $ HH.ClassName "active"
-             , HP.href (uhq <> "2022 Listened?&sortBy=Default&sortOrder=Desc")] [ HH.text "Listened" ]
+             , HP.href (uhq <> "2022 Listened?&sortBy=Default&sortOrder=Desc")
+             ]
+             [ HH.text "Listened" ]
     , HH.a   [ HP.class_ $ HH.ClassName "active"
-             , HP.href (uhq <> "Discogs")] [ HH.text "Discogs" ]
+             , HP.href (uhq <> "Discogs")
+             ]
+             [ HH.text "Discogs" ]
+    , HH.div [HP.class_ $ HH.ClassName "dropdown"]
+      [ HH.button
+        [ HP.class_ $ HH.ClassName "dropbtn"
+        , HE.onClick \ev -> ShowList ev $ AlbumList (Just "Discogs")
+        , HP.type_ HP.ButtonSubmit
+        , HP.disabled state.loading
+        ]
+        [ HH.text "Show Discogs" ]
+      ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonList
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonLocation
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonTags
     ]
   where
 
-  uhq = state.params.muhq -- "localhost:8080/albums/"
-  sorts = state.params.msorts
-  sts = state.params.msts
-  listNames = state.params.mlistNames
-  locNames = state.params.mlocNames
+  uhq = state.menu.params.muhq -- "localhost:8080/albums/"
+  sorts = state.menu.params.msorts
+  sts = state.menu.params.msts
+  listNames = state.menu.params.mlistNames
+  locNames = state.menu.params.mlocNames
 
-  sortName = state.sortName
-  ln = state.ln
-  ffs = state.ffs
-  sso = state.sso
+  sn = state.menu.sortName
+  ln =  state.menu.ln
+  ffs = state.menu.ffs
+  sso = state.menu.sso
 
   renderShow :: forall w i. Array (HH.HTML w i)
   renderShow = [
-    HH.button [HP.class_ $ HH.ClassName "dropbtn"] [
+    HH.button
+    [ HP.class_ $ HH.ClassName "dropbtn"
+    ]
+    [
       HH.a [ HP.class_ $ HH.ClassName "dropbtn"
-           , HP.href ("http:8080/albums/" <> ln)
+           , HP.href (uhq <> ln)
            ]
            [ HH.text $ "Showing " <> ln ]
     ]
@@ -85,8 +103,8 @@ renderTopMenu state =
   renderButtonSort :: forall w i. Array (HH.HTML w i)
   renderButtonSort = [
     HH.button [HP.class_ $ HH.ClassName "dropbtn"]
-    [ HH.text $ "Sort " <> if sortName /= "Default"
-                            then "by " <> sortName <> " "
+    [ HH.text $ "Sort " <> if sn /= "Default"
+                            then "by " <> sn <> " "
                             else ""
     ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
@@ -110,7 +128,7 @@ renderTopMenu state =
     , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
     ]
   , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
-      ( map (\x -> HH.a [ HP.href (uhq <> "#xxx" <> x) ] [ HH.text x ]) listNames )
+      ( map (\x -> HH.a [ HP.href (uhq <> "" <> x) ] [ HH.text x ]) listNames )
   ]
 
   renderButtonLocation :: forall w i. Array (HH.HTML w i)
@@ -130,5 +148,5 @@ renderTopMenu state =
     , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
     ]
   , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
-      ( map (\x -> HH.a [ HP.href (uhq <> "#xxx" <> x) ] [ HH.text x ]) sts )
+      ( map (\x -> HH.a [ HP.href (uhq <> "" <> x) ] [ HH.text x ]) sts )
   ]

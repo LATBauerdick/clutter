@@ -14,7 +14,7 @@ import Halogen.Aff as HA
 import Halogen.VDom.Driver (runUI)
 
 import GetStuff (getUrl, getNow, _encodeURIComponent)
-import Types (AlbumJ, State, MenuState, MenuParams, ParamsJ, SortOrder(..))
+import Types (AlbumJ, State, AlbumList(..), MenuState, MenuParams, ParamsJ, SortOrder(..))
 
 import AlbumComponent (aComponent)
 
@@ -55,15 +55,17 @@ initialState = do -- should eventually be saved in preferences
            , params : mps
            }
 
-  pure { album: am, loading: false, albumID: show initialAlbumID, now: now, result: Nothing, menu : ms }
+  pure { list: AlbumList Nothing, album: am, loading: false, albumID: show initialAlbumID, now: now, result: Nothing
+       , menu : ms { params { muhq = "http://192.168.0.221:8080/albums/" } } 
+       }
 
 initialMenuParams :: MenuParams
 initialMenuParams =
   { muhq : "localhost:8080/albums/"
   , msorts : [ "Added", "Artist", "Default", "Title" ]
-  , msts : [ "folder.cd", "folder.pop", "genre.classical", "genre.opera", "rated.*****" ] -- sorted tags
-  , mlistNames : [ "2022 Listened", "All", "Apple Music",  "Discogs", "Pop", "Tidal" ]
-  , mlocNames : [ "Cube A0", "Cube B0 Pop", "Cube E0 Incoming", "Cube E1 Incoming", "Shelf A1 Opera" ]
+  , msts : [ ] -- sorted tags
+  , mlistNames : [ ]
+  , mlocNames : [ ]
   }
 
 

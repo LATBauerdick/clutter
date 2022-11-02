@@ -4,6 +4,7 @@ module Types  ( Album
               , State
               , MenuState
               , MenuParams
+              , AlbumList (..)
               , ParamsJ
               , Action (..)
               ) where
@@ -12,6 +13,7 @@ import Prelude
 import Data.Maybe (Maybe)
 import Data.DateTime (DateTime)
 import Web.Event.Event (Event)
+import Web.UIEvent.MouseEvent (MouseEvent)
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 
@@ -43,7 +45,10 @@ type AlbumJ = { aid :: Int
               , album :: Album
               }
 
+newtype AlbumList = AlbumList (Maybe  String)
+
 type State =  { album :: Maybe Album
+              , list :: AlbumList
               , loading :: Boolean
               , albumID :: String
               , now :: DateTime
@@ -66,4 +71,4 @@ type ParamsJ = { timeStamp :: String
                , params :: MenuParams
                }
 
-data Action = Increment | Decrement | SetAlbumID String | MakeRequest Event
+data Action = Increment | Decrement | SetAlbumID String | MakeRequest Event | ShowList MouseEvent AlbumList

@@ -18,17 +18,15 @@ import Data.String (take) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
-import Types (Album, State, Action(..))
+import Types (Album, State, AlbumList(..), Action(..))
 import RenderTopMenu (renderTopMenu)
 
 render :: forall m. State -> H.ComponentHTML Action () m
 render state = do
   HH.div_
     [
-      renderTopMenu state.menu
+      renderTopMenu state
     , HH.h1_ [ HH.text "This it the Clutter App!" ]
-    , HH.button [ HE.onClick \_ -> Decrement ] [ HH.text "-" ]
-    , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
     , HH.form
       [ HE.onSubmit \ev -> MakeRequest ev ]
       [ HH.h3_ [ HH.text "Look up Album ID" ]
@@ -46,17 +44,40 @@ render state = do
           [ HH.text "Fetch info" ]
       , HH.p_
           [ HH.text if state.loading then "Working..." else "" ]
-      , HH.div_
-          case state.result of
-            Nothing -> []
-            Just res ->
-              [ HH.h2_
-                  [ HH.text "Response:" ]
-              , HH.pre_
-                  [ HH.code_ [ HH.text res ] ]
-              ]
       ]
-    , albumView state.album state.now
+    , case state.list of
+          AlbumList Nothing  -> albumView state.album state.now
+          AlbumList (Just a) -> listView state.list
+    -- , HH.div_
+    --     case state.result of
+    --       Nothing -> []
+    --       Just res ->
+    --         [ HH.h2_
+    --             [ HH.text "Response:" ]
+    --         , HH.pre_
+    --             [ HH.code_ [ HH.text res ] ]
+    --         ]
+    -- , HH.button [ HE.onClick \_ -> Decrement ] [ HH.text "-" ]
+    -- , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
+    ]
+
+listView :: forall i w. AlbumList -> HH.HTML w i
+listView (AlbumList ml) = case ml of
+                    Nothing -> HH.div_ [ noAlbum ]
+                    Just l  -> renderListView l
+
+renderListView :: forall w i. String -> HH.HTML w i
+renderListView l =
+  -- HH.div_ [ HH.h3_ [ HH.text $ "List " <> l ] ]
+  HH.div
+    [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
+    [ HH.iframe
+      [ HP.src ("http://localhost:8080/albums/" <> show l)
+      , HP.title "iframe_a"
+      , HP.style "height:600px;width:100%;"
+      -- , frameborder "0"
+      -- , allow "autoplay *; encrypted-media *; fullscreen *"
+      ]
     ]
 
 albumView :: forall i w. Maybe Album -> DateTime -> HH.HTML w i
@@ -68,8 +89,8 @@ renderAlbumView :: forall w i. Album -> DateTime -> HH.HTML w i
 renderAlbumView a now =
   case a.albumFormat of
             "AppleMusic" -> appleMusicView
-            "Tidal" -> tidalView
-            _ -> discogsView
+            "Tidal"      -> testView
+            _            -> discogsView
   where
   appleMusicView = discogsView
   tidalView = discogsView
@@ -102,67 +123,71 @@ renderAlbumView a now =
       , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]
       , HH.br_
       , HH.div
-          [ HP.class_ ( HH.ClassName "quoteable" )
-          -- , CSS.style do
-          --     fontSize $ px 20.0
-          --     backgroundColor orange
-          ]
-          ([ HH.samp_ [ HH.text $ dt <> "-" <> ttl ]
-          , HH.br_
-          , HH.samp_ [ HH.text "---" ]
-          , HH.br_
-          , HH.samp_ [ HH.text $ "date: " <> dtl ]
-          , HH.br_
-          , HH.samp_ [ HH.text ("title: " <> ttl) ]
-          , HH.br_
-          , HH.samp_ [ HH.text "---" ]
-          , HH.br_
-          , HH.samp_ [ HH.text ("### " <> a.albumArtist <> " – " <> a.albumTitle) ]
-          , HH.br_
-          , HH.samp_ [ HH.text ("[![](" <> a.albumCover <> ")][1] ") ]
-          , HH.br_
-          -- reference-style link to album page
-          , HH.br_
-          , HH.samp_ [ HH.text ("[1]: " <> a.albumURL) ]
-          ]
-          <> case a.albumAMusic of
-                  Nothing -> []
-                  Just amid ->  [ HH.br_
-                                , if S.take 2 amid == "l."
-                                    then HH.samp_ [ HH.text ("[2]: " <> "https://music.apple.com/library/albums/" <> amid) ]
-                                    else HH.samp_ [ HH.text ("[2]: " <> "https://music.apple.com/us/album/" <> amid) ]
-                                ]
-          <> case a.albumTidal of
-                  Nothing -> []
-                  Just tid ->  [ HH.br_
-                               , HH.samp_ [ HH.text ("[3]: " <> "https://listen.tidal.com/album/" <> tid) ]
-                               ]
-          -- icon with link to album page
-          <> [ HH.br_
-             , HH.br_
-             ]
-          <> case a.albumAMusic of
-                  Nothing -> []
-                  Just _ -> [ HH.samp_ [ HH.text "[![[attachments/am-is.png]]][2]"  ]
-                            ]
-          <> case a.albumTidal of
-                  Nothing -> []
-                  Just _ -> [ HH.samp_ [ HH.text "[![[attachments/tidal-is.png]]][3]" ] ]
-          -- embeded player for album
-          <> [ HH.br_ ]
-          <> case a.albumAMusic of
-                  Nothing -> []
-                  Just amid -> [ HH.br_
-                               , HH.samp_ [ HH.text $ "<iframe allow=\"autoplay *; encrypted-media *; fullscreen *\" frameborder=\"0\" height=\"450\" style=\"width:100%;max-width:660px;overflow:hidden;background:transparent;\" sandbox=\"allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation\" src=\"https://embed.music.apple.com/us/album/turn-blue/" <> amid <> "\"></iframe>" ]
-                               ]
-          <> case a.albumTidal of
-                  Nothing -> []
-                  Just tid -> [ HH.br_
-                              , HH.samp_ [ HH.text $ "<div style=\"position: relative; padding-bottom: 100%; height: 0; overflow: hidden; max-width: 100%;\"><iframe src=\"https://embed.tidal.com/albums/" <> tid <> "?layout=gridify\" frameborder= \"0\" allowfullscreen style=\"position: absolute; top: 0; left: 0; width: 100%; height: 1px; min-height: 100%; margin: 0 auto;\"></iframe></div>" ]
-                  ]
+        [ HP.class_ ( HH.ClassName "quoteable" )
+        -- , CSS.style do
+        --     fontSize $ px 20.0
+        --     backgroundColor orange
+        ]
+        ([ HH.samp_ [ HH.text $ dt <> "-" <> ttl ]
+        , HH.br_
+        , HH.samp_ [ HH.text "---" ]
+        , HH.br_
+        , HH.samp_ [ HH.text $ "date: " <> dtl ]
+        , HH.br_
+        , HH.samp_ [ HH.text ("title: " <> ttl) ]
+        , HH.br_
+        , HH.samp_ [ HH.text "---" ]
+        , HH.br_
+        , HH.samp_ [ HH.text ("### " <> a.albumArtist <> " – " <> a.albumTitle) ]
+        , HH.br_
+        , HH.samp_ [ HH.text ("[![](" <> a.albumCover <> ")][1] ") ]
+        , HH.br_
+        -- reference-style link to album page
+        , HH.br_
+        , HH.samp_ [ HH.text ("[1]: " <> a.albumURL) ]
+        ]
+        <> case a.albumAMusic of
+                Nothing -> []
+                Just amid ->  [ HH.br_
+                              , if S.take 2 amid == "l."
+                                  then HH.samp_ [ HH.text ("[2]: " <> "https://music.apple.com/library/albums/" <> amid) ]
+                                  else HH.samp_ [ HH.text ("[2]: " <> "https://music.apple.com/us/album/" <> amid) ]
+                              ]
+        <> case a.albumTidal of
+                Nothing -> []
+                Just tid ->  [ HH.br_
+                              , HH.samp_ [ HH.text ("[3]: " <> "https://listen.tidal.com/album/" <> tid) ]
+                              ]
+        -- icon with link to album page
+        <> [ HH.br_
+            , HH.br_
+            ]
+        <> case a.albumAMusic of
+                Nothing -> []
+                Just _ -> [ HH.samp_ [ HH.text "[![[attachments/am-is.png]]][2]"  ]
+                          ]
+        <> case a.albumTidal of
+                Nothing -> []
+                Just _ -> [ HH.samp_ [ HH.text "[![[attachments/tidal-is.png]]][3]" ] ]
+        -- embeded player for album
+        <> [ HH.br_ ]
+        <> case a.albumAMusic of
+                Nothing -> []
+                Just amid -> [ HH.br_
+                              , HH.samp_ [ HH.text $ "<iframe allow=\"autoplay *; encrypted-media *; fullscreen *\" frameborder=\"0\" height=\"450\" style=\"width:100%;max-width:660px;overflow:hidden;background:transparent;\" sandbox=\"allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation\" src=\"https://embed.music.apple.com/us/album/turn-blue/" <> amid <> "\"></iframe>" ]
+                              ]
+        <> case a.albumTidal of
+                Nothing -> []
+                Just tid -> [ HH.br_
+                            , HH.samp_ [ HH.text $ "<div style=\"position: relative; padding-bottom: 100%; height: 0; overflow: hidden; max-width: 100%;\"><iframe src=\"https://embed.tidal.com/albums/" <> tid <> "?layout=gridify\" frameborder= \"0\" allowfullscreen style=\"position: absolute; top: 0; left: 0; width: 100%; height: 1px; min-height: 100%; margin: 0 auto;\"></iframe></div>" ]
+                ]
 
-          )
-      , HH.iframe
+        )
+      ]
+  testView =
+    HH.div
+      [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
+      [ HH.iframe
         [ HP.src ("http://localhost:8080/album/" <> show a.albumID)
         , HP.title "iframe_a"
         , HP.style "height:600px;width:100%;"
