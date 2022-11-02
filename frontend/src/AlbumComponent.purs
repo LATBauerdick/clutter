@@ -3,7 +3,7 @@ module AlbumComponent (
   ) where
 
 import Prelude
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Either (Either(..))
 import Effect.Class.Console as Console
 
@@ -14,7 +14,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (AlbumJ , State, AlbumList(..), Action(..))
+import Types  (AlbumJ , AlbumsJ, State, AlbumList(..), Action(..))
 import GetStuff (getUrl, getNow)
 import Render (render)
 
@@ -53,5 +53,10 @@ handleAction = case _ of
     -- H.liftEffect $ Event.preventDefault event
     H.modify_ _ { list = alist, loading = true }
     let AlbumList ml = alist
-    H.liftAff $ Console.logShow ml
+        ln = fromMaybe "" ml
+    H.liftAff $ Console.logShow ln
+
+    r <- H.liftAff $ getUrl ("http://localhost:8080/albumsq/" <> ln)
+    H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ)
+
     H.modify_ _ { loading = false }

@@ -1,5 +1,6 @@
 module Types  ( Album
               , AlbumJ
+              , AlbumsJ
               , SortOrder (..)
               , State
               , MenuState
@@ -44,6 +45,10 @@ type Album =  { albumID :: Int
 type AlbumJ = { aid :: Int
               , album :: Album
               }
+
+type AlbumsJ = { listName :: String
+               , lalbums :: Array Album
+               }
 
 newtype AlbumList = AlbumList (Maybe  String)
 

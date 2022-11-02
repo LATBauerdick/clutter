@@ -32,11 +32,12 @@ import Network.Wai.Handler.Warp
 import Data.Text as T (stripPrefix)
 import qualified Data.Vector as V
 import qualified Data.IntSet as Set
+import qualified Data.Map.Strict as M
 import Control.Monad (foldM)
 import Relude
 import Render ( renderAlbumView, renderAlbumsView )
 import Servant
-import Types (Album, MenuParams(..), AppM, Env (..), EnvR (..))
+import Types (Album, MenuParams(..), AppM, Env (..), EnvR (..), envGetEnvr)
 
 import Data.Aeson (ToJSON (..))
 
@@ -80,7 +81,11 @@ type API4 = "albumq"
     :> Capture "aid" Int
     :> Get '[JSON] AlbumJ
 
-type API5 = "paramsq"
+type API5 = "albumsq"
+    :> Capture "list" Text
+    :> Get '[JSON] AlbumsJ
+
+type API6 = "paramsq"
     :> "all"
     :> Get '[JSON] ParamsJ
 
@@ -89,8 +94,14 @@ data AlbumJ = AlbumJ
   , album :: Maybe Album
   } deriving (Eq, Show, Generic)
 
+data AlbumsJ = AlbumsJ
+  { listName :: Text
+  , lalbums :: [Album]
+  } deriving (Eq, Show, Generic)
+
 instance ToJSON Album
 instance ToJSON AlbumJ
+instance ToJSON AlbumsJ
 
 data ParamsJ = ParamsJ
   { timeStamp :: Text
@@ -100,7 +111,7 @@ data ParamsJ = ParamsJ
 instance ToJSON ParamsJ
 instance ToJSON MenuParams
 
-type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> API5 :<|> Raw
+type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> API5 :<|> API6 :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
 clutterAPI = Proxy
@@ -132,16 +143,30 @@ clutterServer = serveAlbum
             :<|> serveDiscogs
             :<|> serveTidal
             :<|> serveAlbumq
+            :<|> serveAlbumsq
             :<|> serveParamsq
             :<|> serveDirectoryFileServer "static"
   where
 --{{{clutterServer
+    serveAlbumsq :: Text -> AppM AlbumsJ
+    serveAlbumsq ln = do
+      liftIO $ print ("-------serveAlbumsq " :: Text, ln )
+
+      envr <- envGetEnvr
+      gl <- asks getList
+      aids <- gl ln
+
+      let la = mapMaybe (`M.lookup` albums envr) . V.toList $ aids
+
+      let asj = AlbumsJ { listName = ln, lalbums = la }
+      pure asj
+
     serveAlbumq :: Int -> AppM AlbumJ
-    serveAlbumq aid = do
-      liftIO $ print ("-------serveAlbumq " :: Text, aid )
-      ma <- envUpdateAlbum aid
+    serveAlbumq i = do
+      liftIO $ print ("-------serveAlbumq " :: Text, i )
+      ma <- envUpdateAlbum i
       let aj = case ma of
-            Just a -> AlbumJ { aid = aid, album =  Just a }
+            Just a -> AlbumJ { aid = i, album =  Just a }
             _ -> AlbumJ { aid = 0, album = Nothing }
       pure aj
 
@@ -157,21 +182,21 @@ clutterServer = serveAlbum
       pure sj
 
     serveAlbum :: Int -> AppM RawHtml
-    serveAlbum aid = do
-      liftIO $ print ("-------serveAlbum " :: Text, aid )
+    serveAlbum a = do
+      liftIO $ print ("-------serveAlbum " :: Text, a )
       now <- liftIO getZonedTime -- `debugId`
-      ma <- envUpdateAlbum aid
+      ma <- envUpdateAlbum a
       pure . RawHtml $ L.renderBS (renderAlbumView ma now)
 
     serveAlbums :: Text -> Maybe Text -> Maybe Text -> [Text]
                     -> AppM RawHtml
-    serveAlbums listName msb mso fs = do
+    serveAlbums ln msb mso fs = do
       env <- ask
-      liftIO $ print (listName, msb, mso, fs )
+      liftIO $ print (ln, msb, mso, fs )
     -- get ids from either list or tags (#tag)
-      aids' <- case T.stripPrefix "#" listName of
+      aids' <- case T.stripPrefix "#" ln of
                     Just tag -> envGetTag tag
-                    Nothing  -> V.toList <$> getList env listName
+                    Nothing  -> V.toList <$> getList env ln
       let aidset' = Set.fromList aids'
 ---------------------------------------------------------------------------------------
     -- filter with focus if any
@@ -191,7 +216,7 @@ clutterServer = serveAlbum
       envr <- envUpdateSort msb mso
       let EnvR am _ _ _ sn so _ _ _ = envr
       let doSort = getSort env am sn
-      html <- renderAlbumsView listName fs . doSort so $ aids
+      html <- renderAlbumsView ln fs . doSort so $ aids
       pure . RawHtml $ L.renderBS html
 
     serveDiscogs :: Text -> Text -> Maybe Int -> AppM RawHtml
