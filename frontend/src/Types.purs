@@ -53,7 +53,8 @@ type AlbumsJ = { listName :: String
 newtype AlbumList = AlbumList (Maybe  String)
 
 type State =  { album :: Maybe Album
-              , list :: AlbumList
+              , listName :: AlbumList
+              , albumList :: Array Album
               , loading :: Boolean
               , albumID :: String
               , now :: DateTime
@@ -76,4 +77,4 @@ type ParamsJ = { timeStamp :: String
                , params :: MenuParams
                }
 
-data Action = Increment | Decrement | SetAlbumID String | MakeRequest Event | ShowList MouseEvent AlbumList
+data Action = Increment | Decrement | SetAlbumID String | MakeRequest Event | ShowList AlbumList | ShowAlbum String

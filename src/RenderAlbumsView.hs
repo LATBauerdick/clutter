@@ -95,7 +95,7 @@ renderAlbumsView ln fs aids = do
       renderButtonTags = do
         L.button_ [L.class_ "dropbtn"] $do
           "Tags "
-          L.i_ [ L.class_ "fa fa-caret-down" ] ""
+  L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
           F.traverse_ (\x -> L.a_ [L.href_ (qry' fs ("#" <> x))] $ do L.toHtml x)
             sts -- M.keys (tags envr)

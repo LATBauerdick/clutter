@@ -24,9 +24,10 @@ import RenderTopMenu (renderTopMenu)
 render :: forall m. State -> H.ComponentHTML Action () m
 render state = do
   HH.div_
-    [
-      renderTopMenu state
-    , HH.h1_ [ HH.text "This it the Clutter App!" ]
+    [ case state.listName of
+          AlbumList Nothing  -> albumView state.album state.now
+          _                  -> renderListView state.albumList
+    , renderTopMenu state
     , HH.form
       [ HE.onSubmit \ev -> MakeRequest ev ]
       [ HH.h3_ [ HH.text "Look up Album ID" ]
@@ -45,9 +46,6 @@ render state = do
       , HH.p_
           [ HH.text if state.loading then "Working..." else "" ]
       ]
-    , case state.list of
-          AlbumList Nothing  -> albumView state.album state.now
-          AlbumList (Just a) -> listView state.list
     -- , HH.div_
     --     case state.result of
     --       Nothing -> []
@@ -61,59 +59,16 @@ render state = do
     -- , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
     ]
 
-listView :: forall i w. AlbumList -> HH.HTML w i
-listView (AlbumList ml) = case ml of
-                    Nothing -> HH.div_ [ noAlbum ]
-                    Just l  -> renderListView l
 
-renderListView :: forall w i. String -> HH.HTML w i
-renderListView l =
-  -- HH.div_ [ HH.h3_ [ HH.text $ "List " <> l ] ]
-  HH.div
-    [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
-    [ HH.iframe
-      [ HP.src ("http://localhost:8080/albums/" <> l)
-      , HP.id "xFrame"
-      , HP.title "Clutter List View"
-      , HP.style "height:600px;width:100%;border:none;"
-      -- , frameborder "0"
-      -- , allow "autoplay *; encrypted-media *; fullscreen *"
-      ]
-    ]
-
-albumView :: forall i w. Maybe Album -> DateTime -> HH.HTML w i
-albumView am now = case am of
-                   Just a -> HH.div_ [ renderAlbumView a now ]
-                   Nothing -> HH.div_ [ noAlbum ]
-
-renderAlbumView :: forall w i. Album -> DateTime -> HH.HTML w i
-renderAlbumView a now =
-  case a.albumFormat of
-            "AppleMusic" -> appleMusicView
-            "Tidal"      -> testView
-            _            -> discogsView
-  where
-  appleMusicView = discogsView
-  tidalView = discogsView
-
-  ttl = replaceAll (Pattern ":") (Replacement "_") <<< replaceAll (Pattern "/") (Replacement "·") $ a.albumArtist <> " - " <> a.albumTitle
-  dt = fromRight "???????" <<< formatDateTime "YYMMDD" $ now -- "2022-10-19T20:01"
-  dtl = fromRight "???????" <<< formatDateTime "YYYY-MM-DDTHH:mm" $ now -- "2022-10-19T20:01"
-  discogsView =
-    HH.div
-      [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
+renderAlbumTN :: forall m. Album -> H.ComponentHTML Action () m
+renderAlbumTN a = HH.div
+    [ HP.class_ $ HH.ClassName "album-thumb" ]
+    [ HH.div
+      [ HP.class_ $ HH.ClassName "cover-container" ]
       [ HH.div
-        [ HP.class_ $ HH.ClassName "cover-container" ]
-        [ HH.p_
-          [ HH.text "Great album! Have a look on Clutter "
-          , HH.a
-            [ HP.href $ "http://localhost:8080/album/" <> show a.albumID ]
-            [ HH.text "here" ]
-          ]
-        , HH.a
-          [ HP.href a.albumURL
-          , HP.target "_blank"
-          , HP.rel "noopener noreferrer"
+        [ HP.class_ $ HH.ClassName "cover-img" ]
+        [ HH.button
+          [ HE.onClick \_ -> ShowAlbum (show a.albumID)
           ]
           [ HH.img [ HP.src a.albumCover
                    , HP.alt "cover image"
@@ -122,6 +77,70 @@ renderAlbumView a now =
                    ]
           ]
         ]
+        --[ HH.a
+        --  [ HP.href a.albumURL
+        --  , HP.target "_blank"
+        --  , HP.rel "noopener noreferrer"
+        --  ]
+        --  [ HH.img [ HP.src a.albumCover
+        --           , HP.alt "cover image"
+        --           --, HP.onerror "this.onerror=null;this.src='/no-cover.png';"
+        --           , HP.class_ $ HH.ClassName "cover-image"
+        --           ]
+        --  ]
+        --]
+      , HH.div
+        [ HP.class_ $ HH.ClassName "cover-obackground" ]
+        [ HH.a
+          [ HP.href a.albumURL ]
+          [ HH.span
+            [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ]
+            [ HH.text "" ]
+          ]
+        ]
+      ]
+  ]
+
+renderListView :: forall m. Array Album -> H.ComponentHTML Action () m
+renderListView as =
+  HH.div
+  [ HP.class_ $ HH.ClassName "albums" ]
+  [ HH.div
+    [ HP.class_ $ HH.ClassName "row"]
+    ( map (\a -> renderAlbumTN a) as )
+  ]
+  -- HH.div
+  --   [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
+  --   [ HH.iframe
+  --     [ HP.src ("http://localhost:8080/albums/" <> l)
+  --     , HP.id "xFrame"
+  --     , HP.title "Clutter List View"
+  --     , HP.style "height:600px;width:100%;border:none;"
+  --     -- , frameborder "0"
+  --     -- , allow "autoplay *; encrypted-media *; fullscreen *"
+  --     ]
+  --   ]
+
+albumView :: forall m. Maybe Album -> DateTime -> H.ComponentHTML Action () m
+albumView am now = case am of
+                   Just a -> HH.div_ [ renderAlbumView a now ]
+                   Nothing -> HH.div_ [ noAlbum ]
+
+renderAlbumView :: forall m. Album -> DateTime -> H.ComponentHTML Action () m
+renderAlbumView a now =
+  case a.albumFormat of
+            "AppleMusic" -> discogsView
+            "Tidal"      -> testView
+            _            -> discogsView
+  where
+  ttl = replaceAll (Pattern ":") (Replacement "_") <<< replaceAll (Pattern "/") (Replacement "·") $ a.albumArtist <> " - " <> a.albumTitle
+  dt = fromRight "???????" <<< formatDateTime "YYMMDD" $ now -- "2022-10-19T20:01"
+  dtl = fromRight "???????" <<< formatDateTime "YYYY-MM-DDTHH:mm" $ now -- "2022-10-19T20:01"
+  discogsView =
+    HH.div
+      [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
+      [ HH.h1_ [ HH.text "This is the Clutter App!" ]
+      , renderAlbumTN a
       , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
       , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
       , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]

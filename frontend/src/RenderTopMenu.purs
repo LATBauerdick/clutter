@@ -33,7 +33,7 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn"
-        , HE.onClick \ev -> ShowList ev $ AlbumList (Just "2022 Listened?&sortBy=Default&sortOrder=Desc")
+        , HE.onClick \ev -> ShowList $ AlbumList (Just "2022 Listened?&sortBy=Default&sortOrder=Desc")
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]
@@ -42,7 +42,7 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn"
-        , HE.onClick \ev -> ShowList ev $ AlbumList (Just "Discogs")
+        , HE.onClick \ev -> ShowList $ AlbumList (Just "Discogs")
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]
@@ -140,7 +140,7 @@ renderTopMenu state =
       ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
         ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "xxx"
-                               , HE.onClick (\ev -> ShowList ev ( AlbumList (Just x) ))
+                               , HE.onClick (\ev -> ShowList ( AlbumList (Just x) ))
                                ]
                                [ HH.text x ])
                      listNames )
@@ -154,7 +154,7 @@ renderTopMenu state =
     ]
   , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
         ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "dropdown"
-                               , HE.onClick (\ev -> ShowList ev ( AlbumList (Just x) ))
+                               , HE.onClick (\ev -> ShowList ( AlbumList (Just x) ))
                                ]
                                [ HH.text x ])
                      locNames )

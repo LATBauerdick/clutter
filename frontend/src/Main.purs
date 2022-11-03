@@ -13,20 +13,18 @@ import Effect.Class.Console as Console
 import Halogen.Aff as HA
 import Halogen.VDom.Driver (runUI)
 
-import GetStuff (getUrl, getNow, _encodeURIComponent)
+import GetStuff (getUrl, getNow)
 import Types (AlbumJ, State, AlbumList(..), MenuState, MenuParams, ParamsJ, SortOrder(..))
 
 import AlbumComponent (aComponent)
 
 main :: Effect Unit
 main = HA.runHalogenAff do
-  Console.log "🍝 Rendering clutter component"
-  Console.log $ _encodeURIComponent "🍝 Rendering clutter component"
+  Console.log "🍝 Starting Clutter App"
+  -- Console.log $ _encodeURIComponent "🍝 Rendering clutter component"
 
   is <- initialState
-
   body <- HA.awaitBody
-
   runUI ( aComponent is ) unit body
 
 initialState :: Aff State
@@ -41,7 +39,7 @@ initialState = do -- should eventually be saved in preferences
   now <- getNow
   sjs <- getUrl $ "http://localhost:8080/paramsq/all"
   let sje = (decodeJson =<< parseJson sjs) :: Either JsonDecodeError ParamsJ
-  Console.logShow sje
+  -- Console.logShow sje
   let mps = case sje of
                     Right { params: ps } -> ps
                     Left _ -> initialMenuParams
@@ -55,8 +53,8 @@ initialState = do -- should eventually be saved in preferences
            , params : mps
            }
 
-  pure { list: AlbumList Nothing, album: am, loading: false, albumID: show initialAlbumID, now: now, result: Nothing
-       , menu : ms { params { muhq = "http://192.168.0.221:8080/albums/" } } 
+  pure { listName: AlbumList Nothing, albumList : [], album: am, loading: false, albumID: show initialAlbumID, now: now, result: Nothing
+       , menu : ms { params { muhq = "http://localhost:8080/albums/" } } 
        }
 
 initialMenuParams :: MenuParams
