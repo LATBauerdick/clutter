@@ -32,7 +32,7 @@ renderTopMenu state =
     --          [ HH.text "Discogs" ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
-        [ HP.class_ $ HH.ClassName "dropbtn"
+        [ HP.class_ $ HH.ClassName "dropbtn1"
         , HE.onClick \ev -> ShowList $ AlbumList (Just "2022 Listened?&sortBy=Default&sortOrder=Desc")
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
@@ -41,7 +41,7 @@ renderTopMenu state =
       ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
-        [ HP.class_ $ HH.ClassName "dropbtn"
+        [ HP.class_ $ HH.ClassName "dropbtn1"
         , HE.onClick \ev -> ShowList $ AlbumList (Just "Discogs")
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading

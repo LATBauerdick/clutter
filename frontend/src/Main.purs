@@ -14,7 +14,7 @@ import Halogen.Aff as HA
 import Halogen.VDom.Driver (runUI)
 
 import GetStuff (getUrl, getNow)
-import Types (AlbumJ, State, AlbumList(..), MenuState, MenuParams, ParamsJ, SortOrder(..))
+import Types (AlbumsJ, State, AlbumList(..), MenuState, MenuParams, ParamsJ, SortOrder(..))
 
 import AlbumComponent (aComponent)
 
@@ -29,33 +29,38 @@ main = HA.runHalogenAff do
 
 initialState :: Aff State
 initialState = do -- should eventually be saved in preferences
-  let initialAlbumID = 659642 -- 19722988
-  str <- getUrl $ "http://localhost:8080/albumq/" <> show initialAlbumID
-  let aje :: Either JsonDecodeError AlbumJ
-      aje = (decodeJson =<< parseJson str) -- :: Either JsonDecodeError AlbumJ
-  let am = case aje of
-                    Right { album: a } -> Just a
-                    Left _ -> Nothing
   now <- getNow
+  Console.logShow now
   sjs <- getUrl $ "http://localhost:8080/paramsq/all"
   let sje = (decodeJson =<< parseJson sjs) :: Either JsonDecodeError ParamsJ
-  -- Console.logShow sje
   let mps = case sje of
                     Right { params: ps } -> ps
                     Left _ -> initialMenuParams
-  -- Console.logShow aje
-  -- Console.logShow now
+
+  let ln = "Discogs"
+  r <- getUrl ("http://localhost:8080/albumsq/" <> ln)
+  let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
+  let ls = case lje of
+                      Right { lalbums: ls' } -> ls'
+                      Left _ -> []
+
   let ms :: MenuState
       ms = { sortName : "Default"
-           , ln : "Discogs" -- list
+           , ln : ln
            , ffs : [ "pop" ]
            , sso : Asc
            , params : mps
            }
 
-  pure { listName: AlbumList Nothing, albumList : [], album: am, loading: false, albumID: show initialAlbumID, now: now, result: Nothing
-       , menu : ms { params { muhq = "http://localhost:8080/albums/" } } 
-       }
+  pure  { listName: AlbumList (Just ln)
+        , albumList : ls
+        , album: Nothing
+        , loading: false
+        , albumID: "0"
+        , now: now
+        , result: Nothing
+        , menu : ms { params { muhq = "http://localhost:8080/albums/" } }
+        }
 
 initialMenuParams :: MenuParams
 initialMenuParams =
