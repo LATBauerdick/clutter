@@ -83,6 +83,9 @@ type API4 = "albumq"
 
 type API5 = "albumsq"
     :> Capture "list" Text
+    :> QueryParam "sortBy" Text
+    :> QueryParam "sortOrder" Text
+    :> QueryParams "focus" Text
     :> Get '[JSON] AlbumsJ
 
 type API6 = "paramsq"
@@ -148,16 +151,44 @@ clutterServer = serveAlbum
             :<|> serveDirectoryFileServer "static"
   where
 --{{{clutterServer
-    serveAlbumsq :: Text -> AppM AlbumsJ
-    serveAlbumsq ln = do
-      liftIO $ print ("-------serveAlbumsq " :: Text, ln )
+    decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector Int)
+    decodeListQuery ln msb mso fs = do -- listName sortBy sortOrder focusItems
+      env <- ask
+      liftIO $ print ("-------decodeListQuery " :: Text, ln, msb, mso, fs )
 
+    -- get ids from either list or tags (#tag)
+      aids' <- case T.stripPrefix "#" ln of
+                    Just tag -> envGetTag tag
+                    Nothing  -> V.toList <$> getList env ln
+      let aidset' = Set.fromList aids'
+---------------------------------------------------------------------------------------
+    -- filter with focus if any
+      aidset <- foldM (\ s (t, p) ->  (if p
+                                            then Set.intersection s
+                                            else Set.difference s
+                                          ) . Set.fromList
+                                          <$> envGetTag t
+                      ) aidset'
+                    . map (\t ->  ( fromMaybe t (T.stripPrefix "-" t)
+                                  , isNothing (T.stripPrefix "-" t) )
+                          )
+                    . mapMaybe (T.stripPrefix "#")
+                    $ fs
+      let aids = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) . V.fromList $ aids'
+---------------------------------------------------------------------------------------
+      envr <- envUpdateSort msb mso
+      let EnvR am _ _ _ sn so _ _ _ = envr
+      let doSort = getSort env am sn
+      pure . doSort so $ aids
+
+    serveAlbumsq :: Text -> Maybe Text -> Maybe Text -> [Text]
+                  -> AppM AlbumsJ
+    serveAlbumsq ln  msb mso fs = do
+      aids <- decodeListQuery ln msb mso fs
       envr <- envGetEnvr
-      gl <- asks getList
-      aids <- gl ln
-
+      -- gl <- asks getList
+      -- aids <- gl ln
       let la = mapMaybe (`M.lookup` albums envr) . V.toList $ aids
-
       let asj = AlbumsJ { listName = ln, lalbums = la }
       pure asj
 
@@ -191,32 +222,34 @@ clutterServer = serveAlbum
     serveAlbums :: Text -> Maybe Text -> Maybe Text -> [Text]
                     -> AppM RawHtml
     serveAlbums ln msb mso fs = do
-      env <- ask
-      liftIO $ print (ln, msb, mso, fs )
-    -- get ids from either list or tags (#tag)
-      aids' <- case T.stripPrefix "#" ln of
-                    Just tag -> envGetTag tag
-                    Nothing  -> V.toList <$> getList env ln
-      let aidset' = Set.fromList aids'
+      aids <- decodeListQuery ln msb mso fs
+      -- env <- ask
+      -- liftIO $ print (ln, msb, mso, fs )
+    -- -- get ids from either list or tags (#tag)
+      -- aids' <- case T.stripPrefix "#" ln of
+      --               Just tag -> envGetTag tag
+      --               Nothing  -> V.toList <$> getList env ln
+      -- let aidset' = Set.fromList aids'
 ---------------------------------------------------------------------------------------
     -- filter with focus if any
-      aidset <- foldM (\ s (t, p) ->  (if p
-                                            then Set.intersection s
-                                            else Set.difference s
-                                          ) . Set.fromList
-                                          <$> envGetTag t
-                      ) aidset'
-                    . map (\t ->  ( fromMaybe t (T.stripPrefix "-" t)
-                                  , isNothing (T.stripPrefix "-" t) )
-                          )
-                    . mapMaybe (T.stripPrefix "#")
-                    $ fs
-      let aids = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) . V.fromList $ aids'
+      -- aidset <- foldM (\ s (t, p) ->  (if p
+      --                                       then Set.intersection s
+      --                                       else Set.difference s
+      --                                     ) . Set.fromList
+      --                                     <$> envGetTag t
+      --                 ) aidset'
+      --               . map (\t ->  ( fromMaybe t (T.stripPrefix "-" t)
+      --                             , isNothing (T.stripPrefix "-" t) )
+      --                     )
+      --               . mapMaybe (T.stripPrefix "#")
+      --               $ fs
+      -- let aids = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) . V.fromList $ aids'
 ---------------------------------------------------------------------------------------
-      envr <- envUpdateSort msb mso
-      let EnvR am _ _ _ sn so _ _ _ = envr
-      let doSort = getSort env am sn
-      html <- renderAlbumsView ln fs . doSort so $ aids
+      -- envr <- envUpdateSort msb mso
+      -- let EnvR am _ _ _ sn so _ _ _ = envr
+      -- let doSort = getSort env am sn
+      -- html <- renderAlbumsView ln fs . doSort so $ aids
+      html <- renderAlbumsView ln fs aids
       pure . RawHtml $ L.renderBS html
 
     serveDiscogs :: Text -> Text -> Maybe Int -> AppM RawHtml
