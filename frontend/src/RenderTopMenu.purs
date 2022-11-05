@@ -10,9 +10,14 @@ import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
 
 import Data.Foldable (intercalate)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe, isNothing, isJust)
+import Data.Map as M
+import Data.Tuple (Tuple(..))
+import Data.String (joinWith, stripPrefix)
+import Data.String.Pattern (Pattern(..))
 
 import Types (SortOrder (..), State, AlbumList(..),  Action(..))
+import GetStuff ( _encodeURIComponent )
 
 renderTopMenu :: forall m'. State -> H.ComponentHTML Action () m'
 renderTopMenu state =
@@ -46,7 +51,7 @@ renderTopMenu state =
     ]
   where
 
-  uhq = state.menu.params.muhq -- "localhost:8080/albums/"
+  uhq = state.menu.params.muhq
   sorts = state.menu.params.msorts
   sts = state.menu.params.msts
   listNames = state.menu.params.mlistNames
@@ -56,6 +61,13 @@ renderTopMenu state =
   ln =  state.menu.ln
   ffs = state.menu.ffs
   sso = state.menu.sso
+
+
+  fqs :: M.Map String Boolean
+  fqs = M.fromFoldable
+            <<< map (\t -> Tuple (fromMaybe t (stripPrefix (Pattern "-") t))
+                                 (isNothing (stripPrefix (Pattern "-") t)))
+            $ ffs
 
   renderShow :: forall w i. Array (HH.HTML w i)
   renderShow = [
@@ -70,25 +82,45 @@ renderTopMenu state =
     ]
   ]
 
-  renderFocus :: forall w i. Array (HH.HTML w i)
+  renderFocus :: forall m. Array (H.ComponentHTML Action () m)
   renderFocus =
     let
-      lnk :: forall ww ii. String -> HH.HTML ww ii
-      lnk t = HH.a [ HP.class_ $ HH.ClassName tc
-                   ,HP.href (uhq <> ln)
-                   ]
-                   [ HH.text t ]
-      p = false -- this tag was selected
-      pp = true -- tag was True
-      tc :: String
-      tc
-                      | p && pp   = "focus-on"
-                      | p         = "focus-not"
-                      | otherwise = "focus"
-    in [
+        qry' :: Array String -> String -> String -- create the query url
+        qry' ts n = uhq
+                  <> n
+                  <> "?"
+                  <> ( _encodeURIComponent
+                      <<< joinWith "&"
+                      <<< map (\ (Tuple k v) -> k <> "=" <> v)
+                      <<< map (\t -> Tuple "focus" t)
+                      $ ts )
+        lnk :: forall mm. M.Map String Boolean -> String -> H.ComponentHTML Action () mm
+        lnk ts t = let
+          nts :: Array String
+          nts = map (\ (Tuple it ip) -> if ip then "#" <> it else "#-" <> it)
+                    <<< M.toUnfoldable
+                    <<< ttt $ ts
+          p = isJust $ t `M.lookup` ts -- this tag was selected
+          pp = fromMaybe false $ t `M.lookup` ts -- tag was True
+          ttt:: M.Map String Boolean -> M.Map String Boolean
+          ttt tts
+                | p && pp   = M.insert t false tts
+                | p         = M.delete t tts
+                | otherwise = M.insert t true tts
+          tc :: String
+          tc
+                | p && pp   = "focus-on"
+                | p         = "focus-not"
+                | otherwise = "focus"
+        in HH.a [ HP.class_ $ HH.ClassName tc
+                , HP.href (qry' nts ln)
+                ]
+                [ HH.text t ]
+    in
+    [
       HH.button [HP.class_ $ HH.ClassName "dropbtn"]
       [ HH.a [ HP.class_ $ HH.ClassName "dropbtn"
-             , HP.href (uhq <> ln <> "?focus=%23folder.pop" )
+             , HP.href (qry' [ ] ln)
              ]
              [ HH.text $ if  ffs /= []
                           then "Focus (#" <> intercalate " #" ffs <> ")"
@@ -97,7 +129,7 @@ renderTopMenu state =
              ]
       ]
       , HH.div [HP.class_ $ HH.ClassName "focus-content"]
-          (map lnk sts)
+          (map (lnk fqs) sts)
     ]
 
 
