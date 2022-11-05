@@ -77,4 +77,4 @@ type ParamsJ = { timeStamp :: String
                , params :: MenuParams
                }
 
-data Action = Increment | Decrement | SetAlbumID String | MakeRequest Event | ShowList AlbumList | ShowAlbum String
+data Action = ToggleSortOrder | SetSort String | SetAlbumID String | MakeRequest Event | ShowList AlbumList | ShowAlbum String

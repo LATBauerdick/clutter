@@ -14,7 +14,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (AlbumJ , AlbumsJ, State, AlbumList(..), Action(..))
+import Types  (AlbumJ , AlbumsJ, State, AlbumList(..), Action(..), SortOrder(..))
 import GetStuff (getUrl, getNow)
 import Render (render)
 
@@ -28,11 +28,21 @@ aComponent is =
 
 handleAction :: forall output m. MonadAff m => Action -> H.HalogenM State Action () output m Unit
 handleAction = case _ of
-  Decrement -> do
-    H.liftAff $ Console.logShow "Decrement!"
-    H.modify_ _ { album = Nothing }
-  Increment ->
-    H.modify_ _ { album = Nothing }
+  SetSort sn -> do
+    osn <- H.gets _.menu.sortName
+    H.liftAff $ Console.logShow sn
+    if osn == sn then pure unit else H.modify_ _ { menu { sortName = sn } }
+    if osn == sn then pure unit else updateAlbumList
+
+  ToggleSortOrder -> do
+    so <- H.gets _.menu.sso
+    let so' = case so of
+                  Asc -> Desc
+                  _ ->  Asc
+    H.liftAff $ Console.logShow so'
+    H.modify_ _ { menu { sso =  so'  }}
+    updateAlbumList
+    -- H.modify_ _ { menu { sso =  so'  }}
 
   SetAlbumID albumID -> do
     now <- H.liftAff getNow
@@ -68,15 +78,24 @@ handleAction = case _ of
   ShowList alist -> do
     -- H.liftEffect $ Event.preventDefault event
     H.modify_ _ { listName = alist, loading = true }
-    let AlbumList ml = alist
-        ln = fromMaybe "" ml
-    H.liftAff $ Console.logShow ln
+    updateAlbumList
 
-    r <- H.liftAff $ getUrl ("http://localhost:8080/albumsq/" <> ln)
-    H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ)
-    let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
-    let ls = case lje of
-                      Right { lalbums: ls' } -> ls'
-                      Left _ -> []
-
-    H.modify_ _ { loading = false, albumList = ls }
+  where
+    updateAlbumList :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
+    updateAlbumList = do
+      H.modify_ _ { loading = true }
+      aln <- H.gets _.listName
+      let AlbumList mln = aln
+          ln = fromMaybe "" mln
+      so <- H.gets _.menu.sso
+      sn <- H.gets _.menu.sortName
+      r <- H.liftAff $ getUrl ("http://localhost:8080/albumsq/"
+                              <> ln
+                              <> "?&sortOrder=" <> show so
+                              <> "&sortBy=" <> sn
+                              )
+      let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
+      let ls = case lje of
+                        Right { lalbums: ls' } -> ls'
+                        Left _ -> []
+      H.modify_ _ { loading = false, albumList = ls }
