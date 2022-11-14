@@ -18,7 +18,7 @@ import Data.String (take) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
-import Types (Album, State, AlbumList(..), Action(..))
+import Types (Album, State, AlbumList(..), Action(..), SortOrder(..))
 import RenderTopMenu (renderTopMenu)
 
 render :: forall m. State -> H.ComponentHTML Action () m
@@ -26,26 +26,28 @@ render state = do
   HH.div_
     [ case state.listName of
           AlbumList Nothing  -> albumView state.album state.now
-          _                  -> renderListView state.albumList
+          _                  -> renderListView state
     , renderTopMenu state
-    , HH.form
-      [ HE.onSubmit \ev -> MakeRequest ev ]
-      [ HH.h3_ [ HH.text "Look up Album ID" ]
-      , HH.label_
-          [ HH.div_ [ HH.text "Enter album id:" ]
-          , HH.input
-              [ HP.value state.albumID
-              , HE.onValueInput \str -> SetAlbumID str
-              ]
-          ]
-      , HH.button
-          [ HP.disabled state.loading
-          , HP.type_ HP.ButtonSubmit
-          ]
-          [ HH.text "Fetch info" ]
-      , HH.p_
-          [ HH.text if state.loading then "Working..." else "" ]
-      ]
+    , HH.div_
+      [ HH.br_, HH.br_, HH.br_
+      , HH.form
+        [ HE.onSubmit \ev -> MakeRequest ev ]
+        [ HH.h3_ [ HH.text "Look up Album ID" ]
+        , HH.label_
+            [ HH.div_ [ HH.text "Enter album id:" ]
+            , HH.input
+                [ HP.value state.albumID
+                , HE.onValueInput \str -> SetAlbumID str
+                ]
+            ]
+        , HH.button
+            [ HP.disabled state.loading
+            , HP.type_ HP.ButtonSubmit
+            ]
+            [ HH.text "Fetch info" ]
+        , HH.p_
+            [ HH.text if state.loading then "Working..." else "" ]
+        ]
     -- , HH.div_
     --     case state.result of
     --       Nothing -> []
@@ -57,19 +59,20 @@ render state = do
     --         ]
     -- , HH.button [ HE.onClick \_ -> Decrement ] [ HH.text "-" ]
     -- , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
+      ]
     ]
 
 
 renderAlbumTN :: forall m. Album -> H.ComponentHTML Action () m
-renderAlbumTN a = HH.div
+renderAlbumTN a =
+  HH.div
     [ HP.class_ $ HH.ClassName "album-thumb" ]
     [ HH.div
       [ HP.class_ $ HH.ClassName "cover-container" ]
       [ HH.div
-        [ HP.class_ $ HH.ClassName "cover-img" ]
+        [ HP.class_ $ HH.ClassName "cover-img" ] $
         [ HH.button
-          [ HE.onClick \_ -> ShowAlbum (show a.albumID)
-          ]
+          [ HE.onClick \_ -> ShowAlbum (show a.albumID) ]
           [ HH.img [ HP.src a.albumCover
                    , HP.alt "cover image"
                    --, HP.onerror "this.onerror=null;this.src='/no-cover.png';"
@@ -77,32 +80,22 @@ renderAlbumTN a = HH.div
                    ]
           ]
         ]
-        --[ HH.a
-        --  [ HP.href a.albumURL
-        --  , HP.target "_blank"
-        --  , HP.rel "noopener noreferrer"
-        --  ]
-        --  [ HH.img [ HP.src a.albumCover
-        --           , HP.alt "cover image"
-        --           --, HP.onerror "this.onerror=null;this.src='/no-cover.png';"
-        --           , HP.class_ $ HH.ClassName "cover-image"
-        --           ]
-        --  ]
-        --]
-      , HH.div
-        [ HP.class_ $ HH.ClassName "cover-obackground" ]
-        [ HH.a
-          [ HP.href a.albumURL ]
-          [ HH.span
-            [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ]
-            [ HH.text "" ]
-          ]
-        ]
+        <> renderBadges a
       ]
-  ]
+    , HH.div [ HP.class_ $ HH.ClassName "album-info" ]
+        [ HH.p
+          [ HP.class_ $ HH.ClassName "album-title"]
+          [ HH.text a.albumTitle ]
+        , HH.p
+          [ HP.class_ $ HH.ClassName "album-artist"]
+          [ HH.text a.albumArtist ]
+        ]
+    ]
 
-renderListView :: forall m. Array Album -> H.ComponentHTML Action () m
-renderListView as =
+renderListView :: forall m. State -> H.ComponentHTML Action () m
+renderListView state =
+  let as = state.albumList
+  in
   HH.div
   [ HP.class_ $ HH.ClassName "albums" ]
   [ HH.div
@@ -240,3 +233,291 @@ noAlbum =
       ]
     ]
 
+
+renderBadges :: forall m. Album -> Array (H.ComponentHTML Action () m)
+renderBadges a =
+  let uhq = ""
+      ln = "Basement"
+      idx = 1
+  in
+  [ HH.div [ HP.class_ $ HH.ClassName "idx" ]
+    [
+      -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $
+      -- L.a_ [L.href_ (albumURL a)] $
+      HH.text $ " " <> show idx <> " "
+    ]
+
+  , case a.albumFormat of
+                  "Vinyl" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a
+                      [ HP.href a.albumURL]
+                      [ HH.span
+                        [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ]
+                        [ HH.text "" ]
+                      ]
+                    -- HH.img [ HP.src_ "/discogs-icon.png", HH.alt "D", HP.class_ "cover-oimage" ]
+                    ]
+                  "Tidal" -> HH.div_ []
+                  "AppleMusic" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a
+                      [ HP.href a.albumURL]
+                      [ HH.img
+                        [ HP.src "/am-icon.png"
+                        , HP.alt "A"
+                        , HP.class_ $ HH.ClassName "cover-oimage"
+                        ]
+                      ]
+                    ]
+                  "CD" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a
+                      [ HP.href a.albumURL]
+                      [ HH.span
+                        [ HP.class_ $ HH.ClassName "fas fa-compact-disc fa-sm" ]
+                        [ HH.text "" ]
+                      ]
+                    ]
+                  "CD, Box Set" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a [ HP.href a.albumURL ]
+                      [ HH.span
+                        [ HP.class_ $ HH.ClassName "fa-stack fa-sm" ]
+                        [ HH.span
+                          [ HP.class_ $ HH.ClassName "fa fa-square-o fa-stack-1x" ]
+                          [ HH.text "" ]
+                        , HH.span
+                          [ HP.class_ $ HH.ClassName "fa fa-compact-disc fa-stack-1x" ]
+                          [ HH.text "" ]
+                        ]
+                      ]
+                    ]
+                  "Box Set, Vinyl" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a [ HP.href a.albumURL] [ HH.span
+                        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
+                        [ HH.text "" ] ] ]
+                  "Vinyl, Box Set" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a [ HP.href a.albumURL] [ HH.span
+                        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
+                        [ HH.text "" ] ] ]
+                  "Vinyl, Vinyl" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a [ HP.href a.albumURL] [ HH.span
+                        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
+                        [ HH.text "" ] ] ]
+                  "Files" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a [ HP.href a.albumURL] [ HH.span
+                        [ HP.class_ $ HH.ClassName "far fa-file-audio fa-sm" ]
+                        [ HH.text "" ] ] ]
+                  "Streaming" ->
+                    HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+                    [ HH.a
+                      [ HP.href a.albumURL]
+                      [ HH.span
+                        [ HP.class_ $ HH.ClassName "far fa-wifi fa-sm" ]
+                        [ HH.text "" ]
+                      ]
+                    ]
+                  _ ->
+                    HH.div
+                      [ HP.class_ $ HH.ClassName "cover-obackground"]
+                      [ HH.a [ HP.href a.albumURL ] [ HH.text a.albumFormat ]
+                      ]
+  , case a.albumTidal of
+              Nothing -> HH.div_ []
+              Just tid -> HH.div
+                [ HP.class_ $ HH.ClassName "cover-obackground1" ]
+                [ HH.a
+                  [ HP.href ("https://listen.tidal.com/album/" <> tid)]
+                  [ HH.img
+                    [ HP.src "/tidal-icon.png"
+                    , HP.alt "T"
+                    , HP.class_ $ HH.ClassName "cover-oimage"
+                    ]
+                  ]
+                ]
+  , case a.albumAMusic of
+              Nothing -> HH.div_ []
+              Just amid -> HH.div
+                [ HP.class_ $ HH.ClassName "cover-obackground3" ]
+                [ HH.a
+                  [ HP.href if S.take 2 amid == "l."
+                        then "https://music.apple.com/library/albums/" <> amid
+                        else "https://music.apple.com/us/album/" <> amid
+                  ]
+                  [ HH.img
+                    [ HP.src "/am-icon.png"
+                    , HP.alt "A"
+                    , HP.class_ $ HH.ClassName "cover-oimage"
+                    ]
+                  ]
+                ]
+
+  , case a.albumRating of
+                1 ->  HH.div
+                        [ HP.class_ $ HH.ClassName "rat" ]
+                        [ HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        ]
+                2 ->  HH.div
+                        [ HP.class_ $ HH.ClassName "rat" ]
+                        [ HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        ]
+                3 ->  HH.div
+                        [ HP.class_ $ HH.ClassName "rat" ]
+                        [ HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        ]
+                4 ->  HH.div
+                        [ HP.class_ $ HH.ClassName "rat" ]
+                        [ HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
+                               , HP.style "color:black" ]
+                               [ HH.text "" ]
+                        ]
+                5 ->  HH.div
+                        [ HP.class_ $ HH.ClassName "rat" ]
+                        [ HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
+                               [ HH.text "" ]
+                        ]
+                _ -> HH.div_ []
+
+  , if a.albumPlays > 0 then
+              HH.div [ HP.class_ $ HH.ClassName "plays"]
+              [ case a.albumPlays of
+              cnt | cnt == 1 -> HH.span_
+                    [ HH.i
+                      [ HP.class_ $ HH.ClassName "far fa-check-circle" ]
+                      [ HH.text "" ]
+                    ]
+                  | cnt == 2 -> HH.span_
+                    [ HH.i
+                      [ HP.class_ $ HH.ClassName "fa fa-thermometer-1" ]
+                      [ HH.text "" ]
+                    ]
+                  | cnt == 3 -> HH.span_
+                    [ HH.i
+                      [ HP.class_ $ HH.ClassName "fa fa-thermometer-2"
+                      , HP.style "color:orange" ]
+                      [ HH.text "" ]
+                    ]
+                  | cnt == 4 -> HH.span_
+                    [ HH.i
+                      [ HP.class_ $ HH.ClassName "fa fa-thermometer-3"
+                      , HP.style "color:red" ]
+                      [ HH.text "" ]
+                    ]
+                  | cnt >= 5 -> HH.span_
+                    [ HH.i
+                      [ HP.class_ $ HH.ClassName "fa fa-thermometer-4"
+                      , HP.style "color:red" ]
+                      [ HH.text "" ]
+                    ]
+              _ ->  HH.div_ []
+              , HH.span
+                  [ HP.class_ $ HH.ClassName "loctext" ]
+                  [ HH.text $ "Played " <> show a.albumPlays <> " times" ]
+              ]
+            else HH.div_ []
+  , case a.albumLocation of
+                Just loc ->
+                  HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground2" ]
+                    [ HH.a
+                      [ HP.href (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)
+                      ]
+                      [ HH.i
+                        [ HP.class_ $ HH.ClassName "fa fa-barcode"
+                        , HP.style "color:red"
+                        ] [ HH.text "" ]
+                      ]
+                    , HH.span
+                      [ HP.class_ $ HH.ClassName "loctext" ]
+                      [ HH.text "Location: "
+                      , HH.a
+                          [ HP.class_ $ HH.ClassName "loclink"
+                          , HP.href (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)
+                          ]
+                          [ HH.text if loc == ln
+                                        then loc <> " #" <> show idx
+                                        else loc
+                          ]
+                      ]
+                    ]
+                _ -> HH.div_ []
+                -- Nothing ->
+                --   case M.lookup (albumID a) (locs envr) of
+                --     Just (loc, pos) ->
+                --       L.div_ [L.class_ "cover-obackground2"] $ do
+                --         L.a_ [L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
+                --           -- L.i_ [ L.class_ "fa fa-align-justify fa-rotate-90" ] ""
+                --           L.i_ [ L.class_ "fa fa-barcode" ] ""
+                --         L.span_ [L.class_ "loctext"] $ do
+                --           "Location: "
+                --           L.a_ [L.class_ "loclink", L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
+                --             L.toHtml $ loc <> " #" <> show pos
+                --     _ -> ""
+
+  ]

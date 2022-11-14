@@ -25,8 +25,10 @@ to generate this file without the comments in this block.
   , "halogen"
   , "maybe"
   , "now"
+  , "ordered-collections"
   , "prelude"
   , "strings"
+  , "tuples"
   , "web-events"
   , "web-uievents"
   ]
