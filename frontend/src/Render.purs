@@ -372,16 +372,16 @@ renderBadges a =
                         [ HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         ]
                 2 ->  HH.div
@@ -391,13 +391,13 @@ renderBadges a =
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         ]
                 3 ->  HH.div
@@ -409,10 +409,10 @@ renderBadges a =
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         ]
                 4 ->  HH.div
@@ -426,7 +426,7 @@ renderBadges a =
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star fa-sm" ]
                                [ HH.text "" ]
                         , HH.i [ HP.class_ $ HH.ClassName "fa fa-star-o fa-sm"
-                               , HP.style "color:black" ]
+                               , HP.style "color:lightgray" ]
                                [ HH.text "" ]
                         ]
                 5 ->  HH.div
