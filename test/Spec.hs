@@ -15,7 +15,7 @@ import Types (Discogs (..), Env (..), Tidal (..), TidalInfo (..))
 main :: IO ()
 main = do
   t <- readFileText "data/tok.dat"
-  let [t0, t1, t2, t3, t4, t5, t6, t7] = words t
+  let [t6, t7, t0, t1, t2, t3, t4, t5] = words t
       countryCode = t4
       sessionId = t3
       userId = fromMaybe 0 $ readMaybe (toString t2) :: Int

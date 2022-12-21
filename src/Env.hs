@@ -66,7 +66,7 @@ import qualified Data.Text as T (find)
 envTidalConnect :: Int -> AppM Env
 envTidalConnect _nalbums = do
   t <- readFileText "data/tok.dat" -- for debug, get from file with authentication data
-  let [t0, t1, t2, t3, t4, t5, t6, t7] = words t
+  let [t6, t7, t0, t1, t2, t3, t4, t5] = words t
       countryCode = t4
       sessionId = t3
       userId = fromMaybe 0 $ readMaybe (toString t2) :: Int
@@ -212,7 +212,7 @@ updateTags a m = foldr
 initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
 initInit c = do
   t <- readFileText "data/tok.dat" -- for debug, get from file with authentication data
-  let [t0, t1, t2, t3, t4, t5, t6, t7] = words t
+  let [t6, t7, t0, t1, t2, t3, t4, t5] = words t
       countryCode = t4
       sessionId = t3
       userId = fromMaybe 0 $ readMaybe (toString t2) :: Int
