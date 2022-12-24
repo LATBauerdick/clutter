@@ -7,7 +7,7 @@
     "test": "test"
   },
   "dependencies": {
-    "parcel": "^2.7.0",
+    "parcel": "2.8.0",
     "react": "^16.13.1",
     "react-dom": "^16.13.1"
   },
@@ -17,8 +17,9 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "parcel": "^2.7.0",
+    "parcel": "2.8.0",
     "process": "^0.11.10",
+    "punycode": "^1.4.1",
     "querystring-es3": "^0.2.1",
     "url": "^0.11.0",
     "xhr2": "^0.2.1"

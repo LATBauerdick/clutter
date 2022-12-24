@@ -177,7 +177,8 @@ ramr ainf off
                           else if next == 0 then
                             Just (rs, -1) -- last page
                               else if next == -1 then
-                                Just ([], off) -- error, try again
+                                Nothing -- should check if retry makes sense; for the moment, just stop
+                                -- Just ([], off) -- error, try again
                                   else
                                     Nothing -- this should never happen
 
