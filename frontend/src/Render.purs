@@ -133,7 +133,21 @@ renderAlbumView a now =
     HH.div
       [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
       [ HH.h1_ [ HH.text "This is the Clutter App!" ]
-      , renderAlbumTN a
+      , HH.div
+        [ HP.class_ $ HH.ClassName "cover-container"]
+        [ HH.div
+          [ HP.class_ $ HH.ClassName "cover-img" ] $
+          [ HH.a
+            [ HP.href a.albumURL] $
+            [ HH.img [ HP.src a.albumCover
+                     , HP.alt "cover image"
+                     --, HP.onerror "this.onerror=null;this.src='/no-cover.png';"
+                     , HP.class_ $ HH.ClassName "cover-image"
+                     ]
+            ]
+          ] <> renderBadges a
+        ]
+      -- , renderAlbumTN a
       , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
       , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
       , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]

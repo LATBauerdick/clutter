@@ -18,7 +18,7 @@ renderAlbumView mAlbum now = L.html_ $ do
   renderHead "Album Page"
   L.body_ albumBody
   where
-    albumBody = 
+    albumBody =
       case mAlbum of
         Nothing ->
           L.div_ [L.class_ "login-message"] $ do
