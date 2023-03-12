@@ -45,7 +45,7 @@ render state = do
             , HP.type_ HP.ButtonSubmit
             ]
             [ HH.text "Fetch info" ]
-        , HH.p_
+        , HH.h1_
             [ HH.text if state.loading then "Working..." else "" ]
         ]
     -- , HH.div_
