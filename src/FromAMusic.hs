@@ -42,15 +42,22 @@ data WAMusic = WAMusic
 instance FromJSON WAMusic where
   parseJSON = withObject "wamusic" $ \ o -> do
     d_      <- o .:  "data"
-    m_      <- o .:  "meta"
+    m_      <- o .:?  "meta" .!= WAMMeta 150 -- !!! recently-added does not have a meta field, and will retunr at most 150 entries
     n_      <- o .:? "next" .!= ""
     pure $ WAMusic  d_ m_ n_
 data WAMData = WAMData
                 { id :: !Text
+                , type__ :: !Text
                 , attributes :: WAMAttr
                 , relationships :: WAMRel
                 } deriving (Show, Generic)
-instance FromJSON WAMData
+instance FromJSON WAMData where
+  parseJSON = withObject "wamdata" $ \ o -> do
+    id_   <- o .: "id"
+    type_ <- o .: "type"
+    attr_ <- o .: "attributes"
+    rel_  <- o .: "relationships"
+    pure $ WAMData id_ type_ attr_ rel_
 data WAMMeta = WAMMeta
                 { total :: Int
                 } deriving (Show, Generic)
@@ -66,11 +73,11 @@ data WAMAttr = WAMAttr
                 } deriving (Show, Generic)
 instance FromJSON WAMAttr where
   parseJSON = withObject "attr" $ \o -> do
-    trackCount_  <- o .: "trackCount"
-    genreNames_  <- o .: "genreNames"
+    trackCount_  <- o .:? "trackCount" .!= 0
+    genreNames_  <- o .:? "genreNames" .!= []
     releaseDate_ <- o .:? "releaseDate" .!= ""
     name_        <- o .: "name"
-    artistName_  <- o .: "artistName"
+    artistName_  <- o .:? "artistName" .!= ""
     artwork_     <- o .:? "artwork" .!= WAMArt 0 0 ""
     dateAdded_   <- o .: "dateAdded"
     pure $ WAMAttr trackCount_ genreNames_ releaseDate_ name_ artistName_ artwork_ dateAdded_
@@ -79,7 +86,12 @@ data WAMArt = WAMArt
                 , height :: Int
                 , url :: !Text
                 } deriving (Show, Generic)
-instance FromJSON WAMArt
+instance FromJSON WAMArt where
+  parseJSON = withObject "artwork" $ \ o -> do
+    w_   <- o .:? "width" .!= 0
+    h_   <- o .:? "height" .!= 0
+    url_ <- o .:? "url" .!= ""
+    pure $ WAMArt w_ h_ url_
 data WAMRel = WAMRel
                 { catalog :: WAMCat
                 } deriving (Show, Generic)
@@ -99,7 +111,10 @@ instance FromJSON WAMCatData
 data WAMCatDataAttr = WAMCatDataAttr
                 { trackCount :: Int
                 } deriving (Show, Generic)
-instance FromJSON WAMCatDataAttr
+instance FromJSON WAMCatDataAttr where
+  parseJSON = withObject "wamcatdataattr" $ \ o -> do
+    tc_ <- o .:? "trackCount" .!= 0
+    pure $ WAMCatDataAttr tc_
 
 type UserAgent = Text
 type AMusicInclude = Text
@@ -108,7 +123,7 @@ type AMusicUserToken = Text
 type AMusicLimit = Int
 type AMusicOffset = Int
 type AMusicAPI =
--- GET AMusic library albums
+-- GET all Apple Music library albums, in alphabetic order; max 100 at a time
 -- https://api.music.apple.com/v1/me/library/albums?include=catalog&limit=limit&offset=offset
        "me" :> "library" :> "albums"
        :> QueryParam "include" AMusicInclude
@@ -118,9 +133,16 @@ type AMusicAPI =
        :> Header "Authorization" AMusicDeveloperToken
        :> Header "Music-User-Token" AMusicUserToken
        :> Get '[JSON] WAMusic
-     --  :<|> me/library/recently-added?include=catalog
-aMusicAPI :: Proxy AMusicAPI
-aMusicAPI = Proxy
+-- GET most recently added items, in reverse order; max 150 total, max 25 at a time
+-- https://api.music.apple.com/v1/me/library/recently-added?include=catalog&limit=limit&offset=offset
+    :<|> "me" :> "library" :> "recently-added"
+       :> QueryParam "include" AMusicInclude
+       :> QueryParam "limit" AMusicLimit
+       :> QueryParam "offset" AMusicOffset
+       :> Header "User-Agent" UserAgent
+       :> Header "Authorization" AMusicDeveloperToken
+       :> Header "Music-User-Token" AMusicUserToken
+       :> Get '[JSON] WAMusic
 getAMusic :: Maybe AMusicInclude
           -> Maybe AMusicLimit
           -> Maybe AMusicOffset
@@ -128,7 +150,16 @@ getAMusic :: Maybe AMusicInclude
           -> Maybe AMusicDeveloperToken
           -> Maybe AMusicUserToken
           -> ClientM WAMusic
-getAMusic = client aMusicAPI
+getRecentAMusic :: Maybe AMusicInclude
+          -> Maybe AMusicLimit
+          -> Maybe AMusicOffset
+          -> Maybe UserAgent
+          -> Maybe AMusicDeveloperToken
+          -> Maybe AMusicUserToken
+          -> ClientM WAMusic
+aMusicAPI :: Proxy AMusicAPI
+aMusicAPI = Proxy
+getAMusic :<|> getRecentAMusic = client aMusicAPI
 
 data AEnv = AEnv { adevt :: AMusicDeveloperToken
                  , amut :: AMusicUserToken
@@ -136,6 +167,30 @@ data AEnv = AEnv { adevt :: AMusicDeveloperToken
                  , aoffset :: AMusicOffset
                  , aclient :: ClientEnv
                  }
+
+  {-
+readAMusicReleasesCache :: FilePath -> IO [Release]
+readAMusicReleasesCache fn = do
+  res <- releasesFromCacheFile fn
+  case res of
+    Left err -> putTextLen $ "Error: " <> show err
+    Right _ -> pure ()
+
+  let (rs, next, tot) = case res of
+          Left _ -> ([],-1,0)
+          Right a -> getReleases a
+  putTextLn $ "-----------------Got " <> show (if next == 0 then off + length rs else next) <> " of " <> show tot <> " Library Albums from Apple Music Cache -----"
+  pure rs
+
+releasesFromCacheFile :: FilePath -> IO (Either String [Release])
+releasesFromCacheFile fn = do
+  putTextLn "-----------------Getting Collection from Discogs Cache-----"
+  res1 <- (eitherDecode <$> readFileLBS (fn <> "draw1.json")) :: IO (Either String WReleases)
+  res2 <- (eitherDecode <$> readFileLBS (fn <> "draw2.json")) :: IO (Either String WReleases)
+  res3 <- (eitherDecode <$> readFileLBS (fn <> "draw3.json")) :: IO (Either String WReleases)
+  pure . Right . concatMap getWr . rights $ [res1, res2, res3]
+-}
+
 readAMusicReleases :: AMusicInfo -> IO [Release]
 readAMusicReleases inf = concat <$> unfoldrM (ramr inf) 0
 
@@ -149,12 +204,13 @@ ramr ainf off
         aenv :: AEnv
         aenv = AEnv { adevt = "Bearer " <> devt
                     , amut = mut
-                    , alimit = 100
+                    , alimit = 25 -- 100 -- 25
                     , aoffset = off
                     , aclient = mkClientEnv m ( BaseUrl Https "api.music.apple.com" 443 "v1" )
                     }
         aquery :: ClientM WAMusic
-        aquery  = getAMusic
+        aquery  = getRecentAMusic
+        -- aquery  = getAMusic
                             ( Just "catalog" )
                             ( Just (alimit aenv) )
                             ( Just (aoffset aenv) )
@@ -191,6 +247,7 @@ getReleases t = (mapMaybe getRelease ams, nxt, tot) where
         getRelease :: WAMData -> Maybe Release
         getRelease ti = r where
           WAMData { id = lid  -- library id
+                  , type__ = ttyp
                   , attributes = tattr
                   , relationships = trel
                   } = ti
@@ -209,7 +266,9 @@ getReleases t = (mapMaybe getRelease ams, nxt, tot) where
             WAMCatData { id = cdid, attributes = cdattr } = Unsafe.fromJust $ viaNonEmpty head cds
             WAMCatDataAttr { trackCount = cdtcnt } = cdattr
 
-          r = if tcnt /= ctcnt then Nothing else -- only complete albums
+          r = 
+            if ttyp /= "library-albums" then Nothing else
+            if tcnt /= ctcnt then Nothing else -- only complete albums
             Just
               Release  { daid      = if cid == "" then hash . toString $ lid else readInt . toString $ cid
                        , dtitle    = ttitle
