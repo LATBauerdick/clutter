@@ -61,7 +61,7 @@ renderAlbumsView ln fs aids = do
           L.div_ [L.class_ "dropdown"] renderButtonSort
           L.div_ [L.class_ "dropdown"] renderButtonOrder
           L.a_   [L.class_ "active"
-                 , L.href_ (uhq <> "2022 Listened?&sortBy=Default&sortOrder=Desc")] "Listened"
+                 , L.href_ (uhq <> "2023 Listened?&sortBy=Default&sortOrder=Desc")] "Listened"
           L.a_   [L.class_ "active", L.href_ (uhq <> "Discogs")] "Discogs"
           L.div_ [L.class_ "dropdown"] renderButtonList
           L.div_ [L.class_ "dropdown"] renderButtonLocation
