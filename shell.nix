@@ -1,12 +1,14 @@
-{ nixpkgs ? import <nixpkgs> {},
-  compiler ? "ghc8107" }:
+{
+  nixpkgs ? import <nixpkgs> {},
+  compiler ? "ghc925" }:
   (import ./default.nix {
-                          inherit nixpkgs compiler; 
+                          inherit nixpkgs compiler;
                           executableSystemDepends = with nixpkgs.haskell.packages.${compiler}; [
                               cabal-install
                               ghcid
                           ];
                         }).env
+
 /* let */
 /*   inherit (nixpkgs) pkgs; */
 /*   ghc = pkgs.haskell.packages.${compiler}.ghcWithPackages */ 
