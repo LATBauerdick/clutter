@@ -75,7 +75,7 @@ renderAlbumTN a =
           [ HE.onClick \_ -> ShowAlbum (show a.albumID) ]
           [ HH.img [ HP.src a.albumCover
                    , HP.alt "cover image"
-                   --, HP.onerror "this.onerror=null;this.src='/no-cover.png';"
+                   --, HP.onerror "this.onerror=null;this.src='http://localhost:8080/no-cover.png';"
                    , HP.class_ $ HH.ClassName "cover-image"
                    ]
           ]
@@ -141,7 +141,7 @@ renderAlbumView a now =
             [ HP.href a.albumURL] $
             [ HH.img [ HP.src a.albumCover
                      , HP.alt "cover image"
-                     --, HP.onerror "this.onerror=null;this.src='/no-cover.png';"
+                     --, HP.onerror "this.onerror=null;this.src='http://localhost:8080/no-cover.png';"
                      , HP.class_ $ HH.ClassName "cover-image"
                      ]
             ]
@@ -271,7 +271,7 @@ renderBadges a =
                         [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ]
                         [ HH.text "" ]
                       ]
-                    -- HH.img [ HP.src_ "/discogs-icon.png", HH.alt "D", HP.class_ "cover-oimage" ]
+                    -- HH.img [ HP.src_ "http://localhost:8080/discogs-icon.png", HH.alt "D", HP.class_ "cover-oimage" ]
                     ]
                   "Tidal" -> HH.div_ []
                   "AppleMusic" ->
@@ -280,7 +280,7 @@ renderBadges a =
                     [ HH.a
                       [ HP.href a.albumURL]
                       [ HH.img
-                        [ HP.src "/am-icon.png"
+                        [ HP.src "http://localhost:8080/am-icon.png"
                         , HP.alt "A"
                         , HP.class_ $ HH.ClassName "cover-oimage"
                         ]
@@ -357,7 +357,7 @@ renderBadges a =
                 [ HH.a
                   [ HP.href ("https://listen.tidal.com/album/" <> tid)]
                   [ HH.img
-                    [ HP.src "/tidal-icon.png"
+                    [ HP.src "http://localhost:8080/tidal-icon.png"
                     , HP.alt "T"
                     , HP.class_ $ HH.ClassName "cover-oimage"
                     ]
@@ -373,7 +373,7 @@ renderBadges a =
                         else "https://music.apple.com/us/album/" <> amid
                   ]
                   [ HH.img
-                    [ HP.src "/am-icon.png"
+                    [ HP.src "http://localhost:8080/am-icon.png"
                     , HP.alt "A"
                     , HP.class_ $ HH.ClassName "cover-oimage"
                     ]

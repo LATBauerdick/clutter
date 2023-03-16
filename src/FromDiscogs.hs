@@ -477,7 +477,9 @@ releasesFromDiscogsApi di nreleases = do
           let rs1 = getWr r1
           r2 <- discogsGetReleases un 0 Nothing Nothing (Just 3) (Just 500) (Just tok) userAgent
           let rs2 = getWr r2
-          pure $ rs0 <> rs1 <> rs2
+          r3 <- discogsGetReleases un 0 Nothing Nothing (Just 4) (Just 500) (Just tok) userAgent
+          let rs3 = getWr r3
+          pure $ rs0 <> rs1 <> rs2 <> rs3
         else do -- only read nreleases, newest first
           r0 <- discogsGetReleases un 0 (Just "added") (Just "desc") (Just 1) (Just nreleases) (Just tok) userAgent
           let rs0 = getWr r0
@@ -491,10 +493,11 @@ releasesFromDiscogsApi di nreleases = do
 releasesFromCacheFile :: FilePath -> IO (Either String [WRelease])
 releasesFromCacheFile fn = do
   putTextLn "-----------------Getting Collection from Discogs Cache-----"
-  res1 <- (eitherDecode <$> readFileLBS (fn <> "draw1.json")) :: IO (Either String WReleases)
-  res2 <- (eitherDecode <$> readFileLBS (fn <> "draw2.json")) :: IO (Either String WReleases)
-  res3 <- (eitherDecode <$> readFileLBS (fn <> "draw3.json")) :: IO (Either String WReleases)
-  pure . Right . concatMap getWr . rights $ [res1, res2, res3]
+  res0 <- (eitherDecode <$> readFileLBS (fn <> "draw1.json")) :: IO (Either String WReleases)
+  res1 <- (eitherDecode <$> readFileLBS (fn <> "draw2.json")) :: IO (Either String WReleases)
+  res2 <- (eitherDecode <$> readFileLBS (fn <> "draw3.json")) :: IO (Either String WReleases)
+  res3 <- (eitherDecode <$> readFileLBS (fn <> "draw4.json")) :: IO (Either String WReleases)
+  pure . Right . concatMap getWr . rights $ [res0, res1, res2, res3]
 
 readDiscogsReleasesCache :: FilePath -> Map Text Int -> IO [Release]
 readDiscogsReleasesCache fn lns = do

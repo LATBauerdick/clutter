@@ -36,8 +36,10 @@ import Provider
     readFolderAids,
     readFolders,
     readDiscogsFolders,
+    readFoldersCache,
     readListAids,
     readDiscogsLists,
+    readListsCache,
     readLists,
     updateTidalFolderAids,
     updateAMusicFolderAids,
@@ -206,9 +208,9 @@ updateTags a m = foldr
 
 -- initialize Env
 -- get info from Tidal
--- get tolder and list info from Discogs, read release info from cached JSON
+-- get folder, list, release info from Discogs or cached JSON, depending on flag c
+-- we do not yet have the App Monad, so this is in the IO Monad instead
 --
-
 initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
 initInit c = do
   t <- readFileText "data/tok.dat" -- for debug, get from file with authentication data
@@ -234,12 +236,13 @@ initInit c = do
 
   -- read the map of Discogs folder names and ids
   -- fns :: Map Text Int
-  -- fns <- liftIO $ readFoldersCache (getDiscogs dci_)
-  fns <- liftIO $ readDiscogsFolders (getDiscogs dci)
+  fns <- if c
+            then readFoldersCache (getDiscogs dci_)
+            else readDiscogsFolders (getDiscogs dci)
 
   -- vda/vta :: Vector of Album
-  vta <- liftIO $ readTidalAlbums tidal
-  vma <- liftIO $ readAMusicAlbums aMusic
+  vta <- readTidalAlbums tidal
+  vma <- readAMusicAlbums aMusic
   vda <- if c
             then liftIO $ readAlbumsCache (getDiscogs dci_) fns -- from cache
             else liftIO $ readDiscogsAlbums (getDiscogs dci) fns -- Discogs query, long
@@ -252,15 +255,16 @@ initInit c = do
           (\a -> (albumID a, a)) <$> V.toList (vda <> vta <> vma)
 
   -- create the Tags index
-  putTextLn "-------------- Updating Tags index"
+  putTextLn "-----------------Updating Tags index"
   let tagsMap :: Map Text [Int]
       tagsMap = foldr updateTags M.empty (M.elems albums')
   putTextLn "---------------------- list of Tags found: "
   print (M.keys tagsMap)
 
   -- read the map of Discogs lists (still empty album ids)
-  -- lm <- liftIO $ readListsCache (getDiscogs dci_)
-  lm <- liftIO $ readDiscogsLists (getDiscogs dci)
+  lm <- if c
+          then readListsCache (getDiscogs dci_)
+          else readDiscogsLists (getDiscogs dci) -- empty lists
 
   pure (dci, albums', fns, lm)
 
