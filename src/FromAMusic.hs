@@ -16,11 +16,12 @@ import qualified Relude.Unsafe as Unsafe
 import qualified Data.Text as T
 import Data.Hashable (hash)
 import Control.Monad.Loops (unfoldrM)
+import Control.Exception (catch)
 
 import Network.HTTP.Client ( newManager )
 import Network.HTTP.Client.TLS ( tlsManagerSettings )
 
-import Data.Aeson ( (.:), (.:?), (.!=), FromJSON (..), withObject )
+import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.:), (.:?), (.!=))
 -- import GHC.Generics
 
 -- import Data.Proxy
@@ -168,76 +169,63 @@ data AEnv = AEnv { adevt :: AMusicDeveloperToken
                  , aclient :: ClientEnv
                  }
 
-  {-
-readAMusicReleasesCache :: FilePath -> IO [Release]
-readAMusicReleasesCache fn = do
-  res <- releasesFromCacheFile fn
-  case res of
-    Left err -> putTextLen $ "Error: " <> show err
-    Right _ -> pure ()
-
-  let (rs, next, tot) = case res of
-          Left _ -> ([],-1,0)
-          Right a -> getReleases a
-  putTextLn $ "-----------------Got " <> show (if next == 0 then off + length rs else next) <> " of " <> show tot <> " Library Albums from Apple Music Cache -----"
-  pure rs
-
-releasesFromCacheFile :: FilePath -> IO (Either String [Release])
-releasesFromCacheFile fn = do
-  putTextLn "-----------------Getting Collection from Discogs Cache-----"
-  res1 <- (eitherDecode <$> readFileLBS (fn <> "draw1.json")) :: IO (Either String WReleases)
-  res2 <- (eitherDecode <$> readFileLBS (fn <> "draw2.json")) :: IO (Either String WReleases)
-  res3 <- (eitherDecode <$> readFileLBS (fn <> "draw3.json")) :: IO (Either String WReleases)
-  pure . Right . concatMap getWr . rights $ [res1, res2, res3]
--}
-
 readAMusicReleases :: AMusicInfo -> IO [Release]
-readAMusicReleases inf = concat <$> unfoldrM (ramr inf) 0
+readAMusicReleases _ainf = concat <$> unfoldrM (ramr fget) 0
+  where
+    -- fget = getAMusicReleases _ainf
+    fget = getAMusicReleasesCache
 
-ramr :: AMusicInfo -> Int -> IO (Maybe ( [Release] , Int))
-ramr ainf off
- | off >= 9000 = pure Nothing -- max number of albums to fetch
- | off == -1 = pure Nothing
- | otherwise = do
-    m <- newManager tlsManagerSettings  -- defaultManagerSettings
-    let AMusicSession devt mut = ainf
-        aenv :: AEnv
-        aenv = AEnv { adevt = "Bearer " <> devt
-                    , amut = mut
-                    , alimit = 25 -- 100 -- 25
-                    , aoffset = off
-                    , aclient = mkClientEnv m ( BaseUrl Https "api.music.apple.com" 443 "v1" )
-                    }
-        aquery :: ClientM WAMusic
-        aquery  = getRecentAMusic
-        -- aquery  = getAMusic
-                            ( Just "catalog" )
-                            ( Just (alimit aenv) )
-                            ( Just (aoffset aenv) )
-                            ( Just "ClutterApp/0.1" )
-                            ( Just (adevt aenv) )
-                            ( Just (amut aenv) )
-    putTextLn "-----------------Getting Library Albums from Apple Music -----"
-    res <- runClientM aquery ( aclient aenv )
-    -- print res
-    case res of
-      Left err -> putTextLn $ "Error: " <> show err
-      Right _ -> pure ()
-    let (rs, next, tot) = case res of
-          Left _ -> ([],-1,0)
-          Right a -> getReleases a
-    -- print rs
-    putTextLn $ "-----------------Got " <> show (if next == 0 then off + length rs else next) <> " of " <> show tot <> " Library Albums from Apple Music -----"
-    pure $ if next > 0 then
-                        Just (rs, next)
-                          else if next == 0 then
-                            Just (rs, -1) -- last page
-                              else if next == -1 then
-                                Nothing -- should check if retry makes sense; for the moment, just stop
-                                -- Just ([], off) -- error, try again
-                                  else
-                                    Nothing -- this should never happen
+ramr :: (Int -> IO (Maybe WAMusic)) -> Int -> IO (Maybe ( [Release] , Int))
+ramr fget off
+  | off >= 9000 = pure Nothing -- max albums to fetch
+  | off < 0 = pure Nothing -- emergency stop, needed?
+  | otherwise = do
+      res <- fget off
+      let (rs, next, tot) = case res of
+                              Nothing -> ([],-1,0)
+                              Just a -> getReleases a
+      putTextLn $ "-----------------Got " <> show (if next == 0 then off + length rs else next) <> " of " <> show tot <> " Library Albums from Apple Music -----"
+      pure $  if next > 0 then Just (rs, next)
+              else if next == 0 then Just (rs, -1) -- last page
+              -- else if next == -1 then Nothing -- error, retry?
+              else Nothing
 
+getAMusicReleasesCache :: Int -> IO (Maybe WAMusic)
+getAMusicReleasesCache off = do
+  let i = off `div` 100
+  let fn = "data/am" <> show i <> ".json"
+
+  let handler :: SomeException -> IO (Either String WAMusic)
+      handler ex = pure $ Left ( "Caught exception reading file! " <> show ex )
+  res <- catch ( (eitherDecode <$> readFileLBS fn ) :: IO (Either String WAMusic) ) handler
+  case res of
+        Left err -> putTextLn $ "Error: " <> show err
+        Right _ -> pure ()
+  pure $ case res of
+           Left _ -> Nothing
+           Right a  -> Just a
+
+getAMusicReleases :: AMusicInfo -> Int -> IO ( Maybe WAMusic )
+getAMusicReleases ainf off = do
+  m <- newManager tlsManagerSettings  -- defaultManagerSettings
+  let AMusicSession devt mut = ainf
+      aquery :: ClientM WAMusic
+      aquery  = getRecentAMusic -- only recent additions, in increments of 25
+      -- aquery  = getAMusic -- all albums, in increments of 100
+                          ( Just "catalog" )
+                          ( Just 25 ) -- 100
+                          ( Just off )
+                          ( Just "ClutterApp/0.1" )
+                          ( Just ("Bearer " <> devt) )
+                          ( Just mut )
+  putTextLn "-----------------Getting Library Albums from Apple Music -----"
+  res <- runClientM aquery ( mkClientEnv m ( BaseUrl Https "api.music.apple.com" 443 "v1" ) )
+  case res of
+        Left err -> putTextLn $ "Error: " <> show err
+        Right _ -> pure ()
+  pure $ case res of
+           Left _ -> Nothing
+           Right a  -> Just a
 
 getReleases :: WAMusic -> ([Release], Int, Int)
 getReleases t = (mapMaybe getRelease ams, nxt, tot) where
