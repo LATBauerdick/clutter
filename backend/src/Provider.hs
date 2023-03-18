@@ -16,7 +16,6 @@ module Provider
     readDiscogsLists,
     readListsCache,
     readDiscogsFolders,
-    readFoldersCache,
     readTidalAlbums,
     readAMusicAlbums,
   -- Else
@@ -104,11 +103,14 @@ readListsCache di = do
 readAlbum :: Int -> AppM (Maybe Album)
 readAlbum aid = do
   p <- envGetDiscogs
+  -- lns <- asks listNamesR >>= readIORef
+  -- let getFolderName :: Int -> Maybe Text
+  --     getFolderName fid = fmap fst . find (\(_, li) -> li == fid) $ M.toList lns
   d <- case getDiscogs p of
     DiscogsSession _ _ -> FD.readDiscogsRelease (getDiscogs p) aid
     _ -> pure Nothing
   let a = dToAlbum <$> d
-  putTextLn $ "Retrieved Discogs Album " <> maybe "Nothing" albumTitle a
+  putTextLn $ "Retrieved Discogs Album " <> "\"" <> maybe "Nothing" albumTitle a <> "\""
   pure a
 
 readAlbums :: Int -> AppM (Vector Album)
@@ -152,13 +154,10 @@ readFolders = do
     _ -> liftIO $ FD.readDiscogsFolders (getDiscogs p)
 
 readDiscogsFolders :: DiscogsInfo -> IO (Map Text Int)
-readDiscogsFolders = FD.readDiscogsFolders
-
-readFoldersCache :: DiscogsInfo -> IO (Map Text Int)
-readFoldersCache di = do
+readDiscogsFolders di = do
   case di of
     DiscogsFile fn -> FD.readDiscogsFoldersCache fn
-    _ -> error "readFoldersCache no file"
+    _              -> FD.readDiscogsFolders di
 
 -- populate the aids for folders from the folder+id in each Album
 -- special treatment for Tidal, Discogs, and All folders

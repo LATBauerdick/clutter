@@ -416,7 +416,7 @@ getR folderName dr = r
     fs :: [Text]
     fs = case folderName dfolder_id of
            Just "Streaming" -> one "Streaming"
-           Just "Files"      -> one "Files"
+           Just "Files"     -> one "Files"
            _                -> (\WFormat {name = n} -> n) <$> dfs
     -- tags from notes, genres, styles, formats, order#, if there is a tidal or apple music version, discogs
     tagsFormats :: [Text] -> [Text]

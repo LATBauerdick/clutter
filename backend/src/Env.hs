@@ -36,7 +36,6 @@ import Provider
     readFolderAids,
     readFolders,
     readDiscogsFolders,
-    readFoldersCache,
     readListAids,
     readDiscogsLists,
     readListsCache,
@@ -229,7 +228,7 @@ initInit c = do
   -- read the map of Discogs folder names and ids
   -- fns :: Map Text Int
   fns <- if c
-            then readFoldersCache (getDiscogs dci_)
+            then readDiscogsFolders (getDiscogs dci_)
             else readDiscogsFolders (getDiscogs dci)
 
   -- vda/vta :: Vector of Album

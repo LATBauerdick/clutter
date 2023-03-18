@@ -117,8 +117,8 @@ jsonValue = jsonNull <|> jsonBool <|> jsonNumber <|> jsonString <|> jsonArray <|
 
 parseFile :: FilePath -> Parser a -> IO (Maybe a)
 parseFile fileName parser = do
-  input <- readFile fileName
-  pure (snd <$> runParser parser (toString input))
+  input <- readFileBS fileName
+  pure (snd <$> runParser parser (decodeUtf8 input))
 
 testParser :: IO ()
 testParser = do
