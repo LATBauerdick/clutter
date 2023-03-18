@@ -3,6 +3,7 @@ module Main (main) where
 import App (app)
 import qualified Data.ByteString.Char8 as S8
 import Data.Text (Text)
+import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Env (envInit)
 import Provider (readAlbums)
@@ -14,15 +15,17 @@ import Types (Discogs (..), Env (..), Tidal (..), TidalInfo (..))
 
 main :: IO ()
 main = do
-  t <- readFileText "data/tok.dat"
-  let [t6, t7, t0, t1, t2, t3, t4, t5] = words t
-      countryCode = t4
-      sessionId = t3
-      userId = fromMaybe 0 $ readMaybe (toString t2) :: Int
-      discogsToken = t0
-      discogsUser = t1
-      accessToken = t5
-  -- vta <- readAlbums $ Tidal $ TidalSession userId sessionId countryCode
+  t <- readFileBS "data/tok.dat"
+  let ts :: [Text]; ts = words . decodeUtf8 $ t
+      appleMusicDevToken = fromJust $ ts !!? 0 -- t6
+      appleMusicUserToken = fromJust $ ts !!? 1 -- t7
+      discogsDevToken = fromJust $ ts !!? 2
+      discogsUserName = fromJust $ ts !!? 3
+      tidalUserId = fromMaybe 0 $ readMaybe (toString . fromJust $ ts !!? 4) :: Int
+      tidalSessionId = fromJust $ ts !!? 5 -- t3
+      tidalCountryCode = fromJust $ ts !!? 6 -- t4
+      tidalAccessToken = fromJust $ ts !!? 7 -- t5
+  -- vta <- readAlbums $ Tidal $ TidalSession tidalUserId tidalSessionId tidalCountryCode tidalAccessToken
   testEnv <- envInit True
 
   let spec :: Spec

@@ -314,8 +314,7 @@ readAMusicAlbums p = do
           (dtags r)
           0
           0
-  ds <- case getAMusic p of
-    _ -> FA.readAMusicReleases (getAMusic p)
+  ds <- FA.readAMusicReleases (getAMusic p)
   let as = toAlbum <$> ds
   -- print as
   putTextLn $ "Total # Apple Music Albums: " <> show (length as)

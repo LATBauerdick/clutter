@@ -13,7 +13,7 @@ module Env
   )
 where
 
-
+import Data.Maybe (fromJust)
 import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import qualified Data.List as L
@@ -65,18 +65,27 @@ import Types
 
 import qualified Data.Text as T (find)
 
+-- get authorization info from a text file
+getProviders :: IO (Tidal, AMusic, Discogs)
+getProviders = do
+  t <- readFileBS "data/tok.dat" -- for debug, get from file with authentication data
+  let ts :: [Text]; ts = words . decodeUtf8 $ t
+      appleMusicDevToken = fromJust $ ts !!? 0 -- t6
+      appleMusicUserToken = fromJust $ ts !!? 1 -- t7
+      discogsDevToken = fromJust $ ts !!? 2
+      discogsUserName = fromJust $ ts !!? 3
+      tidalUserId = fromMaybe 0 $ readMaybe (toString . fromJust $ ts !!? 4) :: Int
+      tidalSessionId = fromJust $ ts !!? 5 -- t3
+      tidalCountryCode = fromJust $ ts !!? 6 -- t4
+      tidalAccessToken = fromJust $ ts !!? 7 -- t5
+  pure( Tidal $ TidalSession tidalUserId tidalSessionId tidalCountryCode tidalAccessToken
+      , AMusic $ AMusicSession appleMusicDevToken appleMusicUserToken
+      , Discogs $ DiscogsSession discogsDevToken discogsUserName
+      )
+
 envTidalConnect :: Int -> AppM Env
 envTidalConnect _nalbums = do
-  t <- readFileText "data/tok.dat" -- for debug, get from file with authentication data
-  let [t6, t7, t0, t1, t2, t3, t4, t5] = words t
-      countryCode = t4
-      sessionId = t3
-      userId = fromMaybe 0 $ readMaybe (toString t2) :: Int
-      accessToken = t5
-      musicDevToken = t6
-      musicUserToken = t7
-  let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
-  let aMusic = AMusic $ AMusicSession musicDevToken musicUserToken
+  (tidal, aMusic, _) <- liftIO getProviders
 
   env <- ask
   oldAlbums <- readIORef $ albumsR env
@@ -213,26 +222,9 @@ updateTags a m = foldr
 --
 initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
 initInit c = do
-  t <- readFileText "data/tok.dat" -- for debug, get from file with authentication data
-  let [t6, t7, t0, t1, t2, t3, t4, t5] = words t
-      countryCode = t4
-      sessionId = t3
-      userId = fromMaybe 0 $ readMaybe (toString t2) :: Int
-      discogsToken = t0
-      discogsUser = t1
-      accessToken = t5
-      aMusicDevToken = t6
-      aMusicUserToken = t7
-
-  -- from cache file or from Tidal API
-  -- let _tidal = Tidal $ TidalFile "data/traw2.json"
-  let tidal = Tidal $ TidalSession userId sessionId countryCode accessToken
-
-  let aMusic = AMusic $ AMusicSession aMusicDevToken aMusicUserToken
-
-  -- from cache file or from Discogs API
-  let dci_ = Discogs $ DiscogsFile "data/"
-  let dci = Discogs $ DiscogsSession discogsToken discogsUser
+  (tidal, aMusic, dci) <- getProviders
+  let dci_ = Discogs $ DiscogsFile "data/" -- Discogs from cache
+  let _tidal = Tidal $ TidalFile "data/traw2.json"
 
   -- read the map of Discogs folder names and ids
   -- fns :: Map Text Int
@@ -277,6 +269,7 @@ envInit c = do
   -- get Map of all albums from Providers:
   -- retrieve database from files
   --
+  -- at this point, we do not have the AppM monad yet, so are working in IO
   -- get initial database info from providers and/or cached JSON
   --  dc :: Discogs                     -- discogs credentials
   --  albums' :: Map Int Album          -- map of Albums indexed with their IDs

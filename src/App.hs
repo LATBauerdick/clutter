@@ -102,7 +102,6 @@ data AlbumsJ = AlbumsJ
   , lalbums :: [Album]
   } deriving (Eq, Show, Generic)
 
-instance ToJSON Album
 instance ToJSON AlbumJ
 instance ToJSON AlbumsJ
 
@@ -112,7 +111,7 @@ data ParamsJ = ParamsJ
   } deriving (Eq, Show, Generic)
 
 instance ToJSON ParamsJ
-instance ToJSON MenuParams
+-- instance ToJSON MenuParams
 
 type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> API5 :<|> API6 :<|> Raw
 
@@ -130,7 +129,8 @@ nt env x = do
 -- where we modify the response header such that it includes CORS header Access-Control-Allow-Origin: *
 --
 addAllOriginsMiddleware :: Application -> Application
-addAllOriginsMiddleware baseApp = \req responseFunc -> baseApp req (responseFunc . addOriginsAllowed)
+addAllOriginsMiddleware baseApp req responseFunc = baseApp req (responseFunc . addOriginsAllowed)
+-- addAllOriginsMiddleware baseApp = \req responseFunc -> baseApp req (responseFunc . addOriginsAllowed)
 
 addOriginsAllowed :: Response -> Response
 addOriginsAllowed = mapResponseHeaders $
@@ -273,7 +273,7 @@ clutterServer = serveAlbum
       pure . RawHtml $ L.renderBS html
 --}}}clutterServer
 
--- init env from files (only AppM not yet available) and run app
+-- init env from files (AppM not yet available) and run app
 startApp :: Int -> Bool -> IO ()
 startApp p c = envInit c >>= (run p . app)
 

@@ -27,6 +27,8 @@ import Data.Vector ( Vector )
 import qualified Data.Map.Strict as M
 import Servant (Handler)
 
+import Data.Aeson (ToJSON (..))
+
 data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
   deriving Show
 data AMusicInfo = AMusicSession Text Text
@@ -50,6 +52,8 @@ data MenuParams = MenuParams { muhq :: Text
                   , mlistNames :: [Text]
                   , mlocNames :: [Text]
                   } deriving (Eq, Show, Generic)
+instance ToJSON MenuParams
+
 
 pLocList :: Text -> Bool  -- lists with location info
 pLocList n = case viaNonEmpty head . words $ n of
@@ -159,3 +163,5 @@ data Album
   } deriving (Show, Generic)
 instance Eq Album where
   (==) a b = albumID a == albumID b
+instance ToJSON Album
+

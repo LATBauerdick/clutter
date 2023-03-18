@@ -73,7 +73,7 @@ renderAlbumsView ln fs aids = do
           L.toHtml t1
 
       renderShow = do
-        L.button_ [L.class_ "dropbtn"] $do
+        L.button_ [L.class_ "dropbtn"] $ do
           L.a_  [L.class_ "dropbtn", L.href_ (qry' fs ln)] $ L.toHtml $ "Showing " <> ln
 
       renderButtonList = do
@@ -93,7 +93,7 @@ renderAlbumsView ln fs aids = do
             . filter pLocList $ M.keys (listNames envr)
 
       renderButtonTags = do
-        L.button_ [L.class_ "dropbtn"] $do
+        L.button_ [L.class_ "dropbtn"] $ do
           "Tags "
           L.i_ [ L.class_ "fa fa-caret-down" ] ""
         L.div_ [L.class_ "dropdown-content"] $ do
@@ -139,7 +139,7 @@ renderAlbumsView ln fs aids = do
                     , L.href_ (qry' nts ln)] $ do
                 L.toHtml t
 
-        L.button_ [L.class_ "dropbtn"] $do
+        L.button_ [L.class_ "dropbtn"] $ do
           L.a_  [L.class_ "dropbtn", L.href_ (qry' [] ln) ] $ do --L.toHtml $ "Showing " <> ln
             L.toHtml $ if  ffs /= []
                         then "Focus (#" <> T.intercalate " #" ffs <> ")"

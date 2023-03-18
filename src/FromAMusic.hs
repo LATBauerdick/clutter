@@ -43,7 +43,7 @@ data WAMusic = WAMusic
 instance FromJSON WAMusic where
   parseJSON = withObject "wamusic" $ \ o -> do
     d_      <- o .:  "data"
-    m_      <- o .:?  "meta" .!= WAMMeta 150 -- !!! recently-added does not have a meta field, and will retunr at most 150 entries
+    m_      <- o .:? "meta" .!= WAMMeta 150 -- !!! recently-added does not have a meta field, and will return at most 150 entries
     n_      <- o .:? "next" .!= ""
     pure $ WAMusic  d_ m_ n_
 data WAMData = WAMData
@@ -181,9 +181,7 @@ ramr fget off
   | off < 0 = pure Nothing -- emergency stop, needed?
   | otherwise = do
       res <- fget off
-      let (rs, next, tot) = case res of
-                              Nothing -> ([],-1,0)
-                              Just a -> getReleases a
+      let (rs, next, tot) = maybe ([], - 1, 0) getReleases res
       putTextLn $ "-----------------Got " <> show (if next == 0 then off + length rs else next) <> " of " <> show tot <> " Library Albums from Apple Music -----"
       pure $  if next > 0 then Just (rs, next)
               else if next == 0 then Just (rs, -1) -- last page
@@ -250,14 +248,14 @@ getReleases t = (mapMaybe getRelease ams, nxt, tot) where
           WAMArt { url = tcoverurl } = tartwork
           WAMRel { catalog = tcat } = trel
           WAMCat { catdata = cds } = tcat
-          (cid, ctcnt) = if length cds == 0 then ("", 0) else (cdid, cdtcnt) where -- catalog id, trackCount
+          (cid, ctcnt) = if null cds then ("", 0) else (cdid, cdtcnt) where -- catalog id, trackCount
             WAMCatData { id = cdid, attributes = cdattr } = Unsafe.fromJust $ viaNonEmpty head cds
             WAMCatDataAttr { trackCount = cdtcnt } = cdattr
 
-          r = 
-            if ttyp /= "library-albums" then Nothing else
-            if tcnt /= ctcnt then Nothing else -- only complete albums
-            Just
+          r | ttyp /= "library-albums" = Nothing
+            | tcnt /= ctcnt = Nothing -- only complete albums
+            | otherwise
+            = Just
               Release  { daid      = if cid == "" then hash . toString $ lid else readInt . toString $ cid
                        , dtitle    = ttitle
                        , dartists  = [tartist]
