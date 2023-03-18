@@ -27,7 +27,6 @@ import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
-import Relude.File
 import Data.Text as T (stripPrefix, filter, null, toCaseFold
                       , take, intercalate, breakOnEnd )
 import Data.Char as Ch (isDigit)

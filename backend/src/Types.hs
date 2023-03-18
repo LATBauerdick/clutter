@@ -33,7 +33,7 @@ data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
   deriving Show
 data AMusicInfo = AMusicSession Text Text
   deriving Show
-data DiscogsInfo = DiscogsEnv Env | DiscogsFile FilePath | DiscogsSession Text Text
+data DiscogsInfo = DiscogsFile FilePath | DiscogsSession Text Text
   deriving Show
 
 

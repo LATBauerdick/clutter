@@ -89,6 +89,7 @@ readLists = do
     DiscogsFile fn -> error $ "Bug: Provider Discogs does not read lists from files " <> toText fn
     _ -> liftIO $ FD.readLists (getDiscogs p)
 
+readDiscogsLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
 readDiscogsLists = FD.readLists
 
 readListsCache :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
@@ -147,6 +148,7 @@ readFolders = do
     DiscogsFile fn -> liftIO $ FD.readDiscogsFoldersCache fn
     _ -> liftIO $ FD.readDiscogsFolders (getDiscogs p)
 
+readDiscogsFolders :: DiscogsInfo -> IO (Map Text Int)
 readDiscogsFolders = FD.readDiscogsFolders
 
 readFoldersCache :: DiscogsInfo -> IO (Map Text Int)
