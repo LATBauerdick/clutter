@@ -6,14 +6,17 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 
 module FromDiscogs
-  ( readLists,
+  (
+  -- AppM
     readDiscogsRelease,
     readReleases,
+    readListAids,
+  -- IO
+    readLists,
     readDiscogsReleases,
     readDiscogsReleasesCache,
     readDiscogsLists,
     readDiscogsListsCache,
-    readListAids,
     readDiscogsFolders,
     readDiscogsFoldersCache,
   )

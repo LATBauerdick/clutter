@@ -4,22 +4,25 @@
 
 module Provider
   (
+  -- AppM
     readListAids,
     readAlbum,
     readAlbums,
+    readFolders,
+    readLists,
+  -- IO
     readDiscogsAlbums,
     readAlbumsCache,
     readDiscogsLists,
     readListsCache,
-    readFolders,
     readDiscogsFolders,
     readFoldersCache,
-    readFolderAids,
-    readLists,
     readTidalAlbums,
+    readAMusicAlbums,
+  -- Else
+    readFolderAids,
     updateTidalFolderAids,
     updateAMusicFolderAids,
-    readAMusicAlbums,
   )
 where
 
@@ -105,7 +108,7 @@ readAlbum aid = do
     DiscogsSession _ _ -> FD.readDiscogsRelease (getDiscogs p) aid
     _ -> pure Nothing
   let a = dToAlbum <$> d
-  putTextLn $ "Retrieved Discogs Album " <> show (albumTitle <$> a)
+  putTextLn $ "Retrieved Discogs Album " <> maybe "Nothing" albumTitle a
   pure a
 
 readAlbums :: Int -> AppM (Vector Album)
