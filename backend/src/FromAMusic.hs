@@ -59,9 +59,8 @@ instance FromJSON WAMData where
     attr_ <- o .: "attributes"
     rel_  <- o .: "relationships"
     pure $ WAMData id_ type_ attr_ rel_
-data WAMMeta = WAMMeta
-                { total :: Int
-                } deriving (Show, Generic)
+newtype WAMMeta = WAMMeta { total :: Int }
+    deriving (Show, Generic)
 instance FromJSON WAMMeta
 data WAMAttr = WAMAttr
                 { trackCount :: Int
@@ -93,13 +92,11 @@ instance FromJSON WAMArt where
     h_   <- o .:? "height" .!= 0
     url_ <- o .:? "url" .!= ""
     pure $ WAMArt w_ h_ url_
-data WAMRel = WAMRel
-                { catalog :: WAMCat
-                } deriving (Show, Generic)
+newtype WAMRel = WAMRel { catalog :: WAMCat }
+    deriving (Show, Generic)
 instance FromJSON WAMRel
-data WAMCat = WAMCat
-                { catdata :: [WAMCatData]
-                } deriving (Show, Generic)
+newtype WAMCat = WAMCat { catdata :: [WAMCatData] }
+    deriving (Show, Generic)
 instance FromJSON WAMCat where
   parseJSON = withObject "wamcat" $ \ o -> do
     d_      <- o .: "data"
@@ -109,9 +106,9 @@ data WAMCatData = WAMCatData
                 , attributes :: WAMCatDataAttr
                 } deriving (Show, Generic)
 instance FromJSON WAMCatData
-data WAMCatDataAttr = WAMCatDataAttr
-                { trackCount :: Int
-                } deriving (Show, Generic)
+newtype WAMCatDataAttr = WAMCatDataAttr {trackCount :: Int}
+     deriving (Show, Generic)
+
 instance FromJSON WAMCatDataAttr where
   parseJSON = withObject "wamcatdataattr" $ \ o -> do
     tc_ <- o .:? "trackCount" .!= 0
@@ -162,18 +159,18 @@ aMusicAPI :: Proxy AMusicAPI
 aMusicAPI = Proxy
 getAMusic :<|> getRecentAMusic = client aMusicAPI
 
-data AEnv = AEnv { adevt :: AMusicDeveloperToken
-                 , amut :: AMusicUserToken
-                 , alimit :: AMusicLimit
-                 , aoffset :: AMusicOffset
-                 , aclient :: ClientEnv
-                 }
+-- data AEnv = AEnv { adevt :: AMusicDeveloperToken
+--                  , amut :: AMusicUserToken
+--                  , alimit :: AMusicLimit
+--                  , aoffset :: AMusicOffset
+--                  , aclient :: ClientEnv
+--                  }
 
 readAMusicReleases :: AMusicInfo -> IO [Release]
 readAMusicReleases _ainf = concat <$> unfoldrM (ramr fget) 0
   where
-    -- fget = getAMusicReleases _ainf
-    fget = getAMusicReleasesCache
+    fget = if False then getAMusicReleases _ainf -- we just read from cache for now
+                    else getAMusicReleasesCache
 
 ramr :: (Int -> IO (Maybe WAMusic)) -> Int -> IO (Maybe ( [Release] , Int))
 ramr fget off
@@ -208,8 +205,14 @@ getAMusicReleases ainf off = do
   m <- newManager tlsManagerSettings  -- defaultManagerSettings
   let AMusicSession devt mut = ainf
       aquery :: ClientM WAMusic
-      aquery  = getRecentAMusic -- only recent additions, in increments of 25
-      -- aquery  = getAMusic -- all albums, in increments of 100
+      aquery  = if True then getRecentAMusic -- only recent additions, in increments of 25
+                          ( Just "catalog" )
+                          ( Just 25 ) -- 100
+                          ( Just off )
+                          ( Just "ClutterApp/0.1" )
+                          ( Just ("Bearer " <> devt) )
+                          ( Just mut )
+                else getAMusic -- all albums, in increments of 100
                           ( Just "catalog" )
                           ( Just 25 ) -- 100
                           ( Just off )

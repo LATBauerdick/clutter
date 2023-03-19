@@ -12,9 +12,7 @@ module Provider
     readLists,
   -- IO
     readDiscogsAlbums,
-    readAlbumsCache,
     readDiscogsLists,
-    readListsCache,
     readDiscogsFolders,
     readTidalAlbums,
     readAMusicAlbums,
@@ -35,7 +33,6 @@ import qualified FromDiscogs as FD
     readDiscogsFoldersCache,
     readDiscogsListsCache,
     readDiscogsRelease,
-    readReleases,
     readDiscogsReleases,
     readDiscogsReleasesCache,
     readListAids,
@@ -56,12 +53,14 @@ import Types
     AMusic (..),
     getAMusic,
     AppM,
+    Env (..),
     envGetDiscogs,
+    envGetListName,
     getDiscogs,
   )
 -- import Relude.Debug ( trace )
-debug :: a -> Text -> a
-debug a b = trace (toString b) a
+-- debug :: a -> Text -> a
+-- debug a b = trace (toString b) a
 
 dToAlbum :: Release -> Album
 dToAlbum r =
@@ -91,23 +90,21 @@ readLists = do
     DiscogsFile fn -> error $ "Bug: Provider Discogs does not read lists from files " <> toText fn
     _ -> liftIO $ FD.readLists (getDiscogs p)
 
-readDiscogsLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
-readDiscogsLists = FD.readLists
-
-readListsCache :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
-readListsCache di = do
+readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector Int))
+readDiscogsLists d = do
+  let di = getDiscogs d
   case di of
     DiscogsFile fn -> FD.readDiscogsListsCache fn
-    _ -> error "readListsCache no file"
+    _              -> FD.readLists di
 
 readAlbum :: Int -> AppM (Maybe Album)
 readAlbum aid = do
   p <- envGetDiscogs
-  -- lns <- asks listNamesR >>= readIORef
+  lns <- asks listNamesR >>= readIORef
   -- let getFolderName :: Int -> Maybe Text
   --     getFolderName fid = fmap fst . find (\(_, li) -> li == fid) $ M.toList lns
   d <- case getDiscogs p of
-    DiscogsSession _ _ -> FD.readDiscogsRelease (getDiscogs p) aid
+    DiscogsSession _ _ -> liftIO $ FD.readDiscogsRelease (getDiscogs p) lns aid
     _ -> pure Nothing
   let a = dToAlbum <$> d
   putTextLn $ "Retrieved Discogs Album " <> "\"" <> maybe "Nothing" albumTitle a <> "\""
@@ -115,36 +112,34 @@ readAlbum aid = do
 
 readAlbums :: Int -> AppM (Vector Album)
 readAlbums nreleases = do
-    ds <- FD.readReleases nreleases
+    lns <- asks listNamesR >>= readIORef
+    p <- envGetDiscogs
+    let di = getDiscogs p
+    ds <- case di of
+      DiscogsFile fn -> liftIO $ FD.readDiscogsReleasesCache fn lns
+      _              -> liftIO $ FD.readDiscogsReleases di lns nreleases
     let as = dToAlbum <$> ds
     putTextLn $ "Total # Discogs Albums read: " <> show (length as)
     pure $ V.fromList as
 
-readDiscogsAlbums :: DiscogsInfo -> Map Text Int -> IO (Vector Album)
-readDiscogsAlbums di lns = do
-    ds <- FD.readDiscogsReleases di lns
-    let as = dToAlbum <$> ds
-    putTextLn $ "Total # Discogs Albums read: " <> show (length as)
-    pure $ V.fromList as
-
-readAlbumsCache :: DiscogsInfo -> Map Text Int -> IO (Vector Album)
-readAlbumsCache di lns = do
--- need to pass down Map of list/folder names for decoding when we fill Albums
+readDiscogsAlbums :: Discogs -> Map Text Int -> IO (Vector Album)
+readDiscogsAlbums d lns = do
+    let di = getDiscogs d
     ds <- case di of
       DiscogsFile fn -> FD.readDiscogsReleasesCache fn lns
-      _ -> error "readAlbumsCache no file"
+      _              -> FD.readDiscogsReleases di lns 0
     let as = dToAlbum <$> ds
-
-    putTextLn $ "Total # Discogs Albums: " <> show (length as)
-
+    putTextLn $ "Total # Discogs Albums read: " <> show (length as)
     pure $ V.fromList as
 
 readListAids :: Int -> AppM (Vector Int)
 readListAids i = do
   p <- envGetDiscogs
+  ln <- envGetListName i
+  putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
   case getDiscogs p of
         DiscogsFile _ -> pure V.empty -- maybe not ok
-        _ -> FD.readListAids i
+        _ -> liftIO $ FD.readListAids (getDiscogs p) i
 
 readFolders :: AppM (Map Text Int)
 readFolders = do
@@ -153,8 +148,9 @@ readFolders = do
     DiscogsFile fn -> liftIO $ FD.readDiscogsFoldersCache fn
     _ -> liftIO $ FD.readDiscogsFolders (getDiscogs p)
 
-readDiscogsFolders :: DiscogsInfo -> IO (Map Text Int)
-readDiscogsFolders di = do
+readDiscogsFolders :: Discogs -> IO (Map Text Int)
+readDiscogsFolders d = do
+  let di = getDiscogs d
   case di of
     DiscogsFile fn -> FD.readDiscogsFoldersCache fn
     _              -> FD.readDiscogsFolders di
@@ -323,5 +319,4 @@ readAMusicAlbums p = do
   -- print as
   putTextLn $ "Total # Apple Music Albums: " <> show (length as)
   pure $ V.fromList as
-
 

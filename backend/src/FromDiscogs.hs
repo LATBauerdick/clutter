@@ -8,13 +8,12 @@
 module FromDiscogs
   (
   -- AppM
-    readDiscogsRelease,
-    readReleases,
     readListAids,
   -- IO
     readLists,
     readDiscogsReleases,
     readDiscogsReleasesCache,
+    readDiscogsRelease,
     readDiscogsLists,
     readDiscogsListsCache,
     readDiscogsFolders,
@@ -40,18 +39,19 @@ import Servant
 import Servant.Client
 import Types
   ( DiscogsInfo (..),
-    Discogs (..),
+    -- Discogs (..),
     Release (..),
-    AppM,
-    Env (..),
-    envGetDiscogs,
-    envGetListName,
+    -- AppM,
+    -- Env (..),
   )
 
-data WTest = WTest
-  { uri :: !Text
-  }
-  deriving (Show, Generic)
+-- data WTest = WTest
+--   { uri :: !Text
+--   }
+--   deriving (Show, Generic)
+newtype WTest
+     = WTest {uri :: Text}
+     deriving (Show, Generic)
 
 data WLists = WLists
   { pagination :: WPagination,
@@ -347,7 +347,7 @@ getR folderName dr = r
     tidalid =
       viaNonEmpty head (
         ( mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
-        . mapMaybe ( maybe Nothing ( Just . snd . T.breakOnEnd "/" ) . T.stripPrefix  "https://tidal.com/" )
+        . mapMaybe ( fmap ( snd . T.breakOnEnd "/" ) . T.stripPrefix  "https://tidal.com/" )
         . words
         $ fromMaybe "" loct
         ) <> (
@@ -362,7 +362,7 @@ getR folderName dr = r
     -- or https://music.apple.com/us/album/<...>/<id>
     amid =
       viaNonEmpty head ((
-        mapMaybe ( maybe Nothing ( Just . snd . T.breakOnEnd "/" ) . T.stripPrefix  "https://music.apple.com/us/album/" )
+        mapMaybe ( fmap ( snd . T.breakOnEnd "/" ) . T.stripPrefix  "https://music.apple.com/us/album/" )
         . words
         $ fromMaybe "" loct
         ) <> (
@@ -376,8 +376,8 @@ getR folderName dr = r
         )
       )
     -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
-    xxx :: Maybe Text
-    xxx = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
+    _xxx :: Maybe Text
+    _xxx = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
     loc :: Maybe Text
@@ -420,9 +420,9 @@ getR folderName dr = r
            _                -> (\WFormat {name = n} -> n) <$> dfs
     -- tags from notes, genres, styles, formats, order#, if there is a tidal or apple music version, discogs
     tagsFormats :: [Text] -> [Text]
-    tagsFormats ts = map (("format." <>) . T.toCaseFold) ts
+    tagsFormats = map (("format." <>) . T.toCaseFold)
     tagsFolder :: Int -> [Text]
-    tagsFolder i = one . T.toCaseFold . ("folder." <>) . fromMaybe "???" . folderName $ i
+    tagsFolder = one . T.toCaseFold . ("folder." <>) . fromMaybe "???" . folderName
     -- add opera if style is opera
     tagsGenres :: [Text] -> [Text]
     tagsGenres ts = map (("genre." <>) . T.toCaseFold)
@@ -465,10 +465,15 @@ getR folderName dr = r
           dplays    = plays
         }
 
+getToken :: DiscogsInfo -> (Text, Text)
+getToken di = case di of
+  DiscogsSession tok un -> (tok, un)
+  _ -> ("", "")
+
 releasesFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String [WRelease])
 releasesFromDiscogsApi di nreleases = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
-  let DiscogsSession tok un = di
+  let (tok, un) = getToken di
   let dc = mkClientEnv m discogsBaseUrl
       query :: ClientM [WRelease]
       query = if nreleases == 0
@@ -513,11 +518,12 @@ readDiscogsReleasesCache fn lns = do
         Right d -> getR ln <$> d
   pure rs
 
-readDiscogsReleases :: DiscogsInfo -> Map Text Int -> IO [Release]
-readDiscogsReleases di lns = do
+-- getting n Discogs Releases, all if n == 0
+readDiscogsReleases :: DiscogsInfo -> Map Text Int -> Int -> IO [Release]
+readDiscogsReleases di lns n = do
   putTextLn "-----------------Getting Releases from Discogs-----"
   let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
-  res <- liftIO $ releasesFromDiscogsApi di 0
+  res <- liftIO $ releasesFromDiscogsApi di n
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
@@ -526,24 +532,21 @@ readDiscogsReleases di lns = do
         Right d -> getR ln <$> d
   pure rs
 
-readReleases :: Int -> AppM [Release]
-readReleases nreleases= do
-  p <- envGetDiscogs
-  lns <- asks listNamesR >>= readIORef
+readDiscogsRelease :: DiscogsInfo -> Map Text Int -> Int -> IO (Maybe Release)
+readDiscogsRelease di lns rid = do
   let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
-  res <- liftIO $ releasesFromDiscogsApi (getDiscogs p) nreleases
+  res <- liftIO $ releaseFromDiscogsApi di rid
   case res of
-    Left err -> putTextLn $ "Error: " <> show err
+    Left err -> putTextLn $ "Error in readDiscogsRelease: " <> show err
     Right _ -> pure ()
-  let rs = case res of
-        Left _ -> []
-        Right d -> getR ln <$> d
-  pure rs
+  pure $ case res of
+    Left _ -> Nothing
+    Right d -> Just (getR ln d)
 
 releaseFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String WRelease)
 releaseFromDiscogsApi di aid = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
-  let DiscogsSession tok un = di
+  let (tok, un) = getToken di
   let dc = mkClientEnv m discogsBaseUrl
       query :: ClientM WReleases
       query = do
@@ -556,22 +559,10 @@ releaseFromDiscogsApi di aid = do
       Nothing -> Left $ "No Release Found for " <> show aid
       Just r -> Right r
 
-readDiscogsRelease :: DiscogsInfo -> Int -> AppM (Maybe Release)
-readDiscogsRelease di rid = do
-  lns <- asks listNamesR >>= readIORef
-  let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
-  res <- liftIO $ releaseFromDiscogsApi di rid
-  case res of
-    Left err -> putTextLn $ "Error in readDiscogsRelease: " <> show err
-    Right _ -> pure ()
-  pure $ case res of
-    Left _ -> Nothing
-    Right d -> Just (getR ln d)
-
 listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
 listsFromDiscogsApi di = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
-  let DiscogsSession tok un = di
+  let (tok, un) = getToken di
   let dc = mkClientEnv m discogsBaseUrl
   -- get list and folder names and ids
   let query :: ClientM WLists
@@ -619,13 +610,10 @@ readDiscogsListsCache fn = do
 
   pure $ M.fromList lm
 
---
---
---
 foldersFromDiscogsApi :: DiscogsInfo -> IO (Either String WFolders)
 foldersFromDiscogsApi di = do
   m <- newManager tlsManagerSettings
-  let DiscogsSession tok un = di
+  let (tok, un) = getToken di
       dc = mkClientEnv m discogsBaseUrl
   -- get list and folder names and ids
   res <- runClientM (discogsGetFolders un (Just tok) userAgent) dc
@@ -673,15 +661,14 @@ readDiscogsFoldersCache fn = do
 -- we're treating Discog folders like lists,
 -- also assuming that their IDs are unique
 -- NB: the JSON required to extract album id info is different between them
-readListAids :: Int -> AppM (Vector Int)
-readListAids i = do
-  di <- envGetDiscogs
-  let DiscogsSession tok _ = getDiscogs di
+readListAids :: DiscogsInfo -> Int -> IO (Vector Int)
+readListAids di i = do
+  let (tok, _) = getToken di
   m <- liftIO $ newManager tlsManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
-  ln <- envGetListName i
-  putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
-  res <- liftIO $ runClientM (discogsGetList i (Just tok) userAgent) dc
+  let query :: ClientM WLItems
+      query = discogsGetList i (Just tok) userAgent
+  res <- liftIO $ runClientM query dc
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
@@ -707,7 +694,7 @@ readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLI
 
 readLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
 readLists di = do
-  let DiscogsSession tok un = di
+  let (tok, un) = getToken di
   m <- newManager tlsManagerSettings -- defaultManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
   let query :: ClientM WLists

@@ -132,7 +132,9 @@ data TEnv = TEnv { userId :: TidalUserId
 readTidalReleases :: TidalInfo -> IO [Release]
 readTidalReleases tinf = do
   m <- newManager tlsManagerSettings  -- defaultManagerSettings
-  let TidalSession uid sid cc at = tinf
+  let (uid, sid, cc, at) = case tinf of
+        TidalSession uid_ sid_ cc_ at_ -> (uid_, sid_, cc_, at_)
+        _ -> (0, "", "", "") -- this cannot happen, I think...
       tenv :: TEnv
       tenv = TEnv { userId = uid
                   , sessionId = sid

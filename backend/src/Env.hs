@@ -28,18 +28,16 @@ import qualified Data.Vector as V
   )
 import Provider
   ( readAlbum,
-    readAlbumsCache,
     readAlbums,
+    readFolders,
+    readLists,
     readDiscogsAlbums,
+    readDiscogsFolders,
+    readDiscogsLists,
     readTidalAlbums,
     readAMusicAlbums,
     readFolderAids,
-    readFolders,
-    readDiscogsFolders,
     readListAids,
-    readDiscogsLists,
-    readListsCache,
-    readLists,
     updateTidalFolderAids,
     updateAMusicFolderAids,
   )
@@ -65,7 +63,7 @@ import Types
 import qualified Data.Text as T (find)
 
 -- get authorization info from a text file
-getProviders :: IO (Tidal, AMusic, Discogs)
+getProviders :: IO (Tidal, Tidal, AMusic, Discogs, Discogs)
 getProviders = do
   t <- readFileBS "data/tok.dat" -- for debug, get from file with authentication data
   let ts :: [Text]; ts = words . decodeUtf8 $ t
@@ -77,14 +75,17 @@ getProviders = do
       tidalSessionId = fromJust $ ts !!? 5 -- t3
       tidalCountryCode = fromJust $ ts !!? 6 -- t4
       tidalAccessToken = fromJust $ ts !!? 7 -- t5
+
   pure( Tidal $ TidalSession tidalUserId tidalSessionId tidalCountryCode tidalAccessToken
+      , Tidal $ TidalFile "data/traw2.json" -- Tidal from cache
       , AMusic $ AMusicSession appleMusicDevToken appleMusicUserToken
       , Discogs $ DiscogsSession discogsDevToken discogsUserName
+      , Discogs $ DiscogsFile "data/" -- Discogs from cache
       )
 
 envTidalConnect :: Int -> AppM Env
 envTidalConnect _nalbums = do
-  (tidal, aMusic, _) <- liftIO getProviders
+  (tidal, _, aMusic, _, _) <- liftIO getProviders
 
   env <- ask
   oldAlbums <- readIORef $ albumsR env
@@ -221,24 +222,21 @@ updateTags a m = foldr
 --
 initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
 initInit c = do
-  (tidal, aMusic, dci) <- getProviders
-  let dci_ = Discogs $ DiscogsFile "data/" -- Discogs from cache
-  let _tidal = Tidal $ TidalFile "data/traw2.json"
+  (tidal, _tidal, aMusic, dci, dci_) <- getProviders
+
+  if c
+    then putTextLn "-----------------using cached Discogs collection info"
+    else putTextLn "-----------------reading Discogs collection info from the web"
+  let dc = if c then dci_ else dci
 
   -- read the map of Discogs folder names and ids
   -- fns :: Map Text Int
-  fns <- if c
-            then readDiscogsFolders (getDiscogs dci_)
-            else readDiscogsFolders (getDiscogs dci)
+  fns <- readDiscogsFolders dc
 
-  -- vda/vta :: Vector of Album
+  -- vda/vma/vta :: Vector of Album
   vta <- readTidalAlbums tidal
   vma <- readAMusicAlbums aMusic
-  vda <- if c
-            then liftIO $ readAlbumsCache (getDiscogs dci_) fns -- from cache
-            else liftIO $ readDiscogsAlbums (getDiscogs dci) fns -- Discogs query, long
-    -- then putTextLn "-----------------using cached Discogs collection info"
-    -- else putTextLn "-----------------reading Discogs collection info from the web"
+  vda <- liftIO $ readDiscogsAlbums dc fns
 
   let albums' :: Map Int Album
       albums' =
@@ -252,10 +250,8 @@ initInit c = do
   putTextLn "---------------------- list of Tags found: "
   print (M.keys tagsMap)
 
-  -- read the map of Discogs lists (still empty album ids)
-  lm <- if c
-          then readListsCache (getDiscogs dci_)
-          else readDiscogsLists (getDiscogs dci) -- empty lists
+  -- read the map of Discogs lists (still empty album ids if from API)
+  lm <- readDiscogsLists dc
 
   pure (dci, albums', fns, lm)
 
@@ -367,13 +363,11 @@ getList' ln = do
       -- am <- liftIO ( readIORef (albumsR env) )
       -- am' <- updateLocations lists ln am aids -- not yet implemented
       -- _ <- writeIORef (albumsR env) am'
-      if pLocList ln
-        then do
-          lcs <- readIORef (locsR env)
-          let lcs' = M.union (M.fromList (fromListMap (ln, (lid, aids)))) lcs
-          _ <- writeIORef (locsR env) lcs'
-          pure ()
-        else pure ()
+      when (pLocList ln) $ do
+        lcs <- readIORef (locsR env)
+        let lcs' = M.union (M.fromList (fromListMap (ln, (lid, aids)))) lcs
+        _ <- writeIORef (locsR env) lcs'
+        pure ()
       -- write back modified lists
       _ <- writeIORef (listsR env) $ M.insert ln (lid, aids) ls'
       pure aids
@@ -382,7 +376,7 @@ getList' ln = do
 envUpdateAlbum :: Int -> AppM ( Maybe Album )
 envUpdateAlbum aid = do
   env <- ask
-  di <- readIORef (discogsR env)
+  dc <- readIORef (discogsR env)
   am' <- readIORef (albumsR env)
   ls <- readIORef (listsR env)
   -- check if this release id is already known / in the Map
@@ -393,7 +387,7 @@ envUpdateAlbum aid = do
     Just "AppleMusic" -> pure ma'
     Just "Tidal" -> pure ma'
     -- Just _ -> pure ma' -- already known, nothing do add
-    _ -> case getDiscogs di of
+    _ -> case getDiscogs dc of
               DiscogsSession _ _ -> readAlbum aid
               _ -> liftIO (pure Nothing) -- we only have the caching files
   _ <- case ma of
@@ -442,7 +436,7 @@ envUpdateSort msb mso = do
   lns <- readIORef (listNamesR env)
   lm  <- readIORef (listsR env)
   lcs <- readIORef (locsR env)
-  di  <- readIORef (discogsR env)
+  dc  <- readIORef (discogsR env)
   tm  <- readIORef (tagsR env)
   fs  <- readIORef (focusR env)
   sn <- case msb of
@@ -458,5 +452,5 @@ envUpdateSort msb mso = do
             _ -> Asc
       _ <- writeIORef (sortOrderR env) so
       pure so
-  pure $ EnvR am lm lcs lns sn so di tm fs
+  pure $ EnvR am lm lcs lns sn so dc tm fs
 
