@@ -308,29 +308,20 @@ getWr wr = rs
         releases = rs
       } = wr
 
-getR :: (Int -> Maybe Text) -> WRelease -> Release
-getR folderName dr = r
+lookupName :: Map Text Int -> Int -> Maybe Text
+lookupName lns i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
+getR :: Map Text Int -> WRelease -> Release
+getR lns dr = r
   where
     WRelease
-      { id = did,
-        date_added = da,
-        folder_id = dfolder_id,
-        rating = drat,
+      { id = did, date_added, folder_id, rating,
         basic_information =
-          WBasicInfo
-            { title = dt,
-              year = dyear,
-              cover_image = dcov,
-              artists = das,
-              formats = dfs,
-              genres = dgens,
-              styles = dstls
-            },
-        notes = ns
+          WBasicInfo { title, year, cover_image, artists, formats, genres, styles },
+        notes
       } = dr
-    as = (\WArtist {name = n} -> n) <$> das
+    as = (\WArtist {name = n} -> n) <$> artists
     nts :: Maybe Text -- Notes field
-    nts = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 3 then Nothing else Just v) $ ns of
+    nts = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 3 then Nothing else Just v) $ notes of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
     tags :: [Text]
@@ -339,7 +330,7 @@ getR folderName dr = r
          $ fromMaybe "" nts
     -- parse location text (field 4), look for T<tidalID> and A<AppleMusicID>
     loct :: Maybe Text
-    loct = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
+    loct = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
     tidalid :: Maybe Text  -- T<number>
@@ -377,11 +368,11 @@ getR folderName dr = r
       )
     -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
     _xxx :: Maybe Text
-    _xxx = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
+    _xxx = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
     loc :: Maybe Text
-    loc = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ ns of
+    loc = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
       Just a -> if a /= "" then Just (unwords
                                     . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://music.apple.com/us/album/" $ t)
                                     . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://tidal.com/" $ t)
@@ -403,32 +394,32 @@ getR folderName dr = r
 
     -- parse Order# (field 5)
     _ordn :: Maybe Text
-    _ordn = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 5 then Nothing else Just v) $ ns of
+    _ordn = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 5 then Nothing else Just v) $ notes of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
 
     plays :: Int
-    plays = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 7 then Nothing else Just v) $ ns of
+    plays = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 7 then Nothing else Just v) $ notes of
       Just a -> fromMaybe 0 (readMaybe . toString $ a)
       _ -> 0
 -- format is special for certain folders
 -- should maybe rather go through the "Streaming" and "File" lists and change the format?
     fs :: [Text]
-    fs = case folderName dfolder_id of
+    fs = case lookupName lns folder_id of
            Just "Streaming" -> one "Streaming"
            Just "Files"     -> one "Files"
-           _                -> (\WFormat {name = n} -> n) <$> dfs
+           _                -> (\WFormat {name = n} -> n) <$> formats
     -- tags from notes, genres, styles, formats, order#, if there is a tidal or apple music version, discogs
     tagsFormats :: [Text] -> [Text]
     tagsFormats = map (("format." <>) . T.toCaseFold)
     tagsFolder :: Int -> [Text]
-    tagsFolder = one . T.toCaseFold . ("folder." <>) . fromMaybe "???" . folderName
+    tagsFolder = one . T.toCaseFold . ("folder." <>) . fromMaybe "???" . lookupName lns
     -- add opera if style is opera
     tagsGenres :: [Text] -> [Text]
     tagsGenres ts = map (("genre." <>) . T.toCaseFold)
                   $ ts <> (maybe [] one
                           . find (( "opera" == ) . T.toCaseFold)
-                          $ dstls)
+                          $ styles)
     tagsRated :: Int -> [Text]
     tagsRated i = case i of
       0 -> one "rated.not"
@@ -446,22 +437,22 @@ getR folderName dr = r
     tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
 
     tagsList :: [Text]
-    tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres dgens <> map T.toCaseFold dstls <> tagsPlays plays <> tagsRated drat <> tagsFolder dfolder_id
+    tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres genres <> map T.toCaseFold styles <> tagsPlays plays <> tagsRated rating <> tagsFolder folder_id
     r =
       Release
         { daid      = did,
-          dtitle    = dt,
+          dtitle    = title,
           dartists  = as,
-          dreleased = show dyear,
-          dadded    = da,
-          dcover    = dcov,
-          dfolder   = dfolder_id,
+          dreleased = show year,
+          dadded    = date_added,
+          dcover    = cover_image,
+          dfolder   = folder_id,
           dformat   = T.intercalate ", " fs,
           dtidalid  = tidalid,
           damid     = amid,
           dlocation = if loc == Just "" then Nothing else loc,
           dtags     = tagsList,
-          drating   = drat,
+          drating   = rating,
           dplays    = plays
         }
 
@@ -508,40 +499,38 @@ releasesFromCacheFile fn = do
 
 readDiscogsReleasesCache :: FilePath -> Map Text Int -> IO [Release]
 readDiscogsReleasesCache fn lns = do
-  let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
   res <- liftIO $ releasesFromCacheFile fn
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
   let rs = case res of
         Left _ -> []
-        Right d -> getR ln <$> d
+        Right d -> getR lns <$> d
   pure rs
+
 
 -- getting n Discogs Releases, all if n == 0
 readDiscogsReleases :: DiscogsInfo -> Map Text Int -> Int -> IO [Release]
 readDiscogsReleases di lns n = do
   putTextLn "-----------------Getting Releases from Discogs-----"
-  let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
   res <- liftIO $ releasesFromDiscogsApi di n
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
   let rs = case res of
         Left _ -> []
-        Right d -> getR ln <$> d
+        Right d -> getR lns <$> d
   pure rs
 
 readDiscogsRelease :: DiscogsInfo -> Map Text Int -> Int -> IO (Maybe Release)
 readDiscogsRelease di lns rid = do
-  let ln :: Int -> Maybe Text; ln i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
   res <- liftIO $ releaseFromDiscogsApi di rid
   case res of
     Left err -> putTextLn $ "Error in readDiscogsRelease: " <> show err
     Right _ -> pure ()
   pure $ case res of
     Left _ -> Nothing
-    Right d -> Just (getR ln d)
+    Right d -> Just (getR lns d)
 
 releaseFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String WRelease)
 releaseFromDiscogsApi di aid = do
