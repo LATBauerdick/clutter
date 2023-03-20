@@ -260,7 +260,6 @@ renderBadges a =
       -- L.a_ [L.href_ (albumURL a)] $
       HH.text $ " " <> show idx <> " "
     ]
-
   , case a.albumFormat of
                   "Vinyl" ->
                     HH.div
@@ -379,7 +378,6 @@ renderBadges a =
                     ]
                   ]
                 ]
-
   , case a.albumRating of
                 1 ->  HH.div
                         [ HP.class_ $ HH.ClassName "rat" ]
@@ -457,7 +455,6 @@ renderBadges a =
                                [ HH.text "" ]
                         ]
                 _ -> HH.div_ []
-
   , if a.albumPlays > 0 then
               HH.div [ HP.class_ $ HH.ClassName "plays"]
               [ case a.albumPlays of
@@ -520,8 +517,31 @@ renderBadges a =
                           ]
                       ]
                     ]
-                _ -> HH.div_ []
-                -- Nothing ->
+                Nothing ->
+                  let loc = "Discogs"
+                  in HH.div
+                    [ HP.class_ $ HH.ClassName "cover-obackground2" ]
+                    [ HH.a
+                      [ HP.href (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)
+                      ]
+                      [ HH.i
+                        [ HP.class_ $ HH.ClassName "fa fa-barcode"
+                        , HP.style "color:black"
+                        ] [ HH.text "" ]
+                      ]
+                    , HH.span
+                      [ HP.class_ $ HH.ClassName "loctext" ]
+                      [ HH.text "Location: not yet implemented"
+                      , HH.a
+                          [ HP.class_ $ HH.ClassName "loclink"
+                          , HP.href (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)
+                          ]
+                          [ HH.text if loc == ln
+                                        then loc <> " #" <> show idx
+                                        else loc
+                          ]
+                      ]
+                    ]
                 --   case M.lookup (albumID a) (locs envr) of
                 --     Just (loc, pos) ->
                 --       L.div_ [L.class_ "cover-obackground2"] $ do
