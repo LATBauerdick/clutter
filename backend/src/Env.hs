@@ -224,10 +224,10 @@ initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vec
 initInit c = do
   (tidal, _tidal, aMusic, dci, dci_) <- getProviders
 
+  let dc = if c then dci_ else dci
   if c
     then putTextLn "-----------------using cached Discogs collection info"
     else putTextLn "-----------------reading Discogs collection info from the web"
-  let dc = if c then dci_ else dci
 
   -- read the map of Discogs folder names and ids
   -- fns :: Map Text Int
