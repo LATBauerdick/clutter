@@ -38,8 +38,7 @@ import Servant
 -- import Servant.API
 import Servant.Client
 import Types
-  ( DiscogsInfo (..),
-    -- Discogs (..),
+  ( Discogs (..),
     Release (..),
     -- AppM,
     -- Env (..),
@@ -456,12 +455,12 @@ getR lns dr = r
           dplays    = plays
         }
 
-getToken :: DiscogsInfo -> (Text, Text)
+getToken :: Discogs -> (Text, Text)
 getToken di = case di of
   DiscogsSession tok un -> (tok, un)
   _ -> ("", "")
 
-releasesFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String [WRelease])
+releasesFromDiscogsApi :: Discogs -> Int -> IO (Either String [WRelease])
 releasesFromDiscogsApi di nreleases = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
   let (tok, un) = getToken di
@@ -510,7 +509,7 @@ readDiscogsReleasesCache fn lns = do
 
 
 -- getting n Discogs Releases, all if n == 0
-readDiscogsReleases :: DiscogsInfo -> Map Text Int -> Int -> IO [Release]
+readDiscogsReleases :: Discogs -> Map Text Int -> Int -> IO [Release]
 readDiscogsReleases di lns n = do
   putTextLn "-----------------Getting Releases from Discogs-----"
   res <- liftIO $ releasesFromDiscogsApi di n
@@ -522,7 +521,7 @@ readDiscogsReleases di lns n = do
         Right d -> getR lns <$> d
   pure rs
 
-readDiscogsRelease :: DiscogsInfo -> Map Text Int -> Int -> IO (Maybe Release)
+readDiscogsRelease :: Discogs -> Map Text Int -> Int -> IO (Maybe Release)
 readDiscogsRelease di lns rid = do
   res <- liftIO $ releaseFromDiscogsApi di rid
   case res of
@@ -532,7 +531,7 @@ readDiscogsRelease di lns rid = do
     Left _ -> Nothing
     Right d -> Just (getR lns d)
 
-releaseFromDiscogsApi :: DiscogsInfo -> Int -> IO (Either String WRelease)
+releaseFromDiscogsApi :: Discogs -> Int -> IO (Either String WRelease)
 releaseFromDiscogsApi di aid = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
   let (tok, un) = getToken di
@@ -548,7 +547,7 @@ releaseFromDiscogsApi di aid = do
       Nothing -> Left $ "No Release Found for " <> show aid
       Just r -> Right r
 
-listsFromDiscogsApi :: DiscogsInfo -> IO (Either String WLists)
+listsFromDiscogsApi :: Discogs -> IO (Either String WLists)
 listsFromDiscogsApi di = do
   m <- newManager tlsManagerSettings -- defaultManagerSettings
   let (tok, un) = getToken di
@@ -561,7 +560,7 @@ listsFromDiscogsApi di = do
     Left err -> Left (show err)
     Right r -> Right r
 
-readDiscogsLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
+readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector Int))
 readDiscogsLists di = do
   putTextLn "-----------------Getting Lists from Discogs-----"
   res <- listsFromDiscogsApi di
@@ -599,7 +598,7 @@ readDiscogsListsCache fn = do
 
   pure $ M.fromList lm
 
-foldersFromDiscogsApi :: DiscogsInfo -> IO (Either String WFolders)
+foldersFromDiscogsApi :: Discogs -> IO (Either String WFolders)
 foldersFromDiscogsApi di = do
   m <- newManager tlsManagerSettings
   let (tok, un) = getToken di
@@ -614,7 +613,7 @@ foldersFromCacheFile :: FilePath -> IO (Either String WFolders)
 foldersFromCacheFile fn =
   (eitherDecode <$> readFileLBS (fn <> "folders-raw.json")) :: IO (Either String WFolders)
 
-readDiscogsFolders :: DiscogsInfo -> IO (Map Text Int)
+readDiscogsFolders :: Discogs -> IO (Map Text Int)
 readDiscogsFolders di = do
   -- get list and folder names and ids
   putTextLn "-----------------Getting Folders from Discogs-----"
@@ -650,7 +649,7 @@ readDiscogsFoldersCache fn = do
 -- we're treating Discog folders like lists,
 -- also assuming that their IDs are unique
 -- NB: the JSON required to extract album id info is different between them
-readListAids :: DiscogsInfo -> Int -> IO (Vector Int)
+readListAids :: Discogs -> Int -> IO (Vector Int)
 readListAids di i = do
   let (tok, _) = getToken di
   m <- liftIO $ newManager tlsManagerSettings
@@ -681,7 +680,7 @@ readListAidsCache fn i = do
 readWLItemsCache :: FilePath -> IO (Either String WLItems)
 readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
 
-readLists :: DiscogsInfo -> IO (Map Text (Int, Vector Int))
+readLists :: Discogs{-   -}-> IO (Map Text (Int, Vector Int))
 readLists di = do
   let (tok, un) = getToken di
   m <- newManager tlsManagerSettings -- defaultManagerSettings

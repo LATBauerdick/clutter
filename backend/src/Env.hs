@@ -45,8 +45,8 @@ import Provider
 import Relude
 import Types
   ( Album (..),
+    -- Discogs (..),
     Discogs (..),
-    DiscogsInfo (..),
     AppM,
     Env (..),
     EnvR (..),
@@ -79,8 +79,8 @@ getProviders = do
   pure( Tidal $ TidalSession tidalUserId tidalSessionId tidalCountryCode tidalAccessToken
       , Tidal $ TidalFile "data/traw2.json" -- Tidal from cache
       , AMusic $ AMusicSession appleMusicDevToken appleMusicUserToken
-      , Discogs $ DiscogsSession discogsDevToken discogsUserName
-      , Discogs $ DiscogsFile "data/" -- Discogs from cache
+      , DiscogsSession discogsDevToken discogsUserName
+      , DiscogsFile "data/" -- Discogs from cache
       )
 
 envTidalConnect :: Int -> AppM Env
@@ -91,7 +91,7 @@ envTidalConnect _nalbums = do
   oldAlbums <- readIORef $ albumsR env
   vta <- liftIO $ readTidalAlbums tidal
   vma <- liftIO $ readAMusicAlbums aMusic
-  newFolders <- readFolders -- readDiscogsFolders
+  newFolders <- readFolders
   let tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
   let aMusicAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vma
   let allAlbums = oldAlbums <> tidalAlbums <> aMusicAlbums
@@ -155,7 +155,7 @@ envUpdateMenuParams = do
 envUpdate :: Text -> Text -> Int -> AppM ()
 envUpdate tok un nreleases = do
   env <- ask
-  let discogs' = Discogs $ DiscogsSession tok un
+  let discogs' = DiscogsSession tok un
   putTextLn $ "-----------------Updating from " <> show discogs'
 
   -- save tidal albums map
@@ -387,7 +387,7 @@ envUpdateAlbum aid = do
     Just "AppleMusic" -> pure ma'
     Just "Tidal" -> pure ma'
     -- Just _ -> pure ma' -- already known, nothing do add
-    _ -> case getDiscogs dc of
+    _ -> case dc of
               DiscogsSession _ _ -> readAlbum aid
               _ -> liftIO (pure Nothing) -- we only have the caching files
   _ <- case ma of

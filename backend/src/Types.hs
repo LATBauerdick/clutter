@@ -4,7 +4,6 @@
 module Types ( Tidal (..)
              , AMusic (..)
              , Discogs (..)
-             , DiscogsInfo (..)
              , TagFolder (..)
              , pLocList
              , TidalInfo (..)
@@ -33,7 +32,7 @@ data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
   deriving Show
 data AMusicInfo = AMusicSession Text Text
   deriving Show
-data DiscogsInfo = DiscogsFile FilePath | DiscogsSession Text Text
+data Discogs = DiscogsFile FilePath | DiscogsSession Text Text
   deriving Show
 
 
@@ -66,7 +65,7 @@ newtype Tidal = Tidal { getTidal :: TidalInfo }
 
 newtype AMusic = AMusic { getAMusic :: AMusicInfo }
 
-newtype Discogs = Discogs { getDiscogs :: DiscogsInfo } deriving Show
+-- newtype Discogs = Discogs { getDiscogs :: DiscogsInfo } deriving Show
 
 type AppM = ReaderT Env Handler
 data Env

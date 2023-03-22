@@ -44,7 +44,6 @@ import Relude
 import Types
   ( Album (..),
     Discogs (..),
-    DiscogsInfo (..),
     Release (..),
     TagFolder (..),
     Tidal (..),
@@ -56,7 +55,6 @@ import Types
     Env (..),
     envGetDiscogs,
     envGetListName,
-    getDiscogs,
   )
 -- import Relude.Debug ( trace )
 -- debug :: a -> Text -> a
@@ -86,16 +84,13 @@ dToAlbum r =
 readLists :: AppM (Map Text (Int, Vector Int))
 readLists = do
   p <- envGetDiscogs
-  case getDiscogs p of
+  case p of
     DiscogsFile fn -> error $ "Bug: Provider Discogs does not read lists from files " <> toText fn
-    _ -> liftIO $ FD.readLists (getDiscogs p)
+    _ -> liftIO $ FD.readLists p
 
 readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector Int))
-readDiscogsLists d = do
-  let di = getDiscogs d
-  case di of
-    DiscogsFile fn -> FD.readDiscogsListsCache fn
-    _              -> FD.readLists di
+readDiscogsLists (DiscogsFile fn) = FD.readDiscogsListsCache fn
+readDiscogsLists  di = FD.readLists di
 
 readAlbum :: Int -> AppM (Maybe Album)
 readAlbum aid = do
@@ -103,8 +98,8 @@ readAlbum aid = do
   lns <- asks listNamesR >>= readIORef
   -- let getFolderName :: Int -> Maybe Text
   --     getFolderName fid = fmap fst . find (\(_, li) -> li == fid) $ M.toList lns
-  d <- case getDiscogs p of
-    DiscogsSession _ _ -> liftIO $ FD.readDiscogsRelease (getDiscogs p) lns aid
+  d <- case p of
+    DiscogsSession _ _ -> liftIO $ FD.readDiscogsRelease p lns aid
     _ -> pure Nothing
   let a = dToAlbum <$> d
   putTextLn $ "Retrieved Discogs Album " <> "\"" <> maybe "Nothing" albumTitle a <> "\""
@@ -113,8 +108,7 @@ readAlbum aid = do
 readAlbums :: Int -> AppM (Vector Album)
 readAlbums nreleases = do
     lns <- asks listNamesR >>= readIORef
-    p <- envGetDiscogs
-    let di = getDiscogs p
+    di <- envGetDiscogs
     ds <- case di of
       DiscogsFile fn -> liftIO $ FD.readDiscogsReleasesCache fn lns
       _              -> liftIO $ FD.readDiscogsReleases di lns nreleases
@@ -123,8 +117,7 @@ readAlbums nreleases = do
     pure $ V.fromList as
 
 readDiscogsAlbums :: Discogs -> Map Text Int -> IO (Vector Album)
-readDiscogsAlbums d lns = do
-    let di = getDiscogs d
+readDiscogsAlbums di lns = do
     ds <- case di of
       DiscogsFile fn -> FD.readDiscogsReleasesCache fn lns
       _              -> FD.readDiscogsReleases di lns 0
@@ -134,26 +127,23 @@ readDiscogsAlbums d lns = do
 
 readListAids :: Int -> AppM (Vector Int)
 readListAids i = do
-  p <- envGetDiscogs
+  di <- envGetDiscogs
   ln <- envGetListName i
   putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
-  case getDiscogs p of
+  case di of
         DiscogsFile _ -> pure V.empty -- maybe not ok
-        _ -> liftIO $ FD.readListAids (getDiscogs p) i
+        _ -> liftIO $ FD.readListAids di i
 
 readFolders :: AppM (Map Text Int)
 readFolders = do
-  p <- envGetDiscogs
-  case getDiscogs p of
+  di <- envGetDiscogs
+  case di of
     DiscogsFile fn -> liftIO $ FD.readDiscogsFoldersCache fn
-    _ -> liftIO $ FD.readDiscogsFolders (getDiscogs p)
+    _ -> liftIO $ FD.readDiscogsFolders di
 
 readDiscogsFolders :: Discogs -> IO (Map Text Int)
-readDiscogsFolders d = do
-  let di = getDiscogs d
-  case di of
-    DiscogsFile fn -> FD.readDiscogsFoldersCache fn
-    _              -> FD.readDiscogsFolders di
+readDiscogsFolders ( DiscogsFile fn ) = FD.readDiscogsFoldersCache fn
+readDiscogsFolders di = FD.readDiscogsFolders di
 
 -- populate the aids for folders from the folder+id in each Album
 -- special treatment for Tidal, Discogs, and All folders
