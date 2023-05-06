@@ -214,7 +214,7 @@ getAMusicReleases ainf off = do
                           ( Just mut )
                 else getAMusic -- all albums, in increments of 100
                           ( Just "catalog" )
-                          ( Just 25 ) -- 100
+                          ( Just 100 )
                           ( Just off )
                           ( Just "ClutterApp/0.1" )
                           ( Just ("Bearer " <> devt) )
