@@ -5,6 +5,8 @@ module AlbumComponent (
 import Prelude
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Either (Either(..))
+import Data.String (contains)
+import Data.String.Pattern (Pattern(..))
 import Effect.Class.Console as Console
 
 import Halogen as H
@@ -89,11 +91,13 @@ handleAction = case _ of
           ln = fromMaybe "" mln
       so <- H.gets _.menu.sso
       sn <- H.gets _.menu.sortName
-      r <- H.liftAff $ getUrl ("http://localhost:8080/albumsq/"
+      let url = "http://localhost:8080/albumsq/"
                               <> ln
-                              <> "?&sortOrder=" <> show so
+                              <> (if contains ( Pattern "?" ) ln  then "" else "?")
+                              <> "&sortOrder=" <> show so
                               <> "&sortBy=" <> sn
-                              )
+      H.liftAff $ Console.log url
+      r <- H.liftAff $ getUrl url
       let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
       let ls = case lje of
                         Right { lalbums: ls' } -> ls'

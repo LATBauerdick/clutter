@@ -39,6 +39,15 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn1"
+        , HE.onClick \_ -> ShowList $ AlbumList (Just "Discogs?focus=%23-folder.pop&focus=%23format.vinyl&focus=%23played.never")
+        , HP.type_ HP.ButtonSubmit
+        , HP.disabled state.loading
+        ]
+        [ HH.text "NL" ]
+      ]
+    , HH.div [HP.class_ $ HH.ClassName "dropdown"]
+      [ HH.button
+        [ HP.class_ $ HH.ClassName "dropbtn1"
         , HE.onClick \_ -> ShowList $ AlbumList (Just "Discogs")
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
