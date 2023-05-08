@@ -16,6 +16,7 @@ to generate this file without the comments in this block.
   , "affjax"
   , "affjax-node"
   , "argonaut-codecs"
+  , "arrays"
   , "console"
   , "datetime"
   , "effect"
@@ -24,13 +25,13 @@ to generate this file without the comments in this block.
   , "formatters"
   , "halogen"
   , "maybe"
+  , "newtype"
   , "now"
   , "ordered-collections"
   , "prelude"
   , "strings"
   , "tuples"
   , "web-events"
-  , "web-uievents"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]

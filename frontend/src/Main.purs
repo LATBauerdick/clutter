@@ -4,6 +4,7 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Either (Either(..))
+import Data.Tuple (Tuple(..))
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
@@ -47,7 +48,7 @@ initialState = do -- should eventually be saved in preferences
   let ms :: MenuState
       ms = { sortName : "Default"
            , ln : ln
-           , ffs : [ "pop" ]
+           , ffs : [] -- [ Tuple "folder.pop" false, Tuple "format.vinyl" true, Tuple "played.never" true ]
            , sso : Asc
            , params : mps
            }

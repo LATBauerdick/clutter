@@ -10,14 +10,11 @@ import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
 
 import Data.Foldable (intercalate)
-import Data.Maybe (Maybe(..), fromMaybe, isNothing, isJust)
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Map as M
 import Data.Tuple (Tuple(..))
-import Data.String (joinWith, stripPrefix)
-import Data.String.Pattern (Pattern(..))
 
 import Types (SortOrder (..), State, AlbumList(..),  Action(..))
-import GetStuff ( _encodeURIComponent )
 
 renderTopMenu :: forall m'. State -> H.ComponentHTML Action () m'
 renderTopMenu state =
@@ -30,7 +27,9 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn1"
-        , HE.onClick \_ -> ShowList $ AlbumList (Just "2023 Listened?&sortBy=Default&sortOrder=Desc")
+        , HE.onClick \_ -> -- SetSort "Default"
+                           -- SetSortOrder Desc
+                           ShowList $ AlbumList (Just "2023 Listened")
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]
@@ -39,7 +38,7 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn1"
-        , HE.onClick \_ -> ShowList $ AlbumList (Just "Discogs?focus=%23-folder.pop&focus=%23format.vinyl&focus=%23played.never")
+        , HE.onClick \_ -> SetFocus [ Tuple "played.never" true, Tuple "format.vinyl" true ]
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]
@@ -68,15 +67,10 @@ renderTopMenu state =
 
   sn = state.menu.sortName
   ln =  state.menu.ln
-  ffs = state.menu.ffs
+  ffs =  state.menu.ffs
+  sffs :: Array String
+  sffs = map (\(Tuple a b) -> if b then a else "-" <> a) ffs
   sso = state.menu.sso
-
-
-  fqs :: M.Map String Boolean
-  fqs = M.fromFoldable
-            <<< map (\t -> Tuple (fromMaybe t (stripPrefix (Pattern "-") t))
-                                 (isNothing (stripPrefix (Pattern "-") t)))
-            $ ffs
 
   renderShow :: forall w i. Array (HH.HTML w i)
   renderShow = [
@@ -94,51 +88,33 @@ renderTopMenu state =
   renderFocus :: forall m. Array (H.ComponentHTML Action () m)
   renderFocus =
     let
-        qry' :: Array String -> String -> String -- create the query url
-        qry' ts n = uhq
-                  <> n
-                  <> "?"
-                  <> ( _encodeURIComponent
-                      <<< joinWith "&"
-                      <<< map (\ (Tuple k v) -> k <> "=" <> v)
-                      <<< map (\t -> Tuple "focus" t)
-                      $ ts )
-        lnk :: forall mm. M.Map String Boolean -> String -> H.ComponentHTML Action () mm
-        lnk ts t = let
-          nts :: Array String
-          nts = map (\ (Tuple it ip) -> if ip then "#" <> it else "#-" <> it)
-                    <<< M.toUnfoldable
-                    <<< ttt $ ts
-          p = isJust $ t `M.lookup` ts -- this tag was selected
-          pp = fromMaybe false $ t `M.lookup` ts -- tag was True
-          ttt:: M.Map String Boolean -> M.Map String Boolean
-          ttt tts
-                | p && pp   = M.insert t false tts
-                | p         = M.delete t tts
-                | otherwise = M.insert t true tts
+        lnk' :: forall mm. Array (Tuple String Boolean) -> String -> H.ComponentHTML Action () mm
+        lnk' ts t = let
+          mts :: M.Map String Boolean
+          mts = M.fromFoldable ts
+          p = isJust $ t `M.lookup` mts -- this tag was selected
+          pp = fromMaybe false $ t `M.lookup` mts -- tag was True
           tc :: String
           tc
                 | p && pp   = "focus-on"
                 | p         = "focus-not"
                 | otherwise = "focus"
-        in HH.a [ HP.class_ $ HH.ClassName tc
-                , HP.href (qry' nts ln)
-                ]
-                [ HH.text t ]
+        in HH.button  [ HP.class_ $ HH.ClassName tc
+                      , HE.onClick \_ -> ToggleFocus t
+                      ]
+                      [ HH.text t ]
     in
     [
-      HH.button [HP.class_ $ HH.ClassName "dropbtn"]
-      [ HH.a [ HP.class_ $ HH.ClassName "dropbtn"
-             , HP.href (qry' [ ] ln)
-             ]
-             [ HH.text $ if  ffs /= []
-                          then "Focus (#" <> intercalate " #" ffs <> ")"
-                          else "Focus "
-             , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
-             ]
-      ]
+      HH.button [ HP.class_ $ HH.ClassName "dropbtn"
+                , HE.onClick \_ -> SetFocus []
+                ]
+                [ HH.text $ if ffs == []
+                             then "Focus "
+                             else "Focus (#" <> intercalate " #" sffs <> ")"
+                , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
+                ]
       , HH.div [HP.class_ $ HH.ClassName "focus-content"]
-          (map (lnk fqs) sts)
+          (map ( lnk' ffs ) sts)
     ]
 
 
@@ -146,7 +122,9 @@ renderTopMenu state =
   renderButtonSort =
     [
       HH.button
-      [ HP.class_ $ HH.ClassName "dropbtn" ]
+      [ HP.class_ $ HH.ClassName "dropbtn"
+      , HE.onClick \_ -> SetSort "Default"
+      ]
       [ HH.text $ "Sort " <> if sn /= "Default"
                               then "by " <> sn <> " "
                               else ""

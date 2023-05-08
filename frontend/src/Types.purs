@@ -10,16 +10,18 @@ module Types  ( Album
               , Action (..)
               ) where
 
-import Prelude
+import Prelude (class Eq, class Show)
+import Data.Newtype
 import Data.Maybe (Maybe)
+import Data.Tuple (Tuple)
 import Data.DateTime (DateTime)
 import Web.Event.Event (Event)
-import Web.UIEvent.MouseEvent (MouseEvent)
+-- import Web.UIEvent.MouseEvent (MouseEvent)
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 
 data SortOrder = Asc | Desc
-
+derive instance eqSortOrder :: Eq SortOrder
 derive instance genericSortOrder :: Generic SortOrder _
 instance showSortOrder :: Show SortOrder where
   show = genericShow
@@ -51,6 +53,7 @@ type AlbumsJ = { listName :: String
                }
 
 newtype AlbumList = AlbumList (Maybe  String)
+derive instance newtypeAlbumList :: Newtype AlbumList _
 
 type State =  { album :: Maybe Album
               , listName :: AlbumList
@@ -63,7 +66,7 @@ type State =  { album :: Maybe Album
               }
 type MenuState = { params :: MenuParams
                  , ln :: String
-                 , ffs :: Array String
+                 , ffs :: Array (Tuple String Boolean)
                  , sortName :: String
                  , sso :: SortOrder
                  }
@@ -77,4 +80,4 @@ type ParamsJ = { timeStamp :: String
                , params :: MenuParams
                }
 
-data Action = ToggleSortOrder | SetSort String | SetAlbumID String | MakeRequest Event | ShowList AlbumList | ShowAlbum String
+data Action = ToggleSortOrder | SetSortOrder SortOrder | SetSort String | ToggleFocus String | SetFocus (Array (Tuple String Boolean)) | SetAlbumID String | MakeRequest Event | ShowList AlbumList | ShowAlbum String

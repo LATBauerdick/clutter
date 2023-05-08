@@ -3,12 +3,15 @@ module AlbumComponent (
   ) where
 
 import Prelude
+import Data.Newtype
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Tuple (Tuple(..))
 import Data.Either (Either(..))
+import Data.Map as M
 import Data.String (contains)
 import Data.String.Pattern (Pattern(..))
 import Effect.Class.Console as Console
-
+import Data.Array (foldMap)
 import Halogen as H
 
 import Effect.Aff.Class (class MonadAff)
@@ -17,7 +20,7 @@ import Web.Event.Event as Event
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
 import Types  (AlbumJ , AlbumsJ, State, AlbumList(..), Action(..), SortOrder(..))
-import GetStuff (getUrl, getNow)
+import GetStuff (getUrl, getNow, _encodeURIComponent )
 import Render (render)
 
 aComponent :: forall query input output m. MonadAff m => State -> H.Component query input output m
@@ -30,12 +33,35 @@ aComponent is =
 
 handleAction :: forall output m. MonadAff m => Action -> H.HalogenM State Action () output m Unit
 handleAction = case _ of
+  SetFocus fo -> do
+    ofo <- H.gets _.menu.ffs -- define what == is for Array of Tuples...
+    H.liftAff $ Console.logShow fo
+    if ofo == fo then pure unit else H.modify_ _ { menu { ffs = fo } }
+    if ofo == fo then pure unit else updateAlbumList
+  ToggleFocus f -> do
+    ffs <- H.gets _.menu.ffs
+    H.liftAff $ Console.logShow f
+    let mffs :: M.Map String Boolean
+        mffs = M.fromFoldable ffs
+    let doAlter :: Maybe Boolean -> Maybe Boolean
+        doAlter mv = if mv == Nothing
+                          then Just true
+                          else if mv == Just true then Just false
+                                                  else Nothing
+    let nffs :: Array (Tuple String Boolean)
+        nffs = M.toUnfoldable $ M.alter doAlter f mffs
+    H.modify_ _ { menu { ffs = nffs }}
+    updateAlbumList
   SetSort sn -> do
     osn <- H.gets _.menu.sortName
     H.liftAff $ Console.logShow sn
     if osn == sn then pure unit else H.modify_ _ { menu { sortName = sn } }
     if osn == sn then pure unit else updateAlbumList
 
+  SetSortOrder so -> do
+    oso <- H.gets _.menu.sso
+    if oso == so then pure unit else H.modify_ _ { menu { sso = so } }
+    if oso == so then pure unit else updateAlbumList
   ToggleSortOrder -> do
     so <- H.gets _.menu.sso
     let so' = case so of
@@ -44,7 +70,6 @@ handleAction = case _ of
     H.liftAff $ Console.logShow so'
     H.modify_ _ { menu { sso =  so'  }}
     updateAlbumList
-    -- H.modify_ _ { menu { sso =  so'  }}
 
   SetAlbumID albumID -> do
     now <- H.liftAff getNow
@@ -79,7 +104,7 @@ handleAction = case _ of
 
   ShowList alist -> do
     -- H.liftEffect $ Event.preventDefault event
-    H.modify_ _ { listName = alist, loading = true }
+    H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
 
   where
@@ -91,11 +116,14 @@ handleAction = case _ of
           ln = fromMaybe "" mln
       so <- H.gets _.menu.sso
       sn <- H.gets _.menu.sortName
+      ffs <- H.gets _.menu.ffs
+      let affs = map (\(Tuple a b) -> if b then a else "-" <> a) ffs
       let url = "http://localhost:8080/albumsq/"
-                              <> ln
-                              <> (if contains ( Pattern "?" ) ln  then "" else "?")
-                              <> "&sortOrder=" <> show so
-                              <> "&sortBy=" <> sn
+              <>  _encodeURIComponent ln
+              <> (if contains ( Pattern "?" ) ln  then "" else "?")
+              <> "&sortOrder=" <> show so
+              <> "&sortBy=" <> sn
+              <> foldMap (\f -> "&focus=%23" <> _encodeURIComponent f) affs
       H.liftAff $ Console.log url
       r <- H.liftAff $ getUrl url
       let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
