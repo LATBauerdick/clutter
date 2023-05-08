@@ -4,7 +4,6 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Either (Either(..))
-import Data.Tuple (Tuple(..))
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 

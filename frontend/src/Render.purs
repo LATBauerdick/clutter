@@ -5,6 +5,8 @@ module Render (
 import Prelude
 import Data.Maybe (Maybe(..))
 import Data.Either (fromRight)
+import Data.Tuple (Tuple(..))
+import Data.Array (range, length, zip)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
@@ -63,8 +65,8 @@ render state = do
     ]
 
 
-renderAlbumTN :: forall m. Album -> H.ComponentHTML Action () m
-renderAlbumTN a =
+renderAlbumTN :: forall m. Int -> Album -> H.ComponentHTML Action () m
+renderAlbumTN idx a =
   HH.div
     [ HP.class_ $ HH.ClassName "album-thumb" ]
     [ HH.div
@@ -80,7 +82,7 @@ renderAlbumTN a =
                    ]
           ]
         ]
-        <> renderBadges a
+        <> renderBadges idx a
       ]
     , HH.div [ HP.class_ $ HH.ClassName "album-info" ]
         [ HH.p
@@ -100,19 +102,8 @@ renderListView state =
   [ HP.class_ $ HH.ClassName "albums" ]
   [ HH.div
     [ HP.class_ $ HH.ClassName "row"]
-    ( map (\a -> renderAlbumTN a) as )
+    ( map (\(Tuple i a) -> renderAlbumTN i a) $ zip (range 1 (length as)) as )
   ]
-  -- HH.div
-  --   [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
-  --   [ HH.iframe
-  --     [ HP.src ("http://localhost:8080/albums/" <> l)
-  --     , HP.id "xFrame"
-  --     , HP.title "Clutter List View"
-  --     , HP.style "height:600px;width:100%;border:none;"
-  --     -- , frameborder "0"
-  --     -- , allow "autoplay *; encrypted-media *; fullscreen *"
-  --     ]
-  --   ]
 
 albumView :: forall m. Maybe Album -> DateTime -> H.ComponentHTML Action () m
 albumView am now = case am of
@@ -145,9 +136,9 @@ renderAlbumView a now =
                      , HP.class_ $ HH.ClassName "cover-image"
                      ]
             ]
-          ] <> renderBadges a
+          ] <> renderBadges 0 a
         ]
-      -- , renderAlbumTN a
+      -- , renderAlbumTN 0 a
       , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
       , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
       , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]
@@ -248,11 +239,10 @@ noAlbum =
     ]
 
 
-renderBadges :: forall m. Album -> Array (H.ComponentHTML Action () m)
-renderBadges a =
+renderBadges :: forall m. Int -> Album -> Array (H.ComponentHTML Action () m)
+renderBadges idx a =
   let uhq = ""
       ln = "Basement"
-      idx = 1
   in
   [ HH.div [ HP.class_ $ HH.ClassName "idx" ]
     [

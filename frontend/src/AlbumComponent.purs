@@ -3,7 +3,7 @@ module AlbumComponent (
   ) where
 
 import Prelude
-import Data.Newtype
+import Data.Newtype (unwrap)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple(..))
 import Data.Either (Either(..))
