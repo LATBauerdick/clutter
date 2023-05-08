@@ -99,7 +99,8 @@ data AlbumJ = AlbumJ
 
 data AlbumsJ = AlbumsJ
   { listName :: Text
-  , lalbums :: [Album]
+  -- , lalbums :: [Album]
+  , lalbums :: [(Album, Maybe (Text, Int))]
   } deriving (Eq, Show, Generic)
 
 instance ToJSON AlbumJ
@@ -189,7 +190,12 @@ clutterServer = serveAlbum
       -- gl <- asks getList
       -- aids <- gl ln
       let la = mapMaybe (`M.lookup` albums envr) . V.toList $ aids
-      let asj = AlbumsJ { listName = ln, lalbums = la }
+      let xxx = mapMaybe (\aid -> case (aid `M.lookup` albums envr, aid `M.lookup` locs envr) of
+                                        (Nothing, _) -> Nothing
+                                        (Just a, b) -> Just (a, b)
+                             ) . V.toList $ aids
+      liftIO $ print xxx
+      let asj = AlbumsJ { listName = ln, lalbums = xxx } -- la }
       pure asj
 
     serveAlbumq :: Int -> AppM AlbumJ

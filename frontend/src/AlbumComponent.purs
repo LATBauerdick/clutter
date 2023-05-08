@@ -5,7 +5,7 @@ module AlbumComponent (
 import Prelude
 import Data.Newtype (unwrap)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Tuple (Tuple(..))
+import Data.Tuple (Tuple(..), fst)
 import Data.Either (Either(..))
 import Data.Map as M
 import Data.String (contains)
@@ -127,7 +127,8 @@ handleAction = case _ of
       H.liftAff $ Console.log url
       r <- H.liftAff $ getUrl url
       let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
-      let ls = case lje of
+      let lss = case lje of
                         Right { lalbums: ls' } -> ls'
                         Left _ -> []
+      let ls = map fst lss
       H.modify_ _ { loading = false, albumList = ls }

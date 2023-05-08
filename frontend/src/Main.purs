@@ -4,6 +4,7 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Either (Either(..))
+import Data.Tuple (fst)
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
@@ -40,9 +41,10 @@ initialState = do -- should eventually be saved in preferences
   let ln = "Discogs"
   r <- getUrl ("http://localhost:8080/albumsq/" <> ln)
   let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
-  let ls = case lje of
+  let lss = case lje of
                       Right { lalbums: ls' } -> ls'
                       Left _ -> []
+  let ls = map fst lss
 
   let ms :: MenuState
       ms = { sortName : "Default"

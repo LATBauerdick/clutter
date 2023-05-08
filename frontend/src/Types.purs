@@ -49,7 +49,8 @@ type AlbumJ = { aid :: Int
               }
 
 type AlbumsJ = { listName :: String
-               , lalbums :: Array Album
+               -- , lalbums :: Array Album
+               , lalbums :: Array (Tuple Album (Maybe (Tuple String Int)))
                }
 
 newtype AlbumList = AlbumList (Maybe  String)
