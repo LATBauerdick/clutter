@@ -72,17 +72,12 @@ renderTopMenu state =
   sffs = map (\(Tuple a b) -> if b then a else "-" <> a) ffs
   sso = state.menu.sso
 
-  renderShow :: forall w i. Array (HH.HTML w i)
+  renderShow :: forall m. Array ( H.ComponentHTML Action () m )
   renderShow = [
-    HH.button
-    [ HP.class_ $ HH.ClassName "dropbtn"
-    ]
-    [
-      HH.a [ HP.class_ $ HH.ClassName "dropbtn"
-           , HP.href (uhq <> ln)
-           ]
-           [ HH.text $ "Showing " <> ln ]
-    ]
+    HH.button [ HP.class_ $ HH.ClassName "dropbtn"
+              , HE.onClick \_ -> ShowList ( AlbumList (Just ln) )
+              ]
+              [ HH.text $ "Showing " <> ln ]
   ]
 
   renderFocus :: forall m. Array (H.ComponentHTML Action () m)
