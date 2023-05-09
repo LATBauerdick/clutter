@@ -4,7 +4,7 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Either (Either(..))
-import Data.Tuple (fst)
+import Data.Tuple (fst, snd)
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
@@ -44,7 +44,8 @@ initialState = do -- should eventually be saved in preferences
   let lss = case lje of
                       Right { lalbums: ls' } -> ls'
                       Left _ -> []
-  let ls = map fst lss
+
+      ls = map (\a -> (fst a) { albumShelf = (snd a) } ) lss
 
   let ms :: MenuState
       ms = { sortName : "Default"

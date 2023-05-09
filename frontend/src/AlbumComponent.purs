@@ -5,7 +5,7 @@ module AlbumComponent (
 import Prelude
 import Data.Newtype (unwrap)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Tuple (Tuple(..), fst)
+import Data.Tuple (Tuple(..), fst, snd)
 import Data.Either (Either(..))
 import Data.Map as M
 import Data.String (contains)
@@ -19,7 +19,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (AlbumJ , AlbumsJ, State, AlbumList(..), Action(..), SortOrder(..))
+import Types  (Album, AlbumJ , AlbumsJ, State, AlbumList(..), Action(..), SortOrder(..))
 import GetStuff (getUrl, getNow, _encodeURIComponent )
 import Render (render)
 
@@ -130,5 +130,6 @@ handleAction = case _ of
       let lss = case lje of
                         Right { lalbums: ls' } -> ls'
                         Left _ -> []
-      let ls = map fst lss
+          ls :: Array Album
+          ls = map (\a -> (fst a) { albumShelf = (snd a) } ) lss
       H.modify_ _ { loading = false, albumList = ls }

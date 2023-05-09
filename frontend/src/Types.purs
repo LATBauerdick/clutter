@@ -43,6 +43,7 @@ type Album =  { albumID :: Int
               , albumPlays :: Int
               , albumRating :: Int
               , albumReleased :: String
+              , albumShelf :: Maybe (Tuple String Int)
               }
 type AlbumJ = { aid :: Int
               , album :: Album
