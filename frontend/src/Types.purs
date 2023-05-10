@@ -82,4 +82,4 @@ type ParamsJ = { timeStamp :: String
                , params :: MenuParams
                }
 
-data Action = ToggleSortOrder | SetSortOrder SortOrder | SetSort String | ToggleFocus String | SetFocus (Array (Tuple String Boolean)) | SetAlbumID String | MakeRequest Event | ShowList AlbumList | ShowAlbum String
+data Action = ToggleSortOrder | SetSortOrder SortOrder | SetSort String | ToggleFocus String | SetFocus (Array (Tuple String Boolean)) | SetAlbumID String | MakeRequest Event | ShowList AlbumList | ShowListSort AlbumList String SortOrder | ShowAlbum String

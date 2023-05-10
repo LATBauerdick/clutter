@@ -27,9 +27,7 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn1"
-        , HE.onClick \_ -> -- SetSort "Default"
-                           -- SetSortOrder Desc
-                           ShowList $ AlbumList (Just "2023 Listened")
+        , HE.onClick \_ -> ShowListSort (AlbumList (Just "2023 Listened")) "Default" Desc
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]
@@ -42,12 +40,12 @@ renderTopMenu state =
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]
-        [ HH.text "NL" ]
+        [ HH.text "NPV" ]
       ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn1"
-        , HE.onClick \_ -> ShowList $ AlbumList (Just "Discogs")
+        , HE.onClick \_ -> ShowListSort (AlbumList (Just "Discogs")) "Default" Asc
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]

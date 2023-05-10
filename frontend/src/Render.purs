@@ -238,115 +238,22 @@ noAlbum =
       ]
     ]
 
-
 renderBadges :: forall m. Int -> Album -> Array (H.ComponentHTML Action () m)
 renderBadges idx a =
   let uhq = ""
       ln = "Basement"
   in
-  [ HH.div [ HP.class_ $ HH.ClassName "idx" ]
-    [
-      -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $
-      -- L.a_ [L.href_ (albumURL a)] $
-      HH.text $ " " <> show idx <> " "
-    ]
-  , case a.albumFormat of
-                  "Vinyl" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a
-                      [ HP.href a.albumURL]
-                      [ HH.span
-                        [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ]
-                        [ HH.text "" ]
-                      ]
-                    -- HH.img [ HP.src_ "http://localhost:8080/discogs-icon.png", HH.alt "D", HP.class_ "cover-oimage" ]
-                    ]
-                  "Tidal" -> HH.div_ []
-                  "AppleMusic" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a
-                      [ HP.href a.albumURL]
-                      [ HH.img
-                        [ HP.src "http://localhost:8080/am-icon.png"
-                        , HP.alt "A"
-                        , HP.class_ $ HH.ClassName "cover-oimage"
-                        ]
-                      ]
-                    ]
-                  "CD" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a
-                      [ HP.href a.albumURL]
-                      [ HH.span
-                        [ HP.class_ $ HH.ClassName "fas fa-compact-disc fa-sm" ]
-                        [ HH.text "" ]
-                      ]
-                    ]
-                  "CD, Box Set" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a [ HP.href a.albumURL ]
-                      [ HH.span
-                        [ HP.class_ $ HH.ClassName "fa-stack fa-sm" ]
-                        [ HH.span
-                          [ HP.class_ $ HH.ClassName "fa fa-square-o fa-stack-1x" ]
-                          [ HH.text "" ]
-                        , HH.span
-                          [ HP.class_ $ HH.ClassName "fa fa-compact-disc fa-stack-1x" ]
-                          [ HH.text "" ]
-                        ]
-                      ]
-                    ]
-                  "Box Set, Vinyl" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a [ HP.href a.albumURL] [ HH.span
-                        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
-                        [ HH.text "" ] ] ]
-                  "Vinyl, Box Set" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a [ HP.href a.albumURL] [ HH.span
-                        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
-                        [ HH.text "" ] ] ]
-                  "Vinyl, Vinyl" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a [ HP.href a.albumURL] [ HH.span
-                        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
-                        [ HH.text "" ] ] ]
-                  "Files" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a [ HP.href a.albumURL] [ HH.span
-                        [ HP.class_ $ HH.ClassName "far fa-file-audio fa-sm" ]
-                        [ HH.text "" ] ] ]
-                  "Streaming" ->
-                    HH.div
-                    [ HP.class_ $ HH.ClassName "cover-obackground" ]
-                    [ HH.a
-                      [ HP.href a.albumURL]
-                      [ HH.span
-                        [ HP.class_ $ HH.ClassName "far fa-wifi fa-sm" ]
-                        [ HH.text "" ]
-                      ]
-                    ]
-                  _ ->
-                    HH.div
-                      [ HP.class_ $ HH.ClassName "cover-obackground"]
-                      [ HH.a [ HP.href a.albumURL ] [ HH.text a.albumFormat ]
-                      ]
+  [ rbIndex idx
+  , rbFormat a
   , case a.albumTidal of
               Nothing -> HH.div_ []
-              Just tid -> HH.div
+              Just tid -> if a.albumFormat == "Tidal" then HH.div_ [] else -- don't show if just Tidal
+                HH.div
                 [ HP.class_ $ HH.ClassName "cover-obackground1" ]
                 [ HH.a
                   [ HP.href ("https://listen.tidal.com/album/" <> tid)]
                   [ HH.img
-                    [ HP.src "http://localhost:8080/tidal-icon.png"
+                    [ HP.src "http://localhost:8080/tidal-is.png"
                     , HP.alt "T"
                     , HP.class_ $ HH.ClassName "cover-oimage"
                     ]
@@ -354,7 +261,8 @@ renderBadges idx a =
                 ]
   , case a.albumAMusic of
               Nothing -> HH.div_ []
-              Just amid -> HH.div
+              Just amid -> if a.albumFormat == "AppleMusic" then HH.div_ [] else -- don't show if just Apple Music
+                HH.div
                 [ HP.class_ $ HH.ClassName "cover-obackground3" ]
                 [ HH.a
                   [ HP.href if S.take 2 amid == "l."
@@ -445,7 +353,7 @@ renderBadges idx a =
                                [ HH.text "" ]
                         ]
                 _ -> HH.div_ []
-  , if a.albumPlays > 0 then
+            , if a.albumPlays > 0 then
               HH.div [ HP.class_ $ HH.ClassName "plays"]
               [ case a.albumPlays of
               cnt | cnt == 1 -> HH.span_
@@ -547,4 +455,79 @@ renderBadges idx a =
                 --             L.toHtml $ loc <> " #" <> show pos
                 --     _ -> ""
 
+  ]
+
+rbIndex :: forall m. Int -> H.ComponentHTML Action () m
+rbIndex idx =
+  HH.div  [ HP.class_ $ HH.ClassName "idx" ]
+  [
+  -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $
+  -- L.a_ [L.href_ (albumURL a)] $
+  HH.text $ " " <> show idx <> " "
+  ]
+
+rbFormat :: forall m. Album -> H.ComponentHTML Action () m
+rbFormat a =
+  HH.div
+  [ HP.class_ $ HH.ClassName "cover-obackground" ]
+  [ HH.a [ HP.href a.albumURL]
+  case a.albumFormat of
+  "Vinyl" ->
+    [ HH.span
+        [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ]
+        [ HH.text "" ]
+    ]
+    -- HH.img [ HP.src_ "http://localhost:8080/discogs-icon.png", HH.alt "D", HP.class_ "cover-oimage" ]
+  "Tidal" ->
+    [ HH.img
+        [ HP.src "http://localhost:8080/tidal-is.png"
+        , HP.alt "A"
+        , HP.class_ $ HH.ClassName "cover-oimage"
+        ]
+    ]
+  "AppleMusic" ->
+    [ HH.img
+        [ HP.src "http://localhost:8080/am-icon.png"
+        , HP.alt "A"
+        , HP.class_ $ HH.ClassName "cover-oimage"
+        ]
+    ]
+  "CD" ->
+    [ HH.span
+        [ HP.class_ $ HH.ClassName "fas fa-compact-disc fa-sm" ]
+        [ HH.text "" ]
+    ]
+  "CD, Box Set" ->
+    [ HH.span
+        [ HP.class_ $ HH.ClassName "fa-stack fa-sm" ]
+        [ HH.span
+          [ HP.class_ $ HH.ClassName "fa fa-square-o fa-stack-1x" ]
+          [ HH.text "" ]
+        , HH.span
+          [ HP.class_ $ HH.ClassName "fa fa-compact-disc fa-stack-1x" ]
+          [ HH.text "" ]
+        ]
+    ]
+  "Box Set, Vinyl" ->
+    [ HH.span
+        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
+        [ HH.text "" ] ]
+  "Vinyl, Box Set" ->
+    [ HH.span
+        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
+        [ HH.text "" ] ]
+  "Vinyl, Vinyl" ->
+    [ HH.span
+        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
+        [ HH.text "" ] ]
+  "Files" ->
+    [ HH.span
+        [ HP.class_ $ HH.ClassName "far fa-file-audio fa-sm" ]
+        [ HH.text "" ] ]
+  "Streaming" ->
+    [ HH.span
+        [ HP.class_ $ HH.ClassName "far fa-wifi fa-sm" ]
+        [ HH.text "" ] ]
+  _ ->
+    [ HH.text a.albumFormat ]
   ]

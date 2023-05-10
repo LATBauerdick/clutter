@@ -102,6 +102,9 @@ handleAction = case _ of
                       Left _ -> Nothing
     H.modify_ _ { album = am, now = now, loading = false, result = Just r }
 
+  ShowListSort alist sn so -> do
+    H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist, sso = so, sortName = sn } }
+    updateAlbumList
   ShowList alist -> do
     -- H.liftEffect $ Event.preventDefault event
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
