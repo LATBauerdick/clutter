@@ -59,6 +59,7 @@ pLocList n = case viaNonEmpty head . words $ n of
                     Just "Cube"   -> True
                     Just "Shelf"  -> True
                     Just "Incoming"  -> True
+                    Just "Lost&Found"  -> True
                     _             -> False
 
 newtype Tidal = Tidal { getTidal :: TidalInfo }

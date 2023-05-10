@@ -510,7 +510,7 @@ rbLocation a = case a.albumLocation of
             ] [ HH.text "" ]
         , HH.button
           [ HP.class_ $ HH.ClassName "loctext"
-          , HE.onClick \_ -> ShowListSort (AlbumList (Just "Discogs")) "Default" Asc ]
+          , HE.onClick \_ -> ShowListSort (AlbumList (Just shelf)) "Default" Asc ]
           [ HH.text $ "Location: " <> shelf <> " #" <> show ipos
           ]
         ]
