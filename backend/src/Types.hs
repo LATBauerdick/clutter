@@ -1,4 +1,5 @@
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, InstanceSigs #-}
+-- {-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DeriveGeneric #-}
 
 module Types ( Tidal (..)

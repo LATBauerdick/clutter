@@ -1,6 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
+-- {-# LANGUAGE NoImplicitPrelude #-}
+-- {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 
 module Render ( renderHead, renderAlbumView, renderAlbumsView ) where
 

@@ -1,8 +1,8 @@
 
-{-# LANGUAGE OverloadedStrings #-}
+-- {-# LANGUAGE NoImplicitPrelude #-}
+-- {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 
 module RenderUtil ( renderHead, formUrlEncodeQuery ) where
 

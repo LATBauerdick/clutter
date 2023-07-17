@@ -1,6 +1,4 @@
-
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
-
+-- {-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators   #-}
