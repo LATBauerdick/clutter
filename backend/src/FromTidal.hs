@@ -140,7 +140,7 @@ readTidalReleases tinf = do
                   , sessionId = sid
                   , countryCode = cc
                   , accessToken = "Bearer " <> at
-                  , tlimit = 2999 -- 5
+                  , tlimit = 3999 -- 5
                   , toffset = 0 -- 1563 -- error at 1565
                   , tclient = mkClientEnv m ( BaseUrl Https "api.tidalhifi.com" 443 "v1" )
                   }
