@@ -4,7 +4,6 @@ package-lock.json
 stack.yaml.lock
 data
 dist-newstyle
-update-json
 cabal.project.local
 result
 python-tidal
