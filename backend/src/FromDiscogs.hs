@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module FromDiscogs
   (

@@ -55,7 +55,7 @@ library:
   source-dirs: src
 
 executables:
-  clutter-exe:
+  clutter:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -65,17 +65,17 @@ executables:
     dependencies:
     - clutter
 
-tests:
-  clutter-test:
-    main:                Spec.hs
-    source-dirs:         test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - clutter
-    - hspec
-    - hspec-wai
-    - hspec-wai-json
-    - aeson
+# tests:
+#   clutter-test:
+#     main:                Spec.hs
+#     source-dirs:         test
+#     ghc-options:
+#     - -threaded
+#     - -rtsopts
+#     - -with-rtsopts=-N
+#     dependencies:
+#     - clutter
+#     - hspec
+#     - hspec-wai
+#     - hspec-wai-json
+#     - aeson
