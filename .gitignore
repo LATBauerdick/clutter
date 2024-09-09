@@ -2,6 +2,7 @@ node_modules
 package-lock.json
 .stack-work
 stack.yaml.lock
+spago.lock
 data
 dist-newstyle
 cabal.project.local
