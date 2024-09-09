@@ -1,23 +1,19 @@
-{
-  nixpkgs ? import <nixpkgs> {},
-  compiler ? "ghc925" }:
-  (import ./default.nix {
-                          inherit nixpkgs compiler;
-                          executableSystemDepends = with nixpkgs.haskell.packages.${compiler}; [
-                              cabal-install
-                              ghcid
-                          ];
-                        }).env
-
-/* let */
-/*   inherit (nixpkgs) pkgs; */
-/*   ghc = pkgs.haskell.packages.${compiler}.ghcWithPackages */ 
-/*         (ps: with ps; [ */
-/*           monad-par mtl */
-/*         ]); */
-/* in */
-/* pkgs.stdenv.mkDerivation { */
-/*   name = "my-haskell-env-0"; */
-/*   buildInputs = [ ghc ]; */
-/*   shellHook = "eval $(egrep ^export ${ghc}/bin/ghc)"; */
-/* } */
+{ system ? builtins.currentSystem, devTools ? true }:
+let
+  pkgs = import ./nix/nixpkgs.nix { inherit system; };
+  myHaskellPackages = pkgs.haskellPackages.extend
+    (final: prev: { clutter = import ./package.nix { inherit system; }; });
+in myHaskellPackages.shellFor {
+    packages = p: [ p.clutter ];
+    nativeBuildInputs = with pkgs;
+      [ ghc cabal-install ] ++ lib.optional devTools [
+        niv
+        hlint
+        ormolu
+        (ghc.withPackages (p: [ p.haskell-language-server ]))
+        python310     # Replace with the Python version you need
+        python310Packages.pip
+        python310Packages.requests
+        python310Packages.python-dateutil
+      ];
+  }
