@@ -65,7 +65,7 @@ import qualified Data.Text as T (find)
 -- get authorization info from a text file
 getProviders :: IO (Tidal, Tidal, AMusic, Discogs, Discogs)
 getProviders = do
-  t <- readFileBS "data/tok.dat" -- for debug, get from file with authentication data
+  t <- readFileBS "tok.dat" -- for debug, get from file with authentication data
   let ts :: [Text]; ts = words . decodeUtf8 $ t
       appleMusicDevToken = fromJust $ ts !!? 0 -- t6
       appleMusicUserToken = fromJust $ ts !!? 1 -- t7
@@ -77,10 +77,10 @@ getProviders = do
       tidalAccessToken = fromJust $ ts !!? 7 -- t5
 
   pure( Tidal $ TidalSession tidalUserId tidalSessionId tidalCountryCode tidalAccessToken
-      , Tidal $ TidalFile "data/traw2.json" -- Tidal from cache
+      , Tidal $ TidalFile "cache/traw.json" -- Tidal from cache
       , AMusic $ AMusicSession appleMusicDevToken appleMusicUserToken
       , DiscogsSession discogsDevToken discogsUserName
-      , DiscogsFile "data/" -- Discogs from cache
+      , DiscogsFile "cache/" -- Discogs from cache
       )
 
 envTidalConnect :: Int -> AppM Env

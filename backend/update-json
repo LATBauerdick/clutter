@@ -1,11 +1,11 @@
 
-cd ./data
-AMT=$(sed '1!d' tok.dat)
-TOK=$(sed '3!d' tok.dat)
-USR=$(sed '4!d' tok.dat)
-TID=$(sed '5!d' tok.dat)
-TCC=$(sed '7!d' tok.dat)
-TDT=$(sed '8!d' tok.dat)
+cd ./cache
+AMT=$(sed '1!d' ../tok.dat)
+TOK=$(sed '3!d' ../tok.dat)
+USR=$(sed '4!d' ../tok.dat)
+TID=$(sed '5!d' ../tok.dat)
+TCC=$(sed '7!d' ../tok.dat)
+TDT=$(sed '8!d' ../tok.dat)
 
 echo $TOK
 echo $USR
@@ -27,7 +27,7 @@ cat lists-raw.json | jq -r '.lists[] | {id} | join("\t")' > all-list-ids
 for i in $(cat all-list-ids); do curl "https://api.discogs.com/lists/$i" -H "Authorization: Discogs token=$TOK" > l$i-raw.json; done
 
 # Tidal
-####curl -H "Authorization: Bearer $TDT"  "https://api.tidalhifi.com/v1/users/$TID/favorites/albums/?countryCode=$TCC&limit=9999"  > traw2.json
+curl -H "Authorization: Bearer $TDT"  "https://api.tidalhifi.com/v1/users/$TID/favorites/albums/?countryCode=$TCC&limit=9999"  > traw.json
 
 ## Apple Music
 ####for i in {0..44}; do limit=100 ; ((off = $i*$limit)) ; curl -v -H "Authorization: Bearer $AMT" "https://api.music.apple.com/v1/me/library/albums?include=catalog&limit=$limit&offset=$off&sort=dateAdded" > am$i.json; done

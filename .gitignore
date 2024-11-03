@@ -3,7 +3,8 @@ package-lock.json
 .stack-work
 stack.yaml.lock
 spago.lock
-data
+cache
+tok.dat
 dist-newstyle
 cabal.project.local
 result

@@ -70,6 +70,7 @@ type API2 = "provider"
     :> Capture "token" Text
     :> Capture "username" Text
     :> QueryParam "nreleases" Int -- update last n releases, all if null
+    :> QueryParam "release" Int -- get another release into the database
     :> Get '[HTML] RawHtml
 
 type API3 = "provider"
@@ -258,9 +259,9 @@ clutterServer = serveAlbum
       html <- renderAlbumsView ln fs aids
       pure . RawHtml $ L.renderBS html
 
-    serveDiscogs :: Text -> Text -> Maybe Int -> AppM RawHtml
-    serveDiscogs token username nreleases = do
-      liftIO $ print ("------Updating from Discogs" :: Text, token, username, nreleases)
+    serveDiscogs :: Text -> Text -> Maybe Int -> Maybe Int -> AppM RawHtml
+    serveDiscogs token username nreleases release = do
+      liftIO $ print ("------Updating from Discogs" :: Text, token, username, nreleases, release)
       envUpdate token username (fromMaybe 0 nreleases)
       let ln :: Text; ln = "Discogs"
       gl <- asks getList
