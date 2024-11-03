@@ -36,6 +36,7 @@ library
       Render
       RenderAlbumsView
       RenderAlbumView
+      RenderTopMenu
       RenderUtil
       Types
   other-modules:

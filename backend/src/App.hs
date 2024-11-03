@@ -191,7 +191,7 @@ clutterServer = serveAlbum
       -- gl <- asks getList
       -- aids <- gl ln
       -- let la = mapMaybe (`M.lookup` albums envr) . V.toList $ aids
-      let la = mapMaybe (\aid -> case (aid `M.lookup` albums envr, aid `M.lookup` locs envr) of
+      let la = mapMaybe (\aid' -> case (aid' `M.lookup` albums envr, aid' `M.lookup` locs envr) of
                                         (Nothing, _) -> Nothing
                                         (Just a, b) -> Just (a, b)
                              ) . V.toList $ aids
