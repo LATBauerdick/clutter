@@ -9,7 +9,8 @@
 
   outputs = { self, nixpkgs, ... }@inputs:
     let
-      supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
+      name = "clutter-frontend";
+      supportedSystems = ["x86_64-linux" "x86_64-darwin" "aarch64-darwin"];
 
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
@@ -34,12 +35,19 @@
           default = pkgs.mkShell {
             name = "my-purescript-project";
             inputsFrom = builtins.attrValues self.packages.${system};
-            buildInputs = with pkgs; [
-              purs
-              spago-unstable
-              purs-tidy-bin.purs-tidy-0_10_0
-              purs-backend-es
-            ];
+            buildInputs = [
+              pkgs.esbuild
+              pkgs.nodejs_20
+              pkgs.nixpkgs-fmt
+              pkgs.purs
+              pkgs.purs-tidy
+            # pkgs.purs-tidy-bin.purs-tidy-0_10_0
+              pkgs.purs-backend-es
+              pkgs.purescript-language-server
+              pkgs.spago-unstable
+            ]
+            ++ (pkgs.lib.optionals (system == "aarch64-darwin")
+               (with pkgs.darwin.apple_sdk.frameworks; [ Cocoa CoreServices ]));
           };
         });
   };

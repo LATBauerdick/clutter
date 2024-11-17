@@ -17,6 +17,7 @@ bower_components
 .pulp-cache
 dist
 output
+output-es
 generated-docs
 .parcel-cache
 .psc-package
