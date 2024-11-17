@@ -93,33 +93,42 @@ type API6 = "paramsq"
     :> "all"
     :> Get '[JSON] ParamsJ
 
+type API7 = "req"
+    :> Capture "event" Text
+    :> Get '[JSON] ReqJ
+
 data AlbumJ = AlbumJ
   { aid :: Int
   , album :: Maybe Album
   } deriving (Eq, Show, Generic)
+instance ToJSON AlbumJ
 
 data AlbumsJ = AlbumsJ
   { listName :: Text
   -- , lalbums :: [Album]
   , lalbums :: [(Album, Maybe (Text, Int))]
   } deriving (Eq, Show, Generic)
-
-instance ToJSON AlbumJ
 instance ToJSON AlbumsJ
 
 data ParamsJ = ParamsJ
   { timeStamp :: Text
   , params :: MenuParams
   } deriving (Eq, Show, Generic)
-
 instance ToJSON ParamsJ
--- instance ToJSON MenuParams
 
-type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> API5 :<|> API6 :<|> Raw
+data ReqJ = ReqJ
+  { reqTime :: Text
+  , reqResult :: Int
+  } deriving (Eq, Show, Generic)
+instance ToJSON ReqJ
+
+type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> API5
+  :<|> API6
+  :<|> API7
+  :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
 clutterAPI = Proxy
-
 
 -- type AppM = ReaderT Env Handler defined in Types.hs
 nt :: Env -> (ReaderT Env) Handler a -> Handler a
@@ -150,6 +159,7 @@ clutterServer = serveAlbum
             :<|> serveAlbumq
             :<|> serveAlbumsq
             :<|> serveParamsq
+            :<|> serveReq
             :<|> serveDirectoryFileServer "static"
   where
 --{{{clutterServer
@@ -217,6 +227,16 @@ clutterServer = serveAlbum
       let sj = ParamsJ  { timeStamp = dtl
                         , params = ms
                         }
+      pure sj
+
+    serveReq :: Text -> AppM ReqJ
+    serveReq r = do
+      liftIO $ print ("-------serveReq " :: Text, r)
+      now <- liftIO getZonedTime -- `debugId`
+      let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+      let sj = ReqJ  { reqTime = dtl
+                     , reqResult = 1
+                     }
       pure sj
 
     serveAlbum :: Int -> AppM RawHtml
