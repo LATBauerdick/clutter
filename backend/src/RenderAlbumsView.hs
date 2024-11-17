@@ -4,7 +4,7 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module RenderAlbumsView ( renderAlbumsView )
+module RenderAlbumsView ( renderAlbumsView, renderBadges )
 where
 
 import qualified Data.Foldable as F
@@ -72,20 +72,12 @@ renderAlbumsView ln fs aids = do
                   , L.class_ "cover-image"
                   , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
                   ]
-            renderBadges idx a
+            rbIndex idx
+            renderBadges a
+            rbLocation idx a
           L.div_ [L.class_ "album-info"] $ do
             L.p_ [L.class_ "album-title"] $ L.toHtml (albumTitle a)
             L.p_ [L.class_ "album-artist"] $ L.toHtml (albumArtist a)
-
-      renderBadges :: Int -> Album -> L.Html ()
-      renderBadges idx a = do
-        rbIndex idx
-        rbFormat a
-        rbTidal a
-        rbAMusic a
-        rbRating a
-        rbPlays a
-        rbLocation idx a
 
   let h = L.html_ $ do
         renderHead $ "Albums - " <> ln
@@ -101,6 +93,14 @@ rbIndex idx = do
           -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $
           -- L.a_ [L.href_ (albumURL a)] $
             " " <> show idx <> " "
+
+renderBadges :: Album -> L.Html ()
+renderBadges a = do
+  rbFormat a
+  rbTidal a
+  rbAMusic a
+  rbRating a
+  rbPlays a
 rbFormat :: Album -> L.Html ()
 rbFormat a =
       case albumFormat a of

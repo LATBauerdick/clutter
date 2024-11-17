@@ -224,7 +224,8 @@ clutterServer = serveAlbum
       liftIO $ print ("-------serveAlbum " :: Text, a )
       now <- liftIO getZonedTime -- `debugId`
       ma <- envUpdateAlbum a
-      pure . RawHtml $ L.renderBS (renderAlbumView ma now)
+      html <- renderAlbumView ma now
+      pure . RawHtml $ L.renderBS html
 
     serveAlbums :: Text -> Maybe Text -> Maybe Text -> [Text]
                     -> AppM RawHtml
