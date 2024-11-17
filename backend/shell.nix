@@ -15,5 +15,8 @@ in myHaskellPackages.shellFor {
         python310Packages.pip
         python310Packages.requests
         python310Packages.python-dateutil
+        python310Packages.typing-extensions
+        python310Packages.isodate
+        python310Packages.mpegdash
       ];
   }

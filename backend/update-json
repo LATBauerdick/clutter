@@ -1,4 +1,5 @@
 
+mkdir -p ./cache
 cd ./cache
 AMT=$(sed '1!d' ../tok.dat)
 TOK=$(sed '3!d' ../tok.dat)
