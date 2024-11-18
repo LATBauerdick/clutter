@@ -9,7 +9,7 @@
     "build": "spago build",
     "test": "spago test",
     "serve": "spago build && esbuild --bundle src/index.js --outfile=dist/index.js --servedir=dist",
-    "bundle": "spago build --output output-es && purs-backend-es bundle-app --main Main --minify --no-build --to dist/index.js"
+    "bundle": "spago build --output output-es && purs-backend-es bundle-app --main Main --minify --no-build --to ../backend/static/index.js"
   },
   "dependencies": {
     "benchmark": "^2.1.4",
