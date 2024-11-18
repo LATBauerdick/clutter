@@ -124,6 +124,8 @@ renderTopMenu env envr ln fs = L.div_ [L.id_ "navbar"] $ do
   L.div_ [L.class_ "dropdown"] renderButtonOrder
   L.a_   [L.class_ "active"
           , L.href_ (uhq <> "2024 Listened?&sortBy=Default&sortOrder=Desc")] "Listened"
+  L.a_   [L.class_ "active"
+          , L.href_ (uhq <> "Discogs?focus=%23format.vinyl&focus=%23played.never")] "NPV"
   L.a_   [L.class_ "active", L.href_ (uhq <> "Discogs")] "Discogs"
   L.div_ [L.class_ "dropdown"] renderButtonList
   L.div_ [L.class_ "dropdown"] renderButtonLocation

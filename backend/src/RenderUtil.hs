@@ -393,6 +393,20 @@ p.album-artist {
 .cover-obackground a:link { color: black; }
 .cover-obackground a:visited { color: black; }
 .cover-obackground a:hover { color: red; }
+.cover-obackground .hovtext {
+  visibility: hidden;
+  width: 120px;
+  padding-top: 1px;
+  background-color: black;
+  color: #777;
+  padding: 5px 0;
+  border-radius: 6px;
+  position: absolute;
+  z-index: 1;
+}
+.cover-obackground:hover .hovtext {
+  visibility: visible;
+}
 
 .cover-oimage {
   display: block;
@@ -448,7 +462,7 @@ a:active {
   bottom: 7;
   background-color: rgba(255,255,255,.5);
 }
-.plays .loctext {
+.plays .hovtext {
   visibility: hidden;
   width: 120px;
   padding-top: 1px;
@@ -459,7 +473,7 @@ a:active {
   position: absolute;
   z-index: 1;
 }
-.plays:hover .loctext {
+.plays:hover .hovtext {
   visibility: visible;
 }
 
@@ -484,7 +498,7 @@ a:active {
   background-color: rgba(155,155,155,.5);
 }
 
-.loc .loctext {
+.loc .hovtext {
   visibility: hidden;
   width: 120px;
   padding-top: 1px;
@@ -496,7 +510,7 @@ a:active {
   z-index: 1;
 }
 
-.loc:hover .loctext {
+.loc:hover .hovtext {
   visibility: visible;
 }
 .loclink {
@@ -539,10 +553,10 @@ a:active {
 
 .cover-obackground2 a:link { color: black; }
 .cover-obackground2 a:visited { color: black; }
-.loctext a:link { color: white; }
-.loctext a:visited { color: white; }
+.hovtext a:link { color: white; }
+.hovtext a:visited { color: white; }
 
-.cover-obackground2 .loctext {
+.cover-obackground2 .hovtext {
   visibility: hidden;
   width: 120px;
   background-color: black;
@@ -553,7 +567,7 @@ a:active {
   z-index: 1;
 }
 
-.cover-obackground2:hover .loctext {
+.cover-obackground2:hover .hovtext {
   visibility: visible;
 }
 

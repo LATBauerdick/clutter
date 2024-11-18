@@ -1,6 +1,5 @@
-
--- {-# LANGUAGE NoImplicitPrelude #-}
--- {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE QuasiQuotes #-}
 
@@ -12,7 +11,7 @@ import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import qualified Lucid as L
-import qualified Data.Text as T (take )
+import qualified Data.Text as T ( take, isInfixOf )
 import Relude
 import Text.RawString.QQ
 import Types ( Env (..), EnvR (..), envGetEnvr, AppM, Album (..), SortOrder (..) )
@@ -35,7 +34,7 @@ renderAlbumsView ln fs aids = do
                   L.a_ [L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                     -- L.i_ [ L.class_ "fa fa-align-justify fa-rotate-90" ] ""
                     L.i_ [ L.class_ "fa fa-barcode" ] ""
-                  L.span_ [L.class_ "loctext"] $ do
+                  L.span_ [L.class_ "hovtext"] $ do
                     "Location: "
                     L.a_ [L.class_ "loclink", L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                       L.toHtml $ loc <> " #" <> show pos
@@ -44,7 +43,7 @@ renderAlbumsView ln fs aids = do
             L.div_ [L.class_ "cover-obackground2"] $ do
               L.a_ [L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                 L.i_ [ L.class_ "fa fa-barcode", L.style_ "color:red" ] ""
-              L.span_ [L.class_ "loctext"] $ do
+              L.span_ [L.class_ "hovtext"] $ do
                 "Location: "
                 L.a_ [L.class_ "loclink", L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                   L.toHtml $ if loc == ln
@@ -101,54 +100,61 @@ renderBadges a = do
   rbAMusic a
   rbRating a
   rbPlays a
+
 rbFormat :: Album -> L.Html ()
-rbFormat a =
-      case albumFormat a of
-            "Vinyl" ->
-              L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
+rbFormat a = do
+  let f = albumFormat a
+      c 
+        | "Vinyl" `T.isInfixOf` f && "Box Set" `T.isInfixOf` f = 'b'
+        | "Vinyl, Vinly" `T.isInfixOf` f = 'b'
+        | "Vinyl" `T.isInfixOf` f = 'v'
+        | "CD" `T.isInfixOf` f && "Box Set" `T.isInfixOf` f = 'd'
+        | "CD" `T.isInfixOf` f = 'c'
+        | "Hybrid" `T.isInfixOf` f = 'c'
+        | f == "Streaming" = 's'
+        | f == "Files" = 'f'
+        | f == "Tidal" = 't'
+        | f == "AppleMusic" = 'a'
+        | otherwise = 'x'
+      -- c = if "Vinyl" `T.isInfixOf` f && "Box Set" `T.isInfixOf` f then 'b'
+      --     else if "Vinyl, Vinly" `T.isInfixOf` f then 'b'
+      --     else if "Vinyl" `T.isInfixOf` f then 'v'
+      --     else if "CD" `T.isInfixOf` f && "Box Set" `T.isInfixOf` f then 'd'
+      --     else if "CD" `T.isInfixOf` f then 'c'
+      --     else if "Hybrid" `T.isInfixOf` f then 'c'
+      --     else if f == "Streaming" then 's'
+      --     else if f == "Files" then 'f'
+      --     else if f == "Tidal" then 't'
+      --     else if f == "AppleMusic" then 'a'
+      --     else 'x'
+  L.div_ [L.class_ "cover-obackground"] $ do
+    L.a_ [L.href_ (albumURL a)] $ do
+      case c of
+            'v' ->
                   L.span_ [ L.class_ "fas fa-record-vinyl fa-sm" ] ""
-              -- L.img_ [ L.src_ "/discogs-icon.png", L.alt_ "D", L.class_ "cover-oimage" ]
-            "Tidal" -> L.div_ ""
-            "AppleMusic" -> L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
-                  L.img_ [L.src_ "/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
-                  L.div_ ""
-            "CD" ->
-              L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
+                  -- L.img_ [ L.src_ "/discogs-icon.png", L.alt_ "D", L.class_ "cover-oimage" ]
+            't' -> L.div_ ""
+            'a' -> do
+                     L.img_ [L.src_ "/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
+                     L.div_ ""
+            'c' ->
                   L.span_ [ L.class_ "fas fa-compact-disc fa-sm" ] ""
-            "CD, Box Set" ->
-              L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
+            'd'  ->
                   L.span_ [ L.class_ "fa-stack fa-sm" ] $ do
-                    -- L.span_ [L.class_ "fa fa-clone fa-stack-1x"] ""
                     L.span_ [L.class_ "fa fa-square-o fa-stack-1x"] ""
                     L.span_ [L.class_ "fa fa-compact-disc fa-stack-1x"] ""
-            "Box Set, Vinyl" ->
-              L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
+            'b' ->
                   L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
-            "Vinyl, Box Set" ->
-              L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
-                  L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
-            "Vinyl, Vinyl" ->
-              L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
-                  L.span_ [ L.class_ "far fa-clone fa-sm" ] ""
-            "Files" ->
-              L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
+            'f' ->
                   L.span_ [ L.class_ "far fa-file-audio fa-sm" ] ""
-            "Streaming" ->
-              L.div_ [L.class_ "cover-obackground"] $ do
-                L.a_ [L.href_ (albumURL a)] $ do
+            's' ->
                   L.span_ [ L.class_ "far fa-wifi fa-sm" ] ""
             _ ->
-              L.div_ [L.class_ "cover-obackground"] $
-                L.a_ [L.href_ (albumURL a)] $ do
-                  L.toHtml (albumFormat a)
+                  L.span_ [L.class_ "fa fa-square-o fa-stack-1x"] ""
+                  -- L.toHtml (albumFormat a)
+
+    L.span_ [L.class_ "hovtext"] $ do
+      "Format " <> show (albumFormat a) <> "."
 rbTidal :: Album -> L.Html ()
 rbTidal a =
       case albumTidal a of
@@ -216,7 +222,7 @@ rbPlays a = do
                 | cnt >= 5 -> L.span_ $
                                 L.i_ [ L.class_ "fa fa-thermometer-4", L.style_ "color:red" ] ""
             _ -> ""
-          L.span_ [L.class_ "loctext"]  ("Played " <> show (albumPlays a) <> " times")
+          L.span_ [L.class_ "hovtext"]  ("Played " <> show (albumPlays a) <> " times")
       else ""
 
 scriptqq :: Text
