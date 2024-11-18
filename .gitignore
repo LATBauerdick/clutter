@@ -3,6 +3,7 @@ package-lock.json
 .stack-work
 stack.yaml.lock
 spago.lock
+flake.lock
 cache
 tok.dat
 dist-newstyle
