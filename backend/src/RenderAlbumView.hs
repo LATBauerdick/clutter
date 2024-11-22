@@ -22,6 +22,7 @@ renderAlbumView mAlbum now = do
       albumBody = do
         L.br_ []
         L.br_ []
+        L.br_ []
         case mAlbum of
           Nothing ->
             L.div_ [L.class_ "login-message"] $ do
