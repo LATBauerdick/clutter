@@ -89,8 +89,7 @@ li a:hover {
 #navbar .dropdown .dropbtn {
   padding: 14px 16px 14px 16px;
   font-size: 16px;
-  border: none;
-  outline: none;
+  border: none; outline: none;
   color: white;
   background-color: inherit;
   font-family: inherit;
@@ -112,6 +111,18 @@ li a:hover {
 }
 #navbar .dropdown .dropbtn-order a {
   padding: 0px 4px;
+}
+
+.listbtn {
+  overflow: auto;
+  font-size: 16px;
+  background-color: inherit;
+  padding: 14px 16px 0px 0px;
+  border: none;
+}
+
+.listbtn hover {
+  background-color: orange;
 }
 
 #navbar a:hover, #navbar .dropdown:hover .dropbtn {

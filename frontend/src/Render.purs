@@ -3,8 +3,8 @@ module Render (
   ) where
 
 import Prelude
-import CSS (CSS)
-import CSS as CSS
+-- import CSS (CSS)
+-- import CSS as CSS
 import CSS.Background (backgroundColor)
 import CSS.Color (Color, rgb)
 import Data.Maybe (Maybe(..))
@@ -16,7 +16,6 @@ import Halogen.HTML as HH
 import Halogen.HTML.CSS as HC
 import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
--- import Halogen.HTML.CSS as CSS
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
@@ -117,19 +116,16 @@ renderAlbumView a now =
   dt = fromRight "???????" <<< formatDateTime "YYMMDD" $ now -- "2022-10-19T20:01"
   dtl = fromRight "???????" <<< formatDateTime "YYYY-MM-DDTHH:mm" $ now -- "2022-10-19T20:01"
   discogsView =
-    HH.div
-      [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
+    HH.div [  ]
       [ HH.h1_ [ HH.text "This is the Clutter App!" ]
-      , HH.div
-        [ HP.class_ $ HH.ClassName "cover-container"]
-        [ HH.div
-          [ HP.class_ $ HH.ClassName "cover-img" ] $
+      , HH.div [ HP.class_ $ HH.ClassName "cover-container"]
+        [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ] $
           [ HH.a
             [ HP.href a.albumURL] $
             [ HH.img [ HP.src a.albumCover
                      , HP.alt "cover image"
                      --, HP.onerror "this.onerror=null;this.src='http://localhost:8080/no-cover.png';"
-                     , HP.class_ $ HH.ClassName "cover-img"
+                     , HP.class_ $ HH.ClassName "cover-image"
                      ]
             ]
           ] <> renderBadges 0 a
@@ -202,8 +198,7 @@ renderAlbumView a now =
         )
       ]
   testView =
-    HH.div
-      [ HP.class_ $ HH.ClassName "data-deskgap-drag" ]
+    HH.div [  ]
       [ HH.iframe
         [ HP.src ("http://localhost:8080/album/" <> show a.albumID)
         , HP.title "iframe_a"

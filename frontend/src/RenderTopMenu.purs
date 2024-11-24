@@ -125,7 +125,7 @@ renderTopMenu state =
     , HH.div
       [ HP.class_ $ HH.ClassName "dropdown-content" ]
           -- ( map (\x -> HH.a [ HP.href (uhq <> ln <> "&sortBy=" <> x) ] [ HH.text x ]) sorts )
-      ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "xxx"
+      ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "listbtn"
                              , HE.onClick (\_ -> SetSort x)
                              ]
                              [ HH.text x ])
@@ -154,7 +154,7 @@ renderTopMenu state =
       , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
       ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
-        ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "xxx"
+        ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "listbtn"
                                , HE.onClick (\_ -> ShowList ( AlbumList (Just x) ))
                                ]
                                [ HH.text x ])

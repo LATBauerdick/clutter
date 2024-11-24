@@ -96,7 +96,7 @@ styleqq =
 }
 
 body {
-   font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif; 
+  font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;
   font-weight: 300;
   line-height: 1;
   font-size: 13px;
@@ -181,6 +181,7 @@ li a:hover {
   background-color: inherit;
   font-family: inherit;
   margin: 0;
+  text-align: left;
 }
 
 #navbar .dropdown .dropbtn a {
@@ -339,6 +340,7 @@ p.album-artist {
   font-family: helvetica;
   font-size: 11px;
   margin: 4px 0 0 0;
+  text-align: left;
 }
 
 .albums12perc {
