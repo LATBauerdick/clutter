@@ -25,61 +25,67 @@ derive instance eqSortOrder :: Eq SortOrder
 derive instance genericSortOrder :: Generic SortOrder _
 instance showSortOrder :: Show SortOrder where
   show = genericShow
-  -- show Asc = "Asc"
-  -- show Desc = "Desc"
 
-type Album =  { albumID :: Int
-              , albumAMusic :: Maybe String
-              , albumTidal :: Maybe String
-              , albumAdded :: Maybe String
-              , albumArtist :: String
-              , albumTitle :: String
-              , albumCover :: String
-              , albumURL :: String
-              , albumFormat :: String
-              , albumLocation :: Maybe String
-              , albumTags :: Array String
-              , albumFolder :: Int
-              , albumPlays :: Int
-              , albumRating :: Int
-              , albumReleased :: String
-              , albumShelf :: Maybe (Tuple String Int)
-              }
-type AlbumJ = { aid :: Int
-              , album :: Album
-              }
+type Album =      { albumID :: Int
+                  , albumAMusic :: Maybe String
+                  , albumTidal :: Maybe String
+                  , albumAdded :: Maybe String
+                  , albumArtist :: String
+                  , albumTitle :: String
+                  , albumCover :: String
+                  , albumURL :: String
+                  , albumFormat :: String
+                  , albumLocation :: Maybe String
+                  , albumTags :: Array String
+                  , albumFolder :: Int
+                  , albumPlays :: Int
+                  , albumRating :: Int
+                  , albumReleased :: String
+                  , albumShelf :: Maybe (Tuple String Int)
+                  }
+type AlbumJ =     { aid :: Int
+                  , album :: Album
+                  }
 
-type AlbumsJ = { listName :: String
-               -- , lalbums :: Array Album
-               , lalbums :: Array (Tuple Album (Maybe (Tuple String Int)))
-               }
+type AlbumsJ =    { listName :: String
+                  , lalbums :: Array (Tuple Album (Maybe (Tuple String Int)))
+                  }
 
 newtype AlbumList = AlbumList (Maybe  String)
 derive instance newtypeAlbumList :: Newtype AlbumList _
 
-type State =  { album :: Maybe Album
-              , listName :: AlbumList
-              , albumList :: Array Album
-              , loading :: Boolean
-              , albumID :: String
-              , now :: DateTime
-              , result :: Maybe String
-              , menu :: MenuState
-              }
-type MenuState = { params :: MenuParams
-                 , ln :: String
-                 , ffs :: Array (Tuple String Boolean)
-                 , sortName :: String
-                 , sso :: SortOrder
-                 }
+type State =      { album :: Maybe Album
+                  , listName :: AlbumList
+                  , albumList :: Array Album
+                  , loading :: Boolean
+                  , albumID :: String
+                  , now :: DateTime
+                  , result :: Maybe String
+                  , menu :: MenuState
+                  }
+type MenuState =  { params :: MenuParams
+                  , ln :: String
+                  , ffs :: Array (Tuple String Boolean)
+                  , sortName :: String
+                  , sso :: SortOrder
+                  }
 type MenuParams = { muhq :: String
                   , msorts :: Array String
                   , msts :: Array String
                   , mlistNames :: Array String
                   , mlocNames :: Array String
                   }
-type ParamsJ = { timeStamp :: String
-               , params :: MenuParams
-               }
+type ParamsJ =    { timeStamp :: String
+                  , params :: MenuParams
+                  }
 
-data Action = ToggleSortOrder | SetSortOrder SortOrder | SetSort String | ToggleFocus String | SetFocus (Array (Tuple String Boolean)) | SetAlbumID String | MakeRequest Event | ShowList AlbumList | ShowListSort AlbumList String SortOrder | ShowAlbum String
+data Action = ToggleSortOrder
+            | SetSortOrder SortOrder
+            | SetSort String
+            | ToggleFocus String
+            | SetFocus (Array (Tuple String Boolean))
+            | SetAlbumID String
+            | MakeRequest Event
+            | ShowList AlbumList
+            | ShowListSort AlbumList String SortOrder
+            | ShowAlbum String
