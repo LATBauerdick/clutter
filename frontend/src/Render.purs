@@ -3,16 +3,20 @@ module Render (
   ) where
 
 import Prelude
+import CSS (CSS)
+import CSS as CSS
+import CSS.Background (backgroundColor)
+import CSS.Color (Color, rgb)
 import Data.Maybe (Maybe(..))
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..))
 import Data.Array (range, length, zip)
 import Halogen as H
 import Halogen.HTML as HH
+import Halogen.HTML.CSS as HC
 import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
 -- import Halogen.HTML.CSS as CSS
--- import CSS (backgroundColor, fontSize, px)
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
@@ -243,7 +247,12 @@ renderBadges idx a =
 
 rbIndex :: forall m. Int -> H.ComponentHTML Action () m
 rbIndex idx =
-  HH.div  [ HP.class_ $ HH.ClassName "idx" ]
+  HH.div  [ HC.style do
+              let idxColor :: Color
+                  idxColor = rgb 0xfd 0x7e 0x14
+              backgroundColor idxColor
+          , HP.class_ $ HH.ClassName "idx" 
+          ]
           [ HH.text $ " " <> show idx <> " " ]
 
 rbFormat :: forall m. Album -> H.ComponentHTML Action () m

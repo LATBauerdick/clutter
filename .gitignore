@@ -27,3 +27,4 @@ generated-docs
 .spago
 .venv
 backend/static/index.js
+frontend/index.js

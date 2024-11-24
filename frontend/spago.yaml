@@ -9,6 +9,7 @@ package:
     - effect
     - formatters
     - halogen
+    - halogen-css
     - prelude
     - strings
   test:
