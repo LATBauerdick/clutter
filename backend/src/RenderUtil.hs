@@ -97,7 +97,13 @@ styleqq =
 
 body {
    font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif; 
-   font-weight: 300;
+  font-weight: 300;
+  line-height: 1;
+  font-size: 13px;
+}
+
+samp {
+  line-height: 1.5;
 }
 
 p {
@@ -451,10 +457,10 @@ a:active {
   bottom: 7;
 }
 .plays {
+  color: black;
+  font-size:small;
   width: 15px;
   height: 14px;
-  font-size:small;
-  color: black;
   padding-top: 1px;
   border-radius: 4px;
   position: absolute;

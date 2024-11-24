@@ -27,8 +27,8 @@ render :: forall m. State -> H.ComponentHTML Action () m
 render state = do
   HH.div_
     [ case state.listName of
-          AlbumList Nothing  -> albumView state.album state.now
-          _                  -> renderListView state
+        AlbumList Nothing  -> albumView state.album state.now
+        _                  -> renderListView state
     , renderTopMenu state
     , HH.div_
       [ HH.br_, HH.br_, HH.br_
@@ -36,19 +36,19 @@ render state = do
         [ HE.onSubmit \ev -> MakeRequest ev ]
         [ HH.h3_ [ HH.text "Look up Album ID" ]
         , HH.label_
-            [ HH.div_ [ HH.text "Enter album id:" ]
-            , HH.input
-                [ HP.value state.albumID
-                , HE.onValueInput \str -> SetAlbumID str
-                ]
-            ]
+           [ HH.div_ [ HH.text "Enter album id:" ]
+           , HH.input
+             [ HP.value state.albumID
+             , HE.onValueInput \str -> SetAlbumID str
+             ]
+           ]
         , HH.button
-            [ HP.disabled state.loading
-            , HP.type_ HP.ButtonSubmit
-            ]
-            [ HH.text "Fetch info" ]
+           [ HP.disabled state.loading
+           , HP.type_ HP.ButtonSubmit
+           ]
+           [ HH.text "Fetch info" ]
         , HH.h1_
-            [ HH.text if state.loading then "Working..." else "" ]
+           [ HH.text if state.loading then "Working..." else "" ]
         ]
     -- , HH.div_
     --     case state.result of
@@ -67,43 +67,35 @@ render state = do
 
 renderAlbumTN :: forall m. Int -> Album -> H.ComponentHTML Action () m
 renderAlbumTN idx a =
-  HH.div
-    [ HP.class_ $ HH.ClassName "album-thumb" ]
-    [ HH.div
-      [ HP.class_ $ HH.ClassName "cover-container" ]
-      [ HH.div
-        [ HP.class_ $ HH.ClassName "cover-img" ] $
-        [ HH.button
-          [ HE.onClick \_ -> ShowAlbum (show a.albumID) ]
-          [ HH.img [ HP.src a.albumCover
-                   , HP.alt "cover image"
-                   --, HP.onerror "this.onerror=null;this.src='http://localhost:8080/no-cover.png';"
-                   , HP.class_ $ HH.ClassName "cover-image"
-                   ]
-          ]
-        ]
-        <> renderBadges idx a
-      ]
+  HH.div [ HP.class_ $ HH.ClassName "album-thumb" ]
+    [ HH.div [ HP.class_ $ HH.ClassName "cover-container" ] (
+        [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ]
+            [ HH.button [ HE.onClick \_ -> ShowAlbum (show a.albumID) ]
+              [ HH.img [ HP.src a.albumCover
+                        , HP.alt "cover image"
+                        --, HP.onerror "this.onerror=null;this.src='http://localhost:8080/no-cover.png';"
+                        , HP.class_ $ HH.ClassName "cover-image"
+                        ]
+              ]
+            ]
+        ] <> renderBadges idx a
+      )
     , HH.div [ HP.class_ $ HH.ClassName "album-info" ]
-        [ HH.p
-          [ HP.class_ $ HH.ClassName "album-title"]
+        [ HH.p [ HP.class_ $ HH.ClassName "album-title"]
           [ HH.text a.albumTitle ]
-        , HH.p
-          [ HP.class_ $ HH.ClassName "album-artist"]
+        , HH.p [ HP.class_ $ HH.ClassName "album-artist"]
           [ HH.text a.albumArtist ]
         ]
     ]
 
 renderListView :: forall m. State -> H.ComponentHTML Action () m
 renderListView state =
-  let as = state.albumList
-  in
-  HH.div
-  [ HP.class_ $ HH.ClassName "albums" ]
-  [ HH.div
-    [ HP.class_ $ HH.ClassName "row"]
-    ( map (\(Tuple i a) -> renderAlbumTN i a) $ zip (range 1 (length as)) as )
-  ]
+  HH.div  [ HP.class_ $ HH.ClassName "albums" ]
+          [ HH.div
+            [ HP.class_ $ HH.ClassName "row"]
+            ( map (\(Tuple i a) -> renderAlbumTN i a) $ zip (range 1 (length as)) as )
+          ]
+  where as = state.albumList
 
 albumView :: forall m. Maybe Album -> DateTime -> H.ComponentHTML Action () m
 albumView am now = case am of
@@ -133,7 +125,7 @@ renderAlbumView a now =
             [ HH.img [ HP.src a.albumCover
                      , HP.alt "cover image"
                      --, HP.onerror "this.onerror=null;this.src='http://localhost:8080/no-cover.png';"
-                     , HP.class_ $ HH.ClassName "cover-image"
+                     , HP.class_ $ HH.ClassName "cover-img"
                      ]
             ]
           ] <> renderBadges 0 a
@@ -252,11 +244,7 @@ renderBadges idx a =
 rbIndex :: forall m. Int -> H.ComponentHTML Action () m
 rbIndex idx =
   HH.div  [ HP.class_ $ HH.ClassName "idx" ]
-  [
-  -- L.a_ [L.href_ ("http://lmini.local:8080/album/" <> show (albumID a))] $
-  -- L.a_ [L.href_ (albumURL a)] $
-  HH.text $ " " <> show idx <> " "
-  ]
+          [ HH.text $ " " <> show idx <> " " ]
 
 rbFormat :: forall m. Album -> H.ComponentHTML Action () m
 rbFormat a =
@@ -474,7 +462,7 @@ rbPlays a =
           ]
     _ ->  HH.div_ []
     , HH.span
-        [ HP.class_ $ HH.ClassName "loctext" ]
+        [ HP.class_ $ HH.ClassName "hovtext" ]
         [ HH.text $ "Played " <> show a.albumPlays <> " times" ]
     ]
   else HH.div_ []
@@ -489,7 +477,7 @@ rbLocation a = case a.albumLocation of
           , HP.style "color:red"
           ] [ HH.text "" ]
       , HH.span
-        [ HP.class_ $ HH.ClassName "loctext" ]
+        [ HP.class_ $ HH.ClassName "hovtext" ]
         [ HH.text "Location: "
         , HH.a
             [ HP.class_ $ HH.ClassName "loclink"
@@ -509,7 +497,7 @@ rbLocation a = case a.albumLocation of
             , HP.style "color:black"
             ] [ HH.text "" ]
         , HH.button
-          [ HP.class_ $ HH.ClassName "loctext"
+          [ HP.class_ $ HH.ClassName "hovtext"
           , HE.onClick \_ -> ShowListSort (AlbumList (Just shelf)) "Default" Asc ]
           [ HH.text $ "Location: " <> shelf <> " #" <> show ipos
           ]
@@ -521,7 +509,7 @@ rbLocation a = case a.albumLocation of
                 --         L.a_ [L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                 --           -- L.i_ [ L.class_ "fa fa-align-justify fa-rotate-90" ] ""
                 --           L.i_ [ L.class_ "fa fa-barcode" ] ""
-                --         L.span_ [L.class_ "loctext"] $ do
+                --         L.span_ [L.class_ "hovtext"] $ do
                 --           "Location: "
                 --           L.a_ [L.class_ "loclink", L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
                 --             L.toHtml $ loc <> " #" <> show pos
