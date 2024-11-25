@@ -146,11 +146,23 @@ renderTopMenu state =
       ]
 
   renderButtonList :: forall m. Array ( H.ComponentHTML Action () m )
-  renderButtonList =
-    [
-      HH.button
-      [ HP.class_ $ HH.ClassName "dropbtn"]
+  renderButtonList = [
+    HH.button [ HP.class_ $ HH.ClassName "dropbtn"]
       [ HH.text "List "
+      , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
+      ]
+    , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
+        ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "listbtn"
+                                , HE.onClick (\_ -> ShowList ( AlbumList (Just x) ))
+                                ]
+                                [ HH.text x ])
+                     listNames )
+    ]
+
+  renderButtonLocation :: forall m. Array ( H.ComponentHTML Action () m )
+  renderButtonLocation = [
+    HH.button [HP.class_ $ HH.ClassName "dropbtn"]
+      [ HH.text "Location "
       , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
       ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
@@ -158,24 +170,10 @@ renderTopMenu state =
                                , HE.onClick (\_ -> ShowList ( AlbumList (Just x) ))
                                ]
                                [ HH.text x ])
-                     listNames )
-    ]
-
-  renderButtonLocation :: forall m. Array ( H.ComponentHTML Action () m )
-  renderButtonLocation = [
-    HH.button [HP.class_ $ HH.ClassName "dropbtn"]
-    [ HH.text "Location "
-    , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
-    ]
-  , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]
-        ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "dropdown"
-                               , HE.onClick (\_ -> ShowList ( AlbumList (Just x) ))
-                               ]
-                               [ HH.text x ])
                      locNames )
       -- ( map (\x -> HH.a [ HP.href (uhq <> "" <> x) ] [ HH.text x ]) locNames )
       -- ( map (\x -> HH.text x ) locNames )
-  ]
+    ]
 
   renderButtonTags :: forall w i. Array (HH.HTML w i)
   renderButtonTags = [

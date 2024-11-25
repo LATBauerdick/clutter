@@ -114,14 +114,19 @@ li a:hover {
 }
 
 .listbtn {
-  overflow: auto;
   font-size: 16px;
+  overflow: auto;
   background-color: inherit;
-  padding: 14px 16px 0px 0px;
+  min-width: 160px;
+  max-width: 600px;
+  padding: 4px 2px 4px 8px;
+  border-radius: 6px;
   border: none;
+  text-align: left;
+  margin: 1px 0px;
 }
 
-.listbtn hover {
+.listbtn:hover {
   background-color: orange;
 }
 
@@ -398,8 +403,9 @@ a:active {
 
 .idx {
   height: 18px;
-  padding-left: 4px;
-  padding-right: 4px;
+  padding-top: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
   text-align: left;
   position: absolute;
   top: 1px;

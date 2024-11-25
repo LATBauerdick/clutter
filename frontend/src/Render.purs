@@ -242,11 +242,11 @@ renderBadges idx a =
 
 rbIndex :: forall m. Int -> H.ComponentHTML Action () m
 rbIndex idx =
-  HH.div  [ HC.style do
-              let idxColor :: Color
-                  idxColor = rgb 0xfd 0x7e 0x14
-              backgroundColor idxColor
-          , HP.class_ $ HH.ClassName "idx" 
+  HH.div  [ HP.class_ $ HH.ClassName "idx"
+          -- , HC.style do
+          --     let idxColor :: Color
+          --         idxColor = rgb 0xfd 0x7e 0x14
+          --     backgroundColor idxColor
           ]
           [ HH.text $ " " <> show idx <> " " ]
 
