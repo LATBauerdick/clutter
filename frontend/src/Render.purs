@@ -19,7 +19,7 @@ import Halogen.HTML.Events as HE
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
-import Data.String (take) as S
+import Data.String (take, indexOf) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
@@ -251,69 +251,77 @@ rbIndex idx =
           [ HH.text $ " " <> show idx <> " " ]
 
 rbFormat :: forall m. Album -> H.ComponentHTML Action () m
-rbFormat a =
+rbFormat a = do
+  let f = a.albumFormat
+      isInfixOf :: String -> String -> Boolean
+      isInfixOf p s = S.indexOf (Pattern p) s /= Nothing
+      c
+        | "Vinyl" `isInfixOf` f && "Box Set" `isInfixOf` f = 'b'
+        | "Vinyl, Vinly" `isInfixOf` f = 'b'
+        | "Vinyl" `isInfixOf` f = 'v'
+        | "CD" `isInfixOf` f && "Box Set" `isInfixOf` f = 'd'
+        | "CD" `isInfixOf` f = 'c'
+        | "Hybrid" `isInfixOf` f = 'c'
+        | f == "Streaming" = 's'
+        | f == "Files" = 'f'
+        | f == "Tidal" = 't'
+        | f == "AppleMusic" = 'a'
+        | otherwise = 'x'
+
   HH.div
-  [ HP.class_ $ HH.ClassName "cover-obackground" ]
-  [ HH.a [ HP.href a.albumURL]
-  case a.albumFormat of
-  "Vinyl" ->
-    [ HH.span
-        [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ]
-        [ HH.text "" ]
-    ]
-    -- HH.img [ HP.src_ "http://localhost:8080/discogs-icon.png", HH.alt "D", HP.class_ "cover-oimage" ]
-  "Tidal" ->
-    [ HH.img
-        [ HP.src "http://localhost:8080/tidal-is.png"
-        , HP.alt "A"
-        , HP.class_ $ HH.ClassName "cover-oimage"
-        ]
-    ]
-  "AppleMusic" ->
-    [ HH.img
-        [ HP.src "http://localhost:8080/am-icon.png"
-        , HP.alt "A"
-        , HP.class_ $ HH.ClassName "cover-oimage"
-        ]
-    ]
-  "CD" ->
-    [ HH.span
-        [ HP.class_ $ HH.ClassName "fas fa-compact-disc fa-sm" ]
-        [ HH.text "" ]
-    ]
-  "CD, Box Set" ->
-    [ HH.span
-        [ HP.class_ $ HH.ClassName "fa-stack fa-sm" ]
-        [ HH.span
-          [ HP.class_ $ HH.ClassName "fa fa-square-o fa-stack-1x" ]
-          [ HH.text "" ]
-        , HH.span
-          [ HP.class_ $ HH.ClassName "fa fa-compact-disc fa-stack-1x" ]
-          [ HH.text "" ]
-        ]
-    ]
-  "Box Set, Vinyl" ->
-    [ HH.span
-        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
-        [ HH.text "" ] ]
-  "Vinyl, Box Set" ->
-    [ HH.span
-        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
-        [ HH.text "" ] ]
-  "Vinyl, Vinyl" ->
-    [ HH.span
-        [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
-        [ HH.text "" ] ]
-  "Files" ->
-    [ HH.span
-        [ HP.class_ $ HH.ClassName "far fa-file-audio fa-sm" ]
-        [ HH.text "" ] ]
-  "Streaming" ->
-    [ HH.span
-        [ HP.class_ $ HH.ClassName "far fa-wifi fa-sm" ]
-        [ HH.text "" ] ]
-  _ ->
-    [ HH.text a.albumFormat ]
+    [ HP.class_ $ HH.ClassName "cover-obackground" ]
+    [ HH.a [ HP.href a.albumURL]
+      case c of
+        'v' ->
+          [ HH.span
+              [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ]
+              [ HH.text "" ]
+          ]
+          -- HH.img [ HP.src_ "http://localhost:8080/discogs-icon.png", HH.alt "D", HP.class_ "cover-oimage" ]
+        't' ->
+          [ HH.img
+              [ HP.src "http://localhost:8080/tidal-is.png"
+              , HP.alt "T"
+              , HP.class_ $ HH.ClassName "cover-oimage"
+              ]
+          ]
+        'a' ->
+          [ HH.img
+              [ HP.src "http://localhost:8080/am-icon.png"
+              , HP.alt "A"
+              , HP.class_ $ HH.ClassName "cover-oimage"
+              ]
+          ]
+        'c' ->
+          [ HH.span
+              [ HP.class_ $ HH.ClassName "fas fa-compact-disc fa-sm" ]
+              [ HH.text "" ]
+          ]
+        'd' ->
+          [ HH.span
+              [ HP.class_ $ HH.ClassName "fa-stack fa-sm" ]
+              [ HH.span
+                [ HP.class_ $ HH.ClassName "fa fa-square-o fa-stack-1x" ]
+                [ HH.text "" ]
+              , HH.span
+                [ HP.class_ $ HH.ClassName "fa fa-compact-disc fa-stack-1x" ]
+                [ HH.text "" ]
+              ]
+          ]
+        'b' ->
+          [ HH.span
+              [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ]
+              [ HH.text "" ] ]
+        'f' ->
+          [ HH.span
+              [ HP.class_ $ HH.ClassName "far fa-file-audio fa-sm" ]
+              [ HH.text "" ] ]
+        's' ->
+          [ HH.span
+              [ HP.class_ $ HH.ClassName "far fa-wifi fa-sm" ]
+              [ HH.text "" ] ]
+        _ ->
+          [ HH.text a.albumFormat ]
   ]
 
 rbTidal :: forall m. Album -> H.ComponentHTML Action () m

@@ -104,7 +104,7 @@ renderBadges a = do
 rbFormat :: Album -> L.Html ()
 rbFormat a = do
   let f = albumFormat a
-      c 
+      c
         | "Vinyl" `T.isInfixOf` f && "Box Set" `T.isInfixOf` f = 'b'
         | "Vinyl, Vinly" `T.isInfixOf` f = 'b'
         | "Vinyl" `T.isInfixOf` f = 'v'
