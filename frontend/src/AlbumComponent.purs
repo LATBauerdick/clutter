@@ -109,6 +109,17 @@ handleAction = case _ of
     -- H.liftEffect $ Event.preventDefault event
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
+  AlbumPlayed aid -> do
+    H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
+    now <- H.liftAff getNow
+    H.liftAff $ Console.logShow now
+    r <- H.liftAff $ getUrl ("http://localhost:8080/albump/" <> aid)
+    H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ)
+    let aje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ
+    let am = case aje of
+                      Right { aid: _, album: a } -> Just a
+                      Left _ -> Nothing
+    H.modify_ _ { album = am, now = now, loading = false, result = Just r }
 
   where
     updateAlbumList :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit

@@ -29,13 +29,14 @@ import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
 import Network.Wai.Handler.Warp
-import Data.Text as T (stripPrefix)
+import Data.Text as T (stripPrefix, unpack, unlines)
+import Data.Text.IO as TIO (writeFile)
 import qualified Data.Vector as V
 import qualified Data.IntSet as Set
 import qualified Data.Map.Strict as M
 import Control.Monad (foldM)
 import Relude
-import Render ( renderAlbumView, renderAlbumsView )
+import Render ( renderAlbumView, renderAlbumsView, renderAlbumText )
 import Servant
 import Types (Album, MenuParams(..), AppM, Env (..), EnvR (..), envGetEnvr)
 
@@ -97,6 +98,10 @@ type API7 = "req"
     :> Capture "event" Text
     :> Get '[JSON] ReqJ
 
+type API8 = "albump"
+    :> Capture "aid" Int
+    :> Get '[JSON] AlbumJ
+
 data AlbumJ = AlbumJ
   { aid :: Int
   , album :: Maybe Album
@@ -118,6 +123,7 @@ instance ToJSON ParamsJ
 
 data ReqJ = ReqJ
   { reqTime :: Text
+  , reqInfo :: Text
   , reqResult :: Int
   } deriving (Eq, Show, Generic)
 instance ToJSON ReqJ
@@ -125,6 +131,7 @@ instance ToJSON ReqJ
 type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> API5
   :<|> API6
   :<|> API7
+  :<|> API8
   :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -160,9 +167,9 @@ clutterServer = serveAlbum
             :<|> serveAlbumsq
             :<|> serveParamsq
             :<|> serveReq
+            :<|> serveAlbump
             :<|> serveDirectoryFileServer "static"
   where
---{{{clutterServer
     decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector Int)
     decodeListQuery ln msb mso fs = do -- listName sortBy sortOrder focusItems
       env <- ask
@@ -232,12 +239,23 @@ clutterServer = serveAlbum
     serveReq :: Text -> AppM ReqJ
     serveReq r = do
       liftIO $ print ("-------serveReq " :: Text, r)
-      now <- liftIO getZonedTime -- `debugId`
+      now <- liftIO getZonedTime
       let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
       let sj = ReqJ  { reqTime = dtl
+                     , reqInfo = r
                      , reqResult = 1
                      }
       pure sj
+
+    serveAlbump :: Int -> AppM AlbumJ
+    serveAlbump i = do
+      liftIO $ print ("-------serveAlbump " :: Text, i )
+      ma <- envUpdateAlbum i
+      liftIO $ maybe (print ("no Album"::Text)) updateAlbumsPlayed ma
+      let aj = case ma of
+            Just a -> AlbumJ { aid = i, album =  Just a }
+            _ -> AlbumJ { aid = 0, album = Nothing }
+      pure aj
 
     serveAlbum :: Int -> AppM RawHtml
     serveAlbum a = do
@@ -299,7 +317,19 @@ clutterServer = serveAlbum
       aids <- gl ln
       html <- renderAlbumsView ln [] aids
       pure . RawHtml $ L.renderBS html
---}}}clutterServer
+
+updateAlbumsPlayed :: Album -> IO ()
+updateAlbumsPlayed a = do
+  now <- getZonedTime
+  let ts = renderAlbumText a now
+  
+  let fn = fromMaybe "!!error!!" $ viaNonEmpty head ts
+  let pathName = "AlbumsPlayed/" <> fn <> ".md"
+  print ("-----updating albums played: " <> pathName )
+  TIO.writeFile (T.unpack pathName) (T.unlines $ drop 1 ts)
+  pure ()
+
+
 
 -- init env from files (AppM not yet available) and run app
 startApp :: Int -> Bool -> IO ()

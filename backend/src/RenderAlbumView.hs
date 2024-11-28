@@ -2,7 +2,7 @@
 -- {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 
-module RenderAlbumView ( renderAlbumView ) where
+module RenderAlbumView ( renderAlbumView, renderAlbumText ) where
 
 import Data.Time
 import qualified Lucid as L
@@ -17,7 +17,13 @@ renderAlbumView :: Maybe Album -> ZonedTime -> AppM ( L.Html () )
 renderAlbumView mAlbum now = do
   envr <- envGetEnvr
   env <- ask
-  let
+  let h = L.html_ $ do
+        renderHead "Album Page"
+        L.body_ $ do
+          albumBody
+          renderTopMenu env envr "Discogs" []
+  pure h
+    where
       albumBody :: L.Html ()
       albumBody = do
         L.br_ []
@@ -63,69 +69,12 @@ renderAlbumView mAlbum now = do
                 L.p_ $ L.toHtml ("Year: " <> albumReleased a)
                 L.br_ []
 
+                let qts = renderAlbumText a now
                 L.div_ [L.class_ "quoteable"] $ do
-                  let ttl = T.replace ":" "_" . T.replace "/" "·" $ albumArtist a <> " – " <> albumTitle a
-                  let dt :: Text; dt  = toText $ formatTime defaultTimeLocale "%y%m%d" now
-                  let dtl = formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
-                  L.samp_ $ L.toHtml (dt <> "-" <> ttl)
-                  L.br_ []
-                  L.samp_ $ L.toHtml ("---" :: Text)
-                  L.br_ []
-                  L.samp_ $ L.toHtml ("date: " <> dtl)
-                  L.br_ []
-                  L.samp_ $ L.toHtml ("title: " <> ttl)
-                  L.br_ []
-                  L.samp_ $ L.toHtml ("---" :: Text)
-                  L.br_ []
-                  L.samp_ $ L.toHtml ("### " <> albumArtist a <> " – " <> albumTitle a)
-                  L.br_ []
-                  L.samp_ $ L.toHtml ("[![](" <> albumCover a <> ")][1] ")
-                  L.br_ []
-                  -- reference-style link to album page
-                  L.br_ []
-                  L.samp_ $ L.toHtml ("[1]: " <> albumURL a)
-                  case albumAMusic a of
-                    Nothing -> ""
-                    Just amid -> do
-                                  L.br_ []
-                                  if T.take 2 amid == "l."
-                                    then L.samp_ $ L.toHtml ("[2]: " <> "https://music.apple.com/library/albums/" <> amid)
-                                    else L.samp_ $ L.toHtml ("[2]: " <> "https://music.apple.com/us/album/" <> amid)
-                  case albumTidal a of
-                    Nothing -> ""
-                    Just tid -> do
-                                  L.br_ []
-                                  L.samp_ $ L.toHtml ("[3]: " <> "https://listen.tidal.com/album/" <> tid)
-                  -- icon with link to album page
-                  L.br_ []
-                  L.br_ []
-                  case albumAMusic a of
-                    Nothing -> ""
-                    Just _ -> do
-                                  L.samp_ $ L.toHtml ("[![[attachments/am-is.png]]][2]" :: Text)
-                  case albumTidal a of
-                    Nothing -> ""
-                    Just _ -> do
-                                  L.samp_ $ L.toHtml ("[![[attachments/tidal-is.png]]][3]" :: Text)
-                  -- embeded player for album
-                  L.br_ []
-                  case albumAMusic a of
-                    Nothing -> ""
-                    Just amid -> do
-                                  L.br_ []
-                                  L.samp_ $ L.toHtml ("<iframe allow=\"autoplay *; encrypted-media *; fullscreen *\" frameborder=\"0\" height=\"450\" style=\"width:100%;max-width:660px;overflow:hidden;background:transparent;\" sandbox=\"allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation\" src=\"https://embed.music.apple.com/us/album/turn-blue/" <> amid <> "\"></iframe>")
-                  case albumTidal a of
-                    Nothing -> ""
-                    Just tid -> do
-                                  L.br_ []
-                                  L.samp_ $ L.toHtml ("<div style=\"position: relative; padding-bottom: 100%; height: 0; overflow: hidden; max-width: 100%;\"><iframe src=\"https://embed.tidal.com/albums/" <> tid <> "?layout=gridify\" frameborder= \"0\" allowfullscreen style=\"position: absolute; top: 0; left: 0; width: 100%; height: 1px; min-height: 100%; margin: 0 auto;\"></iframe></div>")
-  let h = L.html_ $ do
-        renderHead "Album Page"
-        L.body_ $ do
-          albumBody
-          renderTopMenu env envr "Discogs" []
-  pure h
-
+                  forM_ qts (\t -> do
+                                    L.samp_ $ L.toHtml t
+                                    L.br_ []
+                            )
 
 renderAlbumText :: Album -> ZonedTime -> [ Text ]
 renderAlbumText a now = txts where
@@ -133,13 +82,14 @@ renderAlbumText a now = txts where
                 dt :: Text; dt  = toText $ formatTime defaultTimeLocale "%y%m%d" now
                 dtl = formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
                 fn = dt <> "-" <> ttl
-                txts :: [ Text ]
-                txts =[ "---" :: Text
+                txts =[ fn
+                      , "---" :: Text
                       , toText $ "date: " <> dtl
                       , toText $ "title: " <> ttl
                       , "---" :: Text
                       , toText ("### " <> albumArtist a <> " – " <> albumTitle a)
                       , toText ("[![](" <> albumCover a <> ")][1] ")
+                      , toText " "
                 -- icon with link to album page
                       , toText ("[1]: " <> albumURL a)
                       , case albumAMusic a of

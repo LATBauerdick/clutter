@@ -116,17 +116,6 @@ rbFormat a = do
         | f == "Tidal" = 't'
         | f == "AppleMusic" = 'a'
         | otherwise = 'x'
-      -- c = if "Vinyl" `T.isInfixOf` f && "Box Set" `T.isInfixOf` f then 'b'
-      --     else if "Vinyl, Vinly" `T.isInfixOf` f then 'b'
-      --     else if "Vinyl" `T.isInfixOf` f then 'v'
-      --     else if "CD" `T.isInfixOf` f && "Box Set" `T.isInfixOf` f then 'd'
-      --     else if "CD" `T.isInfixOf` f then 'c'
-      --     else if "Hybrid" `T.isInfixOf` f then 'c'
-      --     else if f == "Streaming" then 's'
-      --     else if f == "Files" then 'f'
-      --     else if f == "Tidal" then 't'
-      --     else if f == "AppleMusic" then 'a'
-      --     else 'x'
   L.div_ [L.class_ "cover-obackground"] $ do
     L.a_ [L.href_ (albumURL a)] $ do
       case c of

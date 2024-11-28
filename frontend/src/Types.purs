@@ -89,3 +89,4 @@ data Action = ToggleSortOrder
             | ShowList AlbumList
             | ShowListSort AlbumList String SortOrder
             | ShowAlbum String
+            | AlbumPlayed String

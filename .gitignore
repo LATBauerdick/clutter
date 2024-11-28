@@ -28,3 +28,4 @@ generated-docs
 .venv
 backend/static/index.js
 frontend/index.js
+backend/AlbumsPlayed
