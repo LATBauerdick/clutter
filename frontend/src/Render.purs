@@ -437,15 +437,4 @@ rbLocation a = case a.albumLocation of
           ]
         ]
       Nothing -> HH.div [] []
-                --   case M.lookup (albumID a) (locs envr) of
-                --     Just (loc, pos) ->
-                --       L.div_ [L.class_ "cover-obackground2"] $ do
-                --         L.a_ [L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
-                --           -- L.i_ [ L.class_ "fa fa-align-justify fa-rotate-90" ] ""
-                --           L.i_ [ L.class_ "fa fa-barcode" ] ""
-                --         L.span_ [L.class_ "hovtext"] $ do
-                --           "Location: "
-                --           L.a_ [L.class_ "loclink", L.href_ (uhq <> loc <> "?sortBy=Default&sortOrder=" <> show Asc)] $
-                --             L.toHtml $ loc <> " #" <> show pos
-                --     _ -> ""
 

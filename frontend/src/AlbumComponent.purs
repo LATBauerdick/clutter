@@ -81,7 +81,8 @@ handleAction = case _ of
     H.modify_ _ { listName = AlbumList Nothing, loading = true }
     albumID <- H.gets _.albumID
     now <- H.liftAff getNow
-    r <- H.liftAff $ getUrl ("http://localhost:8080/albumq/" <> albumID)
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumq/" <> albumID)
     H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ)
     let aje :: Either JsonDecodeError AlbumJ
         aje = (decodeJson =<< parseJson r) -- :: Either JsonDecodeError AlbumJ
@@ -94,7 +95,8 @@ handleAction = case _ of
     H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
-    r <- H.liftAff $ getUrl ("http://localhost:8080/albumq/" <> aid)
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumq/" <> aid)
     H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ)
     let aje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ
     let am = case aje of
@@ -113,7 +115,8 @@ handleAction = case _ of
     H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
-    r <- H.liftAff $ getUrl ("http://localhost:8080/albump/" <> aid)
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albump/" <> aid)
     H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ)
     let aje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ
     let am = case aje of
@@ -131,8 +134,9 @@ handleAction = case _ of
       so <- H.gets _.menu.sso
       sn <- H.gets _.menu.sortName
       ffs <- H.gets _.menu.ffs
+      api <- H.gets _.apiUrl
       let affs = map (\(Tuple a b) -> if b then a else "-" <> a) ffs
-      let url = "http://localhost:8080/albumsq/"
+      let url = api <> "albumsq/"
               <>  _encodeURIComponent ln
               <> (if contains ( Pattern "?" ) ln  then "" else "?")
               <> "&sortOrder=" <> show so

@@ -32,14 +32,17 @@ initialState :: Aff State
 initialState = do -- should eventually be saved in preferences
   now <- getNow
   Console.logShow now
-  sjs <- getUrl $ "http://localhost:8080/paramsq/all"
+  let apiBaseUrl :: String
+      apiBaseUrl = "http://localhost:8080/api/"
+
+  sjs <- getUrl $ apiBaseUrl <> "paramsq/all"
   let sje = (decodeJson =<< parseJson sjs) :: Either JsonDecodeError ParamsJ
   let mps = case sje of
                     Right { params: ps } -> ps
-                    Left _ -> initialMenuParams
+                    Left _ -> defaultMenuParams
 
   let ln = "Discogs"
-  r <- getUrl ("http://localhost:8080/albumsq/" <> ln)
+  r <- getUrl (apiBaseUrl <> "albumsq/" <> ln)
   let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
   let lss = case lje of
                       Right { lalbums: ls' } -> ls'
@@ -55,19 +58,20 @@ initialState = do -- should eventually be saved in preferences
            , params : mps
            }
 
-  pure  { listName: AlbumList (Just ln)
+  pure  { apiUrl : apiBaseUrl
+        , listName: AlbumList (Just ln)
         , albumList : ls
         , album: Nothing
         , loading: false
         , albumID: "0"
         , now: now
         , result: Nothing
-        , menu : ms { params { muhq = "http://localhost:8080/albums/" } }
+        , menu : ms { params { muhq = "http://localhost:8080/" } }
         }
 
-initialMenuParams :: MenuParams
-initialMenuParams =
-  { muhq : "localhost:8080/albums/"
+defaultMenuParams :: MenuParams
+defaultMenuParams =
+  { muhq : "localhost:8080/"
   , msorts : [ "Added", "Artist", "Default", "Title" ]
   , msts : [ ] -- sorted tags
   , mlistNames : [ ]

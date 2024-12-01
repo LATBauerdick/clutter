@@ -124,7 +124,6 @@ renderTopMenu state =
       ]
     , HH.div
       [ HP.class_ $ HH.ClassName "dropdown-content" ]
-          -- ( map (\x -> HH.a [ HP.href (uhq <> ln <> "&sortBy=" <> x) ] [ HH.text x ]) sorts )
       ( map (\x -> HH.button [ HP.class_ $ HH.ClassName "listbtn"
                              , HE.onClick (\_ -> SetSort x)
                              ]
@@ -171,8 +170,6 @@ renderTopMenu state =
                                ]
                                [ HH.text x ])
                      locNames )
-      -- ( map (\x -> HH.a [ HP.href (uhq <> "" <> x) ] [ HH.text x ]) locNames )
-      -- ( map (\x -> HH.text x ) locNames )
     ]
 
   renderButtonTags :: forall w i. Array (HH.HTML w i)

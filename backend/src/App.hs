@@ -79,26 +79,31 @@ type API3 = "provider"
     :> QueryParam "nalbums" Int -- update last n tidal albums, all if null
     :> Get '[HTML] RawHtml
 
-type API4 = "albumq"
+type API4 = "api"
+    :> "albumq"
     :> Capture "aid" Int
     :> Get '[JSON] AlbumJ
 
-type API5 = "albumsq"
+type API5 = "api"
+    :> "albumsq"
     :> Capture "list" Text
     :> QueryParam "sortBy" Text
     :> QueryParam "sortOrder" Text
     :> QueryParams "focus" Text
     :> Get '[JSON] AlbumsJ
 
-type API6 = "paramsq"
+type API6 = "api"
+    :> "paramsq"
     :> "all"
     :> Get '[JSON] ParamsJ
 
-type API7 = "req"
+type API7 = "api"
+    :> "req"
     :> Capture "event" Text
     :> Get '[JSON] ReqJ
 
-type API8 = "albump"
+type API8 = "api"
+    :> "albump"
     :> Capture "aid" Int
     :> Get '[JSON] AlbumJ
 

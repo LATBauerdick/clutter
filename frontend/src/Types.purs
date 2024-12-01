@@ -54,7 +54,8 @@ type AlbumsJ =    { listName :: String
 newtype AlbumList = AlbumList (Maybe  String)
 derive instance newtypeAlbumList :: Newtype AlbumList _
 
-type State =      { album :: Maybe Album
+type State =      { apiUrl :: String
+                  , album :: Maybe Album
                   , listName :: AlbumList
                   , albumList :: Array Album
                   , loading :: Boolean
