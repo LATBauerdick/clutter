@@ -325,13 +325,24 @@ clutterServer = serveAlbum
 
 updateAlbumsPlayed :: Album -> IO ()
 updateAlbumsPlayed a = do
+--
+-- add a Note in Obsidian
+-- assumes that the Obsidian Vault is linked to `./AlbumsPlayed`
   now <- getZonedTime
   let ts = renderAlbumText a now
-  
+
   let fn = fromMaybe "!!error!!" $ viaNonEmpty head ts
   let pathName = "AlbumsPlayed/" <> fn <> ".md"
   print ("-----updating albums played: " <> pathName )
   TIO.writeFile (T.unpack pathName) (T.unlines $ drop 1 ts)
+--
+-- enter a journal entry in Day One
+-- enable Day One CLI w/ `sudo bash /Applications/Day\ One.app/Contents/Resources/install_cli.sh`
+-- make sure Journal named "Albums Played" does already exist
+--  let ns = renderAlbumDayOne a
+  print ("-----enter a journal entry into Day One")
+  print ("dayone2 -j \"Albums Played\" new \"<Title Here>, then <link>, <image>\" ")
+
   pure ()
 
 

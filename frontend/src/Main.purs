@@ -66,12 +66,12 @@ initialState = do -- should eventually be saved in preferences
         , albumID: "0"
         , now: now
         , result: Nothing
-        , menu : ms { params { muhq = "http://localhost:8080/" } }
+        , menu : ms { params { muhq = "http://lmini.local:8080/" } }
         }
 
 defaultMenuParams :: MenuParams
 defaultMenuParams =
-  { muhq : "localhost:8080/"
+  { muhq : "lmini.local:8080/"
   , msorts : [ "Added", "Artist", "Default", "Title" ]
   , msts : [ ] -- sorted tags
   , mlistNames : [ ]

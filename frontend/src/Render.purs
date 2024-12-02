@@ -65,7 +65,6 @@ renderAlbumTN idx a =
             [ HH.button [ HE.onClick \_ -> ShowAlbum (show a.albumID) ]
               [ HH.img [ HP.src a.albumCover
                         , HP.alt "cover image"
-                        --, HP.onerror "this.onerror=null;this.src='http://localhost:8080/no-cover.png';"
                         , HP.class_ $ HH.ClassName "cover-image"
                         ]
               ]
@@ -126,7 +125,6 @@ renderAlbumView a now =
             [ HP.href a.albumURL] $
             [ HH.img [ HP.src a.albumCover
                      , HP.alt "cover image"
-                     --, HP.onerror "this.onerror=null;this.src='http://localhost:8080/no-cover.png';"
                      , HP.class_ $ HH.ClassName "cover-image"
                      ]
             ]
@@ -202,7 +200,7 @@ renderAlbumView a now =
   testView =
     HH.div [  ]
       [ HH.iframe
-        [ HP.src ("http://localhost:8080/album/" <> show a.albumID)
+        [ HP.src ("https://www.discogs.com/release/" <> show a.albumID)
         , HP.title "iframe_a"
         , HP.style "height:600px;width:100%;"
         -- , frameborder "0"
@@ -225,8 +223,8 @@ noAlbum =
       [ HH.span_
         [ HH.text "Unknown album, sorry! Please see "
         , HH.a
-          [HP.href "http://localhost:8080/albums/All"]
-          [HH.text "all Albums" ]
+          [HP.href $ "localhost:8080/"]
+          [HH.text "Discogs Albums" ]
         ]
       ]
     ]
