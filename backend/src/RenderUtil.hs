@@ -4,7 +4,7 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module RenderUtil ( renderHead, formUrlEncodeQuery ) where
+module RenderUtil ( renderApp, renderHead, formUrlEncodeQuery ) where
 
 import qualified Lucid as L
 import Relude hiding (ord)
@@ -19,6 +19,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 -- import           Network.HTTP.Types
 
+import Types ( AppM )
 
 formUrlEncodeQuery :: [(String, String)] -> LB.ByteString
 formUrlEncodeQuery = Builder.toLazyByteString . mconcat . intersperse amp . map encodePair
@@ -73,6 +74,23 @@ formUrlEncodeQuery = Builder.toLazyByteString . mconcat . intersperse amp . map 
         offset
           | n < 10    = 48
           | otherwise = 55
+
+renderApp :: Text -> AppM ( L.Html () )
+renderApp t = do
+  let ttt :: Text; ttt = ""
+  let h = L.html_ $ do
+        L.head_ $ do
+          L.title_ $ L.toHtml t
+          L.meta_ [L.charset_ "utf-8"]
+          L.link_ [ L.rel_ "stylesheet", L.href_  "https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css", L.crossorigin_ "anonymous"]
+          L.meta_ [L.name_ "viewport", L.content_ "width=device-width, initial-scale=1.0"]
+          L.meta_ [L.httpEquiv_ "X-UA-Compatible", L.content_ "ie=edge"]
+          L.script_ [L.src_ "https://kit.fontawesome.com/dd23371146.js", L.crossorigin_ "anonymous"] ttt
+          L.link_ [ L.rel_ "stylesheet", L.href_  "style.css" ]
+        L.body_ $ do
+          L.div_ [ L.id_ "container" ] $ L.toHtml ttt
+          L.script_ [ L.type_ "module", L.src_ "./index.js"] ttt
+  pure h
 
 renderHead :: Text -> L.Html ()
 renderHead t =

@@ -36,7 +36,7 @@ import qualified Data.IntSet as Set
 import qualified Data.Map.Strict as M
 import Control.Monad (foldM)
 import Relude
-import Render ( renderAlbumView, renderAlbumsView, renderAlbumText )
+import Render ( renderApp, renderAlbumView, renderAlbumsView, renderAlbumText )
 import Servant
 import Types (Album, MenuParams(..), AppM, Env (..), EnvR (..), envGetEnvr)
 
@@ -107,6 +107,9 @@ type API8 = "api"
     :> Capture "aid" Int
     :> Get '[JSON] AlbumJ
 
+type API9 = "app"
+    :> Get '[HTML] RawHtml
+
 data AlbumJ = AlbumJ
   { aid :: Int
   , album :: Maybe Album
@@ -137,6 +140,7 @@ type ClutterAPI = API0 :<|> API1 :<|> API2 :<|> API3 :<|> API4 :<|> API5
   :<|> API6
   :<|> API7
   :<|> API8
+  :<|> API9
   :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -173,6 +177,7 @@ clutterServer = serveAlbum
             :<|> serveParamsq
             :<|> serveReq
             :<|> serveAlbump
+            :<|> serveApp
             :<|> serveDirectoryFileServer "static"
   where
     decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector Int)
@@ -261,6 +266,13 @@ clutterServer = serveAlbum
             Just a -> AlbumJ { aid = i, album =  Just a }
             _ -> AlbumJ { aid = 0, album = Nothing }
       pure aj
+
+    serveApp :: AppM RawHtml
+    serveApp = do
+      now <- liftIO getZonedTime -- `debugId`
+      liftIO $ print $ ("-------serveApp " :: Text ) <> show now
+      html <- renderApp "Clutter Prototype"
+      pure . RawHtml $ L.renderBS html
 
     serveAlbum :: Int -> AppM RawHtml
     serveAlbum a = do
