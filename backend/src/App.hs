@@ -190,7 +190,7 @@ clutterServer = serveAlbum
                     Just tag -> envGetTag tag
                     Nothing  -> V.toList <$> getList env ln
       let aidset' = Set.fromList aids'
----------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
     -- filter with focus if any
       aidset <- foldM (\ s (t, p) ->  (if p
                                             then Set.intersection s
@@ -204,7 +204,7 @@ clutterServer = serveAlbum
                     . mapMaybe (T.stripPrefix "#")
                     $ fs
       let aids = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) . V.fromList $ aids'
----------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
       envr <- envUpdateSort msb mso
       let EnvR am _ _ _ sn so _ _ _ = envr
       let doSort = getSort env am sn
@@ -286,32 +286,6 @@ clutterServer = serveAlbum
                     -> AppM RawHtml
     serveAlbums ln msb mso fs = do
       aids <- decodeListQuery ln msb mso fs
-      -- env <- ask
-      -- liftIO $ print (ln, msb, mso, fs )
-    -- -- get ids from either list or tags (#tag)
-      -- aids' <- case T.stripPrefix "#" ln of
-      --               Just tag -> envGetTag tag
-      --               Nothing  -> V.toList <$> getList env ln
-      -- let aidset' = Set.fromList aids'
----------------------------------------------------------------------------------------
-    -- filter with focus if any
-      -- aidset <- foldM (\ s (t, p) ->  (if p
-      --                                       then Set.intersection s
-      --                                       else Set.difference s
-      --                                     ) . Set.fromList
-      --                                     <$> envGetTag t
-      --                 ) aidset'
-      --               . map (\t ->  ( fromMaybe t (T.stripPrefix "-" t)
-      --                             , isNothing (T.stripPrefix "-" t) )
-      --                     )
-      --               . mapMaybe (T.stripPrefix "#")
-      --               $ fs
-      -- let aids = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) . V.fromList $ aids'
----------------------------------------------------------------------------------------
-      -- envr <- envUpdateSort msb mso
-      -- let EnvR am _ _ _ sn so _ _ _ = envr
-      -- let doSort = getSort env am sn
-      -- html <- renderAlbumsView ln fs . doSort so $ aids
       html <- renderAlbumsView ln fs aids
       pure . RawHtml $ L.renderBS html
 
@@ -352,8 +326,8 @@ updateAlbumsPlayed a = do
 -- enable Day One CLI w/ `sudo bash /Applications/Day\ One.app/Contents/Resources/install_cli.sh`
 -- make sure Journal named "Albums Played" does already exist
 --  let ns = renderAlbumDayOne a
-  print ("-----enter a journal entry into Day One")
-  print ("dayone2 -j \"Albums Played\" new \"<Title Here>, then <link>, <image>\" ")
+  print ("-----enter a journal entry into Day One" :: String)
+  print ("dayone2 -j \"Albums Played\" new \"<Title Here>, then <link>, <image>\" " :: String)
 
   pure ()
 
