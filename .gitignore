@@ -26,6 +26,6 @@ generated-docs
 .psa*
 .spago
 .venv
-backend/static/index.js
 frontend/index.js
-backend/AlbumsPlayed
+static/index.js
+AlbumsPlayed
