@@ -2,11 +2,9 @@
 -- {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 
-module Render ( renderApp, renderHead, renderAlbumView, renderAlbumsView, renderAlbumText ) where
+module Render (renderApp, renderHead, renderAlbumView, renderAlbumsView, renderAlbumText) where
 
-import RenderUtil ( renderApp )
-import RenderUtil ( renderHead )
-import RenderAlbumView ( renderAlbumView )
-import RenderAlbumsView ( renderAlbumsView )
-import RenderAlbumView ( renderAlbumText )
+import RenderAlbumView (renderAlbumText, renderAlbumView)
+import RenderAlbumsView (renderAlbumsView)
+import RenderUtil (renderApp, renderHead)
 
