@@ -19,6 +19,9 @@ import Types (AlbumsJ, State, AlbumList(..), MenuState, MenuParams, ParamsJ, Sor
 
 import AlbumComponent (aComponent)
 
+baseUrl :: String
+baseUrl = "http://lmini:8080/"
+
 main :: Effect Unit
 main = HA.runHalogenAff do
   Console.log "🍝 Starting Clutter App"
@@ -33,10 +36,11 @@ initialState = do -- should eventually be saved in preferences
   now <- getNow
   Console.logShow now
   let apiBaseUrl :: String
-      apiBaseUrl = "http://localhost:8080/api/"
+      apiBaseUrl = baseUrl <> "api/"
 
   sjs <- getUrl $ apiBaseUrl <> "paramsq/all"
   let sje = (decodeJson =<< parseJson sjs) :: Either JsonDecodeError ParamsJ
+  Console.logShow sje
   let mps = case sje of
                     Right { params: ps } -> ps
                     Left _ -> defaultMenuParams
@@ -66,12 +70,12 @@ initialState = do -- should eventually be saved in preferences
         , albumID: "0"
         , now: now
         , result: Nothing
-        , menu : ms { params { muhq = "http://lair.local:8080/" } }
+        , menu : ms { params { muhq = baseUrl } }
         }
 
 defaultMenuParams :: MenuParams
 defaultMenuParams =
-  { muhq : "lair.local:8080/"
+  { muhq : baseUrl
   , msorts : [ "Added", "Artist", "Default", "Title" ]
   , msts : [ ] -- sorted tags
   , mlistNames : [ ]

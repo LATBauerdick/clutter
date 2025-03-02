@@ -2,63 +2,64 @@
 -- {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wno-missing-fields #-}
 
-module Env
-  ( envUpdate,
-    envInit,
-    envUpdateAlbum,
-    envTidalConnect,
-    envGetTag,
-    envUpdateSort,
-    envUpdateMenuParams,
-  )
+module Env (
+  envUpdate,
+  envInit,
+  envUpdateAlbum,
+  envTidalConnect,
+  envGetTag,
+  envUpdateSort,
+  envUpdateMenuParams,
+)
 where
 
-import Data.Maybe (fromJust)
+import qualified Data.List as L (
+  union,
+ )
 import qualified Data.Map.Strict as M
+import Data.Maybe (fromJust)
 import Data.Vector (Vector)
-import qualified Data.List as L
-  ( union
-  )
-import qualified Data.Vector as V
-  ( empty,
-    fromList,
-    null,
-    reverse,
-    toList,
-  )
-import Provider
-  ( readAlbum,
-    readAlbums,
-    readFolders,
-    readLists,
-    readDiscogsAlbums,
-    readDiscogsFolders,
-    readDiscogsLists,
-    readTidalAlbums,
-    readAMusicAlbums,
-    readFolderAids,
-    readListAids,
-    updateTidalFolderAids,
-    updateAMusicFolderAids,
-  )
+import qualified Data.Vector as V (
+  empty,
+  fromList,
+  null,
+  reverse,
+  toList,
+ )
+import Provider (
+  readAMusicAlbums,
+  readAlbum,
+  readAlbums,
+  readDiscogsAlbums,
+  readDiscogsFolders,
+  readDiscogsLists,
+  readFolderAids,
+  readFolders,
+  readListAids,
+  readLists,
+  readTidalAlbums,
+  updateAMusicFolderAids,
+  updateTidalFolderAids,
+ )
 
 import Relude
-import Types
-  ( Album (..),
-    -- Discogs (..),
-    Discogs (..),
-    AppM,
-    Env (..),
-    EnvR (..),
-    envGetEnvr,
-    SortOrder (..),
-    MenuParams(..),
-    Tidal (..),
-    TidalInfo (..),
-    AMusic (..),
-    AMusicInfo (..),
-    pLocList,
-  )
+import Types (
+  -- Discogs (..),
+
+  AMusic (..),
+  AMusicInfo (..),
+  Album (..),
+  AppM,
+  Discogs (..),
+  Env (..),
+  EnvR (..),
+  MenuParams (..),
+  SortOrder (..),
+  Tidal (..),
+  TidalInfo (..),
+  envGetEnvr,
+  pLocList,
+ )
 
 import qualified Data.Text as T (find)
 
@@ -66,7 +67,8 @@ import qualified Data.Text as T (find)
 getProviders :: IO (Tidal, Tidal, AMusic, Discogs, Discogs)
 getProviders = do
   t <- readFileBS "tok.dat" -- for debug, get from file with authentication data
-  let ts :: [Text]; ts = words . decodeUtf8 $ t
+  let ts :: [Text]
+      ts = words . decodeUtf8 $ t
       appleMusicDevToken = fromJust $ ts !!? 0 -- t6
       appleMusicUserToken = fromJust $ ts !!? 1 -- t7
       discogsDevToken = fromJust $ ts !!? 2
@@ -75,13 +77,13 @@ getProviders = do
       tidalSessionId = fromJust $ ts !!? 5 -- t3
       tidalCountryCode = fromJust $ ts !!? 6 -- t4
       tidalAccessToken = fromJust $ ts !!? 7 -- t5
-
-  pure( Tidal $ TidalSession tidalUserId tidalSessionId tidalCountryCode tidalAccessToken
-      , Tidal $ TidalFile "cache/traw.json" -- Tidal from cache
-      , AMusic $ AMusicSession appleMusicDevToken appleMusicUserToken
-      , DiscogsSession discogsDevToken discogsUserName
-      , DiscogsFile "cache/" -- Discogs from cache
-      )
+  pure
+    ( Tidal $ TidalSession tidalUserId tidalSessionId tidalCountryCode tidalAccessToken
+    , Tidal $ TidalFile "cache/traw.json" -- Tidal from cache
+    , AMusic $ AMusicSession appleMusicDevToken appleMusicUserToken
+    , DiscogsSession discogsDevToken discogsUserName
+    , DiscogsFile "cache/" -- Discogs from cache
+    )
 
 envTidalConnect :: Int -> AppM Env
 envTidalConnect _nalbums = do
@@ -124,30 +126,32 @@ envUpdateMenuParams = do
   envr <- envGetEnvr
   env <- ask
 
-  let uhq :: Text; uhq = url env <> "albums/"
- -- "localhost:8080/albums/"
+  let uhq :: Text
+      uhq = url env <> "albums/"
 
       ss = sorts env
- -- [ "Added", "Artist", "Default", "Title" ]
+      -- [ "Added", "Artist", "Default", "Title" ]
 
       sts :: [Text] -- sorted tags
-      sts = filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
+      sts =
+        filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
           <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
- -- [ "folder.cd", "folder.pop", "genre.classical", "genre.opera", "rated.*****" ] -- sorted tags
+      -- [ "folder.cd", "folder.pop", "genre.classical", "genre.opera", "rated.*****" ] -- sorted tags
 
       sli = filter (not . pLocList) $ M.keys (listNames envr)
- --  [ "2020 Listened", "2021 Listened", "2022 Listened", "All", "Apple Music",  "Discogs", "Pop", "Tidal" ]
+      --  [ "2020 Listened", "2021 Listened", "2022 Listened", "All", "Apple Music",  "Discogs", "Pop", "Tidal" ]
 
       slo = filter pLocList $ M.keys (listNames envr)
- -- [ "Cube A0", "Cube B0 Pop", "Cube E0 Incoming", "Cube E1 Incoming", "Shelf A1 Opera" ]
+  -- [ "Cube A0", "Cube B0 Pop", "Cube E0 Incoming", "Cube E1 Incoming", "Shelf A1 Opera" ]
 
-
-  let ms = MenuParams { muhq = uhq
-                      , msorts = ss
-                      , msts = sts
-                      , mlistNames = sli
-                      , mlocNames = slo
-                      }
+  let ms =
+        MenuParams
+          { muhq = uhq
+          , msorts = ss
+          , msts = sts
+          , mlistNames = sli
+          , mlocNames = slo
+          }
   pure ms
 
 -- get laters n releases from Discogs
@@ -180,8 +184,9 @@ envUpdate tok un nreleases = do
   --                   else
   --                     M.fromList . map (\a -> (albumID a, a)) . V.toList
   --                       <$> readAlbums env nreleases
-  newAlbums <- M.fromList . map (\a -> (albumID a, a)) . V.toList
-                          <$> readAlbums nreleases
+  newAlbums <-
+    M.fromList . map (\a -> (albumID a, a)) . V.toList
+      <$> readAlbums nreleases
   let allAlbums = newAlbums <> oldAlbums <> tidalAlbums
   _ <- writeIORef (albumsR env) allAlbums
 
@@ -210,10 +215,11 @@ fromListMap :: (Text, (Int, Vector Int)) -> [(Int, (Text, Int))]
 fromListMap (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
 
 updateTags :: Album -> Map Text [Int] -> Map Text [Int]
-updateTags a m = foldr
-            (\k mm -> M.insertWith L.union k (one (albumID a)) mm)
-            m
-            (albumTags a)
+updateTags a m =
+  foldr
+    (\k mm -> M.insertWith L.union k (one (albumID a)) mm)
+    m
+    (albumTags a)
 
 -- initialize Env
 -- get info from Tidal
@@ -255,7 +261,6 @@ initInit c = do
 
   pure (dci, albums', fns, lm)
 
-
 envInit :: Bool -> IO Env
 envInit c = do
   -- set up the sort functions
@@ -270,7 +275,7 @@ envInit c = do
   --  albums' :: Map Int Album          -- map of Albums indexed with their IDs
   --  fns :: Map Text Int               -- map of folder names with their IDs
   --  lm :: Map Text (Int, Vector Int)  -- map of list names with IDs and contents
-  (dc,albums',fns,lm) <- initInit c
+  (dc, albums', fns, lm) <- initInit c
 
   -- create the Tags index
   putTextLn "-------------- Updating Tags index"
@@ -282,7 +287,7 @@ envInit c = do
 
   let lists' = lm <> fm
   let listNames' :: Map Text Int
-      listNames' =  M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList lists'
+      listNames' = M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList lists'
   _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) lists'
   let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
 
@@ -306,46 +311,47 @@ envInit c = do
       compareDesc f (_, a) (_, b) = comparing f b a
   let sTitle :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
       sTitle am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
-        where
-          comp o = case o of
-            Asc -> compareAsc (fmap albumTitle)
-            Desc -> compareDesc (fmap albumTitle)
+       where
+        comp o = case o of
+          Asc -> compareAsc (fmap albumTitle)
+          Desc -> compareDesc (fmap albumTitle)
   let sArtist :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
       sArtist am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
-        where
-          comp o = case o of
-            Asc -> compareAsc (fmap albumArtist)
-            Desc -> compareDesc (fmap albumArtist)
+       where
+        comp o = case o of
+          Asc -> compareAsc (fmap albumArtist)
+          Desc -> compareDesc (fmap albumArtist)
   let sAdded :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
       sAdded am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
-        where
-          comp o = case o of
-            Asc -> compareDesc (fmap albumAdded)
-            Desc -> compareAsc (fmap albumAdded)
+       where
+        comp o = case o of
+          Asc -> compareDesc (fmap albumAdded)
+          Desc -> compareAsc (fmap albumAdded)
   let sfs :: Map Text (Map Int Album -> SortOrder -> Vector Int -> Vector Int) -- sort functions
       sfs =
         M.fromList
-          [ ("Default", sDef),
-            ("Artist", sArtist),
-            ("Title", sTitle),
-            ("Added", sAdded)
+          [ ("Default", sDef)
+          , ("Artist", sArtist)
+          , ("Title", sTitle)
+          , ("Added", sAdded)
           ]
   pure
     Env
-      { discogsR = dr,
-        albumsR = ar,
-        listsR = lr,
-        locsR = lo,
-        listNamesR = lnr,
-        tagsR = tr,
-        focusR = fr,
-        sortNameR = sr,
-        sortOrderR = so,
-        url = "/",
-        getList = getList',
-        sorts = V.fromList $ M.keys sfs,
-        getSort = \ am sn -> fromMaybe sDef (M.lookup sn sfs) am
+      { discogsR = dr
+      , albumsR = ar
+      , listsR = lr
+      , locsR = lo
+      , listNamesR = lnr
+      , tagsR = tr
+      , focusR = fr
+      , sortNameR = sr
+      , sortOrderR = so
+      , url = "/"
+      , getList = getList'
+      , sorts = V.fromList $ M.keys sfs
+      , getSort = \am sn -> fromMaybe sDef (M.lookup sn sfs) am
       }
+
 --
 -- define the function for (env getList) :: Text -> AppM ( Vector Int )
 -- that will evaluate the list of Album IDs for List name
@@ -373,7 +379,7 @@ getList' ln = do
       pure aids
     else pure aids'
 
-envUpdateAlbum :: Int -> AppM ( Maybe Album )
+envUpdateAlbum :: Int -> AppM (Maybe Album)
 envUpdateAlbum aid = do
   env <- ask
   dc <- readIORef (discogsR env)
@@ -388,8 +394,8 @@ envUpdateAlbum aid = do
     Just "Tidal" -> pure ma'
     -- Just _ -> pure ma' -- already known, nothing do add
     _ -> case dc of
-              DiscogsSession _ _ -> readAlbum aid
-              _ -> liftIO (pure Nothing) -- we only have the caching files
+      DiscogsSession _ _ -> readAlbum aid
+      _ -> liftIO (pure Nothing) -- we only have the caching files
   _ <- case ma of
     Just a -> do
       -- insert updated album and put in album map
@@ -398,15 +404,15 @@ envUpdateAlbum aid = do
       -- insert aid into its folder
       -- let folder = albumFolder a
       -- update folder "lists" and invalidate lists
-  -- also update Tidal and AMusic "special" list
+      -- also update Tidal and AMusic "special" list
       liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
       liftIO $ writeIORef (listsR env) (updateAMusicFolderAids am ls)
 
--- update the tags map with tags from this album
+      -- update the tags map with tags from this album
       tm <- readIORef (tagsR env)
       _ <- writeIORef (tagsR env) (updateTags a tm)
 
-  -- update lists and folders
+      -- update lists and folders
       newFolders <- readFolders
       -- reread Discogs lists info
       lm <- readLists
@@ -432,13 +438,13 @@ envGetTag t = do
 envUpdateSort :: Maybe Text -> Maybe Text -> AppM EnvR
 envUpdateSort msb mso = do
   env <- ask
-  am  <- readIORef (albumsR env)
+  am <- readIORef (albumsR env)
   lns <- readIORef (listNamesR env)
-  lm  <- readIORef (listsR env)
+  lm <- readIORef (listsR env)
   lcs <- readIORef (locsR env)
-  dc  <- readIORef (discogsR env)
-  tm  <- readIORef (tagsR env)
-  fs  <- readIORef (focusR env)
+  dc <- readIORef (discogsR env)
+  tm <- readIORef (tagsR env)
+  fs <- readIORef (focusR env)
   sn <- case msb of
     Nothing -> readIORef (sortNameR env)
     Just sb -> do
@@ -453,4 +459,3 @@ envUpdateSort msb mso = do
       _ <- writeIORef (sortOrderR env) so
       pure so
   pure $ EnvR am lm lcs lns sn so dc tm fs
-

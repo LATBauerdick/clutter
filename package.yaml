@@ -44,6 +44,7 @@ dependencies:
   - http-client
   - http-client-tls
   - time
+  - process
 
 ghc-options:
   - -Wall
