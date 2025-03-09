@@ -3,71 +3,77 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TypeOperators #-}
 
-module FromDiscogs
-  (
+module FromDiscogs (
   -- AppM
-    readListAids,
+  readListAids,
   -- IO
-    readLists,
-    readDiscogsReleases,
-    readDiscogsReleasesCache,
-    readDiscogsRelease,
-    readDiscogsLists,
-    readDiscogsListsCache,
-    readDiscogsFolders,
-    readDiscogsFoldersCache,
-  )
+  readLists,
+  readDiscogsReleases,
+  readDiscogsReleasesCache,
+  readDiscogsRelease,
+  readDiscogsLists,
+  readDiscogsListsCache,
+  readDiscogsFolders,
+  readDiscogsFoldersCache,
+)
 where
 
 import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.!=), (.:), (.:?))
+import Data.Char as Ch (isDigit)
 import qualified Data.Map as M
+import Data.Text as T (
+  breakOnEnd,
+  filter,
+  intercalate,
+  null,
+  stripPrefix,
+  take,
+  toCaseFold,
+ )
 import Data.Vector (Vector)
 import qualified Data.Vector as V (empty, fromList)
 import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
-import Data.Text as T (stripPrefix, filter, null, toCaseFold
-                      , take, intercalate, breakOnEnd )
-import Data.Char as Ch (isDigit)
 
 -- import Data.Proxy
 import Servant
+
 -- import Servant.API
 import Servant.Client
-import Types
-  ( Discogs (..),
-    Release (..),
-    -- AppM,
-    -- Env (..),
-  )
+import Types (
+  Discogs (..),
+  Release (..),
+  -- AppM,
+  -- Env (..),
+ )
 
 -- data WTest = WTest
 --   { uri :: !Text
 --   }
 --   deriving (Show, Generic)
-newtype WTest
-     = WTest {uri :: Text}
-     deriving (Show, Generic)
+newtype WTest = WTest {uri :: Text}
+  deriving (Show, Generic)
 
 data WLists = WLists
-  { pagination :: WPagination,
-    lists :: [WList]
+  { pagination :: WPagination
+  , lists :: [WList]
   }
   deriving (Show, Generic)
 
 data WPagination = WPagination
-  { pages :: Int,
-    items :: Int
+  { pages :: Int
+  , items :: Int
   }
   deriving (Show, Generic)
 
 data WList = WList
-  { id :: Int,
-    name :: !Text
+  { id :: Int
+  , name :: !Text
   }
   deriving (Show, Generic)
 
@@ -77,18 +83,18 @@ newtype WFolders = WFolders
   deriving (Show, Generic)
 
 data WReleases = WReleases
-  { pagination :: WPagination,
-    releases :: [WRelease]
+  { pagination :: WPagination
+  , releases :: [WRelease]
   }
   deriving (Show, Generic)
 
 data WRelease = WRelease
-  { id :: Int,
-    date_added :: !Text,
-    folder_id :: Int,
-    rating :: Int,
-    basic_information :: WBasicInfo,
-    notes :: [WNote]
+  { id :: Int
+  , date_added :: !Text
+  , folder_id :: Int
+  , rating :: Int
+  , basic_information :: WBasicInfo
+  , notes :: [WNote]
   }
   deriving (Show, Generic)
 
@@ -114,8 +120,8 @@ data WBasicInfo = WBasicInfo
   deriving (Show, Generic)
 
 data WNote = WNote
-  { field_id :: Int,
-    value :: !Text
+  { field_id :: Int
+  , value :: !Text
   }
   deriving (Show, Generic)
 
@@ -128,12 +134,14 @@ data WArtist = WArtist
 data WFormat = WFormat
   { name :: !Text
   , qty :: !Text
+  , descriptions :: Maybe [Text]
+  , text :: Maybe Text
   }
   deriving (Show, Generic)
 
 data WReleases' = WReleases'
-  { pagination :: WPagination,
-    releases :: [WRelease']
+  { pagination :: WPagination
+  , releases :: [WRelease']
   }
   deriving (Show, Generic)
 
@@ -263,11 +271,11 @@ type DiscogsAPI =
 
 discogsGetReleases ::
   UserName ->
-  Int ->        -- folder ID
+  Int -> -- folder ID
   Maybe Text -> -- sort (label artist title catno format rating added year)
   Maybe Text -> -- sort_order (asc desc)
-  Maybe Int ->  -- page# 1..
-  Maybe Int ->  -- per page, max 500?
+  Maybe Int -> -- page# 1..
+  Maybe Int -> -- per page, max 500?
   Maybe Token ->
   Maybe UserAgent ->
   ClientM WReleases
@@ -298,163 +306,189 @@ discogsGetReleases :<|> discogsGetFolders :<|> discogsGetLists :<|> discogsGetLi
 
 getWr :: WReleases -> [WRelease]
 getWr wr = rs
-  where
-    WReleases
-      { pagination =
-          WPagination
-            { pages = _,
-              items = _
-            },
-        releases = rs
-      } = wr
+ where
+  WReleases
+    { pagination =
+      WPagination
+        { pages = _
+        , items = _
+        }
+    , releases = rs
+    } = wr
 
 lookupName :: Map Text Int -> Int -> Maybe Text
 lookupName lns i = fmap fst . find (\(_, li) -> li == i) $ M.toList lns
 getR :: Map Text Int -> WRelease -> Release
 getR lns dr = r
-  where
-    WRelease
-      { id = did, date_added, folder_id, rating,
-        basic_information =
-          WBasicInfo { title, year, cover_image, artists, formats, genres, styles },
-        notes
-      } = dr
-    as = (\WArtist {name = n} -> n) <$> artists
-    nts :: Maybe Text -- Notes field
-    nts = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 3 then Nothing else Just v) $ notes of
-      Just a -> if a /= "" then Just a else Nothing
-      _ -> Nothing
-    tags :: [Text]
-    tags = mapMaybe (stripPrefix "#")
-         . words
-         $ fromMaybe "" nts
-    -- parse location text (field 4), look for T<tidalID> and A<AppleMusicID>
-    loct :: Maybe Text
-    loct = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
-      Just a -> if a /= "" then Just a else Nothing
-      _ -> Nothing
-    tidalid :: Maybe Text  -- T<number>
-    -- or https://tidal.com/album/<id>
-    tidalid =
-      viaNonEmpty head (
-        ( mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
-        . mapMaybe ( fmap ( snd . T.breakOnEnd "/" ) . T.stripPrefix  "https://tidal.com/" )
-        . words
-        $ fromMaybe "" loct
-        ) <> (
-        mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
-        . mapMaybe (T.stripPrefix "T")
-        . words
-        $ fromMaybe "" loct
-        ))
-    amid :: Maybe Text
-    -- A<number> -> https://music.apple.com/us/album/<number>
-    -- or Al.<string> -> https://music.apple.com/library/albums/l.<string>
-    -- or https://music.apple.com/us/album/<...>/<id>
-    amid =
-      viaNonEmpty head ((
-        mapMaybe ( fmap ( snd . T.breakOnEnd "/" ) . T.stripPrefix  "https://music.apple.com/us/album/" )
-        . words
-        $ fromMaybe "" loct
-        ) <> (
-        mapMaybe  (\t ->  if T.null (T.filter (not . Ch.isDigit) t) || (T.take 2 t == "l.")
-                                then Just t
-                                else Nothing
-                    )
-          . mapMaybe (T.stripPrefix "A")
-          . words
-          $ fromMaybe "" loct
+ where
+  WRelease
+    { id = did
+    , date_added
+    , folder_id
+    , rating
+    , basic_information =
+      WBasicInfo{title, year, cover_image, artists, formats, genres, styles}
+    , notes
+    } = dr
+  as = (\WArtist{name = n} -> n) <$> artists
+  nts :: Maybe Text -- Notes field
+  nts = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 3 then Nothing else Just v) $ notes of
+    Just a -> if a /= "" then Just a else Nothing
+    _ -> Nothing
+  tags :: [Text]
+  tags =
+    mapMaybe (stripPrefix "#")
+      . words
+      $ fromMaybe "" nts
+  -- parse location text (field 4), look for T<tidalID> and A<AppleMusicID>
+  loct :: Maybe Text
+  loct = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
+    Just a -> if a /= "" then Just a else Nothing
+    _ -> Nothing
+  tidalid :: Maybe Text -- T<number>
+  -- or https://tidal.com/album/<id>
+  tidalid =
+    viaNonEmpty
+      head
+      ( ( mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
+            . mapMaybe (fmap (snd . T.breakOnEnd "/") . T.stripPrefix "https://tidal.com/")
+            . words
+            $ fromMaybe "" loct
         )
+          <> ( mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
+                . mapMaybe (T.stripPrefix "T")
+                . words
+                $ fromMaybe "" loct
+             )
       )
-    -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
-    _xxx :: Maybe Text
-    _xxx = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
-      Just a -> if a /= "" then Just a else Nothing
-      _ -> Nothing
-    loc :: Maybe Text
-    loc = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
-      Just a -> if a /= "" then Just (unwords
-                                    . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://music.apple.com/us/album/" $ t)
-                                    . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://tidal.com/" $ t)
-                                    . mapMaybe (\t -> case T.stripPrefix "T" t of
-                                        Nothing -> Just t
-                                        Just ta -> if T.null (T.filter (not . Ch.isDigit) ta)
-                                                    then Nothing
-                                                    else Just t)
-                                    . mapMaybe  (\t -> case stripPrefix "A" t of
-                                        Nothing -> Just t
-                                        Just ta ->  if T.null (T.filter (not . Ch.isDigit) ta) || (T.take 2 ta == "l.")
-                                                      then Nothing
-                                                      else Just t
-                                                )
-                                    . words
-                                    $ a)
-                          else Nothing
-      _ -> Nothing
+  amid :: Maybe Text
+  -- A<number> -> https://music.apple.com/us/album/<number>
+  -- or Al.<string> -> https://music.apple.com/library/albums/l.<string>
+  -- or https://music.apple.com/us/album/<...>/<id>
+  amid =
+    viaNonEmpty
+      head
+      ( ( mapMaybe (fmap (snd . T.breakOnEnd "/") . T.stripPrefix "https://music.apple.com/us/album/")
+            . words
+            $ fromMaybe "" loct
+        )
+          <> ( mapMaybe
+                ( \t ->
+                    if T.null (T.filter (not . Ch.isDigit) t) || (T.take 2 t == "l.")
+                      then Just t
+                      else Nothing
+                )
+                . mapMaybe (T.stripPrefix "A")
+                . words
+                $ fromMaybe "" loct
+             )
+      )
+  -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
+  _xxx :: Maybe Text
+  _xxx = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
+    Just a -> if a /= "" then Just a else Nothing
+    _ -> Nothing
+  loc :: Maybe Text
+  loc = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
+    Just a ->
+      if a /= ""
+        then
+          Just
+            ( unwords
+                . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://music.apple.com/us/album/" $ t)
+                . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://tidal.com/" $ t)
+                . mapMaybe
+                  ( \t -> case T.stripPrefix "T" t of
+                      Nothing -> Just t
+                      Just ta ->
+                        if T.null (T.filter (not . Ch.isDigit) ta)
+                          then Nothing
+                          else Just t
+                  )
+                . mapMaybe
+                  ( \t -> case stripPrefix "A" t of
+                      Nothing -> Just t
+                      Just ta ->
+                        if T.null (T.filter (not . Ch.isDigit) ta) || (T.take 2 ta == "l.")
+                          then Nothing
+                          else Just t
+                  )
+                . words
+                $ a
+            )
+        else Nothing
+    _ -> Nothing
 
-    -- parse Order# (field 5)
-    _ordn :: Maybe Text
-    _ordn = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 5 then Nothing else Just v) $ notes of
-      Just a -> if a /= "" then Just a else Nothing
-      _ -> Nothing
+  -- parse Order# (field 5)
+  _ordn :: Maybe Text
+  _ordn = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 5 then Nothing else Just v) $ notes of
+    Just a -> if a /= "" then Just a else Nothing
+    _ -> Nothing
 
-    plays :: Int
-    plays = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 7 then Nothing else Just v) $ notes of
-      Just a -> fromMaybe 0 (readMaybe . toString $ a)
-      _ -> 0
--- format is special for certain folders
--- should maybe rather go through the "Streaming" and "File" lists and change the format?
-    fs :: [Text]
-    fs = case lookupName lns folder_id of
-           Just "Streaming" -> one "Streaming"
-           Just "Files"     -> one "Files"
-           _                -> (\WFormat {name = n} -> n) <$> formats
-    -- tags from notes, genres, styles, formats, order#, if there is a tidal or apple music version, discogs
-    tagsFormats :: [Text] -> [Text]
-    tagsFormats = map (("format." <>) . T.toCaseFold)
-    tagsFolder :: Int -> [Text]
-    tagsFolder = one . T.toCaseFold . ("folder." <>) . fromMaybe "???" . lookupName lns
-    -- add opera if style is opera
-    tagsGenres :: [Text] -> [Text]
-    tagsGenres ts = map (("genre." <>) . T.toCaseFold)
-                  $ ts <> (maybe [] one
-                          . find (( "opera" == ) . T.toCaseFold)
-                          $ styles)
-    tagsRated :: Int -> [Text]
-    tagsRated i = case i of
-      0 -> one "rated.not"
-      1 -> ["rated.", "rated.*"]
-      2 -> ["rated.", "rated.**"]
-      3 -> ["rated.", "rated.***"]
-      4 -> ["rated.", "rated.****"]
-      _ -> ["rated.", "rated.*****"]
-    tagsPlays :: Int -> [Text]
-    tagsPlays i = case i of
-      0 -> one "played.never"
-      1 -> ["played.", "played.once"]
-      2 -> ["played.", "played.twice"]
-      _ -> ["played.", "played.often"]
-    tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
+  plays :: Int
+  plays = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 7 then Nothing else Just v) $ notes of
+    Just a -> fromMaybe 0 (readMaybe . toString $ a)
+    _ -> 0
+  -- format is special for certain folders
+  -- should maybe rather go through the "Streaming" and "File" lists and change the format?
+  -- xx = \WFormat{name = n, qty = q, descriptions = md, text = mt} -> [n] <> fromMaybe [] md <> maybeToList mt
+  _fs :: WFormat -> [Text]
+  _fs WFormat{name = n, qty = q, descriptions = md, text = _mt} =
+    if q /= "1" then [n, n <> " x " <> q] else [n] <> fromMaybe [] md -- <> maybeToList _mt
+  fs :: [Text]
+  fs = case lookupName lns folder_id of
+    Just "Streaming" -> one "Streaming"
+    Just "Files" -> one "Files"
+    _ -> concatMap _fs formats
+  -- tags from notes, genres, styles, formats, order#, if there is a tidal or apple music version, discogs
+  tagsFormats :: [Text] -> [Text]
+  tagsFormats = map (("format." <>) . T.toCaseFold)
+  tagsFolder :: Int -> [Text]
+  tagsFolder = one . T.toCaseFold . ("folder." <>) . fromMaybe "???" . lookupName lns
+  -- add opera if style is opera
+  tagsGenres :: [Text] -> [Text]
+  tagsGenres ts =
+    map (("genre." <>) . T.toCaseFold) $
+      ts
+        <> ( maybe [] one
+              . find (("opera" ==) . T.toCaseFold)
+              $ styles
+           )
+  tagsRated :: Int -> [Text]
+  tagsRated i = case i of
+    0 -> one "rated.not"
+    1 -> ["rated.", "rated.*"]
+    2 -> ["rated.", "rated.**"]
+    3 -> ["rated.", "rated.***"]
+    4 -> ["rated.", "rated.****"]
+    _ -> ["rated.", "rated.*****"]
+  tagsPlays :: Int -> [Text]
+  tagsPlays i = case i of
+    0 -> one "played.never"
+    1 -> ["played.", "played.once"]
+    2 -> ["played.", "played.twice"]
+    _ -> ["played.", "played.often"]
+  tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
 
-    tagsList :: [Text]
-    tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres genres <> map T.toCaseFold styles <> tagsPlays plays <> tagsRated rating <> tagsFolder folder_id
-    r =
-      Release
-        { daid      = did,
-          dtitle    = title,
-          dartists  = as,
-          dreleased = show year,
-          dadded    = date_added,
-          dcover    = cover_image,
-          dfolder   = folder_id,
-          dformat   = T.intercalate ", " fs,
-          dtidalid  = tidalid,
-          damid     = amid,
-          dlocation = if loc == Just "" then Nothing else loc,
-          dtags     = tagsList,
-          drating   = rating,
-          dplays    = plays
-        }
+  tagsList :: [Text]
+  tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres genres <> map T.toCaseFold styles <> tagsPlays plays <> tagsRated rating <> tagsFolder folder_id
+  r =
+    Release
+      { daid = did
+      , dtitle = title
+      , dartists = as
+      , dreleased = show year
+      , dadded = date_added
+      , dcover = cover_image
+      , dfolder = folder_id
+      , dformat = T.intercalate ", " fs
+      , dtidalid = tidalid
+      , damid = amid
+      , dlocation = if loc == Just "" then Nothing else loc
+      , dtags = tagsList
+      , drating = rating
+      , dplays = plays
+      }
 
 getToken :: Discogs -> (Text, Text)
 getToken di = case di of
@@ -467,21 +501,23 @@ releasesFromDiscogsApi di nreleases = do
   let (tok, un) = getToken di
   let dc = mkClientEnv m discogsBaseUrl
       query :: ClientM [WRelease]
-      query = if nreleases == 0
-        then do
-          r0 <- discogsGetReleases un 0 Nothing Nothing (Just 1) (Just 500) (Just tok) userAgent
-          let rs0 = getWr r0
-          r1 <- discogsGetReleases un 0 Nothing Nothing (Just 2) (Just 500) (Just tok) userAgent
-          let rs1 = getWr r1
-          r2 <- discogsGetReleases un 0 Nothing Nothing (Just 3) (Just 500) (Just tok) userAgent
-          let rs2 = getWr r2
-          r3 <- discogsGetReleases un 0 Nothing Nothing (Just 4) (Just 500) (Just tok) userAgent
-          let rs3 = getWr r3
-          pure $ rs0 <> rs1 <> rs2 <> rs3
-        else do -- only read nreleases, newest first
-          r0 <- discogsGetReleases un 0 (Just "added") (Just "desc") (Just 1) (Just nreleases) (Just tok) userAgent
-          let rs0 = getWr r0
-          pure rs0
+      query =
+        if nreleases == 0
+          then do
+            r0 <- discogsGetReleases un 0 Nothing Nothing (Just 1) (Just 500) (Just tok) userAgent
+            let rs0 = getWr r0
+            r1 <- discogsGetReleases un 0 Nothing Nothing (Just 2) (Just 500) (Just tok) userAgent
+            let rs1 = getWr r1
+            r2 <- discogsGetReleases un 0 Nothing Nothing (Just 3) (Just 500) (Just tok) userAgent
+            let rs2 = getWr r2
+            r3 <- discogsGetReleases un 0 Nothing Nothing (Just 4) (Just 500) (Just tok) userAgent
+            let rs3 = getWr r3
+            pure $ rs0 <> rs1 <> rs2 <> rs3
+          else do
+            -- only read nreleases, newest first
+            r0 <- discogsGetReleases un 0 (Just "added") (Just "desc") (Just 1) (Just nreleases) (Just tok) userAgent
+            let rs0 = getWr r0
+            pure rs0
   putTextLn $ "-----------------Getting Collection from Discogs (asked for " <> show nreleases <> " releases)-----"
   res <- runClientM query dc
   case res of
@@ -507,7 +543,6 @@ readDiscogsReleasesCache fn lns = do
         Left _ -> []
         Right d -> getR lns <$> d
   pure rs
-
 
 -- getting n Discogs Releases, all if n == 0
 readDiscogsReleases :: Discogs -> Map Text Int -> Int -> IO [Release]
@@ -573,7 +608,7 @@ readDiscogsLists di = do
         Right wls -> lists wls
 
   let lm :: [(Text, (Int, Vector Int))]
-      lm = (\WList {id = i, name = n} -> (n, (i, V.empty))) <$> ls
+      lm = (\WList{id = i, name = n} -> (n, (i, V.empty))) <$> ls
   pure $ M.fromList lm
 
 listsFromCacheFile :: FilePath -> IO (Either String WLists)
@@ -590,7 +625,7 @@ readDiscogsListsCache fn = do
         Left _ -> []
         Right wls -> lists wls -- [WList]
   let getAids :: FilePath -> WList -> IO (Text, (Int, Vector Int))
-      getAids f WList {id = i, name = n} = do
+      getAids f WList{id = i, name = n} = do
         is <- readListAidsCache f i
         pure (n, (i, is))
 
@@ -627,7 +662,7 @@ readDiscogsFolders di = do
         Left _ -> []
         Right wfs -> folders wfs
   let fm :: [(Text, Int)]
-      fm = (\WList {id = i, name = n} -> (n, i)) <$> fs
+      fm = (\WList{id = i, name = n} -> (n, i)) <$> fs
   pure $ M.fromList fm
 
 readDiscogsFoldersCache :: FilePath -> IO (Map Text Int)
@@ -643,7 +678,7 @@ readDiscogsFoldersCache fn = do
         Left _ -> []
         Right wfs -> folders wfs
   let fm :: [(Text, Int)]
-      fm = (\WList {id = i, name = n} -> (n, i)) <$> fs
+      fm = (\WList{id = i, name = n} -> (n, i)) <$> fs
   pure $ M.fromList fm
 
 -- for each Discog list, read the lists of album ids from JSON
@@ -681,7 +716,7 @@ readListAidsCache fn i = do
 readWLItemsCache :: FilePath -> IO (Either String WLItems)
 readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
 
-readLists :: Discogs{-   -}-> IO (Map Text (Int, Vector Int))
+readLists :: Discogs {-   -} -> IO (Map Text (Int, Vector Int))
 readLists di = do
   let (tok, un) = getToken di
   m <- newManager tlsManagerSettings -- defaultManagerSettings
@@ -698,5 +733,5 @@ readLists di = do
         Right wls -> lists wls
   -- map with all lists
   let lm :: Map Text (Int, Vector Int)
-      lm = M.fromList . map (\WList {id = i, name = n} -> (n, (i, V.empty))) $ ls
+      lm = M.fromList . map (\WList{id = i, name = n} -> (n, (i, V.empty))) $ ls
   pure lm
