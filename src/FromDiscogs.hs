@@ -434,7 +434,7 @@ getR lns dr = r
   -- xx = \WFormat{name = n, qty = q, descriptions = md, text = mt} -> [n] <> fromMaybe [] md <> maybeToList mt
   _fs :: WFormat -> [Text]
   _fs WFormat{name = n, qty = q, descriptions = md, text = _mt} =
-    if q /= "1" then [n, n <> " x " <> q] else [n] <> fromMaybe [] md -- <> maybeToList _mt
+    (if q /= "1" then [n, n <> " x " <> q] else [n]) <> fromMaybe [] md -- <> maybeToList _mt
   fs :: [Text]
   fs = case lookupName lns folder_id of
     Just "Streaming" -> one "Streaming"
