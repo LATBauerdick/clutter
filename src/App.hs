@@ -165,11 +165,6 @@ type ClutterAPI =
 clutterAPI :: Proxy ClutterAPI
 clutterAPI = Proxy
 
--- type AppM = ReaderT Env Handler defined in Types.hs
-nt :: Env -> (ReaderT Env) Handler a -> Handler a
-nt env x = do
-  runReaderT x env
-
 -- add "Middleware", see
 -- https://mmhaskell.com/blog/2018/10/8/stuck-in-the-middle-adding-middleware-to-a-servant-server
 -- where we modify the response header such that it includes CORS header Access-Control-Allow-Origin: *
@@ -186,8 +181,12 @@ addOriginsAllowed =
 
 -- (:) ("Content-Security-Policy", "navigate-to * ")
 
+-- type AppM = ReaderT Env Handler defined in Types.hs
+nt :: Env -> (ReaderT Env) Handler a -> Handler a
+nt env x = x `runReaderT` env
+
 app :: Env -> Application
-app env = addAllOriginsMiddleware $ serve clutterAPI $ hoistServer clutterAPI (nt env) clutterServer
+app env = addAllOriginsMiddleware $ serve clutterAPI (hoistServer clutterAPI (`runReaderT` env) clutterServer)
 
 clutterServer :: ServerT ClutterAPI AppM
 clutterServer =

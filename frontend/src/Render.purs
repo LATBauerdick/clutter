@@ -19,7 +19,7 @@ import Halogen.HTML.Events as HE
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
-import Data.String (take, indexOf) as S
+import Data.String (take, indexOf, replaceAll) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
@@ -197,16 +197,36 @@ render state = do
 
           )
         ]
-    testView =
+    testView = let qry = S.replaceAll ( Pattern " " ) ( Replacement "+" ) $ a.albumArtist <> "+-+" <> a.albumTitle in
       HH.div [  ]
-        [ HH.iframe
-          [ HP.src ("https://www.discogs.com/release/" <> show a.albumID)
+        [ HH.br_
+        , HH.br_
+        , HH.br_
+        , HH.br_
+        , HH.br_
+        , HH.br_
+        , HH.br_
+        , HH.p_ [HH.text ("Tidal Album <"  <> show a.albumID <> ">.")]
+        , HH.br_
+        , HH.text ("Search \"" <> a.albumTitle <> "\" (" <> a.albumReleased <> ") by " <> a.albumArtist <> " on ")
+        , HH.a [HP.href $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"]
+               [HH.text "DISCOGS"]
+        , HH.br_
+        , HH.iframe
+          [ HP.src ("https://www.discogs.com/search/?q=" <> qry <> "&type=all")
           , HP.title "iframe_a"
           , HP.style "height:600px;width:100%;"
           -- , frameborder "0"
           -- , allow "autoplay *; encrypted-media *; fullscreen *"
           ]
         ]
+--L.div_ [L.class_ "login-message"] $ do
+-- L.p_ $ "Tidal Album <" <> show (albumID a) <> ">."
+-- L.br_ []
+-- let qry = T.replace " " "+" $ albumArtist a <> "+-+" <> albumTitle a
+-- L.p_ $ do
+--   L.toHtml ("Search \"" <> albumTitle a <> "\" by " <> albumArtist a <> " on ")
+--   L.a_ [L.href_ $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"] "DISCOGS"
   -- allow :: forall r i. String -> HH.IProp ( allow :: String | r ) i
   -- allow = HH.prop (HH.PropName "allow")
   -- frameborder :: forall r i. String -> HH.IProp ( frameborder :: String | r ) i
