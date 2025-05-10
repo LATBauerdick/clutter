@@ -138,6 +138,7 @@ data Release
   , dformat   :: Text
   , dtidalid  :: Maybe Text
   , damid     :: Maybe Text
+  , dqobuzid  :: Maybe Text
   , dlocation :: Maybe Text
   , dtags     :: [Text]
   , drating   :: Int
@@ -157,6 +158,7 @@ data Album
   , albumFormat   :: Text
   , albumTidal    :: Maybe Text
   , albumAMusic   :: Maybe Text
+  , albumQobuz    :: Maybe Text
   , albumLocation :: Maybe Text
   , albumTags     :: [Text]
   , albumRating   :: Int

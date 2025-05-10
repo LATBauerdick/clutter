@@ -267,6 +267,7 @@ getReleases t = (mapMaybe getRelease ams, nxt, tot) where
                        , dformat   = "Streaming"
                        , dtidalid  = Nothing
                        , damid     = Just cid
+                       , dqobuzid  = Nothing
                        , dlocation = Just lid
                        , dtags     = ["provider.applemusic"] <> map (("genre." <>) . T.toCaseFold) gns
                        , drating   = 0

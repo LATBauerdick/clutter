@@ -383,6 +383,17 @@ getR lns dr = r
                 $ fromMaybe "" loct
              )
       )
+  qobuzid :: Maybe Text -- Q<string>
+  -- or https://play.qobuz.com/album/<string>
+  qobuzid =
+    viaNonEmpty
+      head
+      ( ( mapMaybe (fmap (snd . T.breakOnEnd "/") . T.stripPrefix "https://play.qobuz.com/album/")
+            . words
+            $ fromMaybe "" loct
+        )
+          <> (mapMaybe (T.stripPrefix "Q") . words $ fromMaybe "" loct)
+      )
   -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
   _xxx :: Maybe Text
   _xxx = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
@@ -397,6 +408,7 @@ getR lns dr = r
             ( unwords
                 . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://music.apple.com/us/album/" $ t)
                 . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://tidal.com/" $ t)
+                . mapMaybe (\t -> maybe (Just t) (const Nothing) . T.stripPrefix "https://play.qobuz.com/album/" $ t)
                 . mapMaybe
                   ( \t -> case T.stripPrefix "T" t of
                       Nothing -> Just t
@@ -412,6 +424,11 @@ getR lns dr = r
                         if T.null (T.filter (not . Ch.isDigit) ta) || (T.take 2 ta == "l.")
                           then Nothing
                           else Just t
+                  )
+                . mapMaybe
+                  ( \t -> case stripPrefix "Q" t of
+                      Nothing -> Just t
+                      Just _ -> Nothing
                   )
                 . words
                 $ a
@@ -483,6 +500,7 @@ getR lns dr = r
       , dfolder = folder_id
       , dformat = T.intercalate ", " fs
       , dtidalid = tidalid
+      , dqobuzid = qobuzid
       , damid = amid
       , dlocation = if loc == Just "" then Nothing else loc
       , dtags = tagsList
