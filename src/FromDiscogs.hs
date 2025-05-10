@@ -485,7 +485,7 @@ getR lns dr = r
     1 -> ["played.", "played.once"]
     2 -> ["played.", "played.twice"]
     _ -> ["played.", "played.often"]
-  tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
+  tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.qobuz"]) qobuzid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
 
   tagsList :: [Text]
   tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres genres <> map T.toCaseFold styles <> tagsPlays plays <> tagsRated rating <> tagsFolder folder_id
