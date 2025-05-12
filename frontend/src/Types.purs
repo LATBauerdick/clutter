@@ -91,3 +91,4 @@ data Action = ToggleSortOrder
             | ShowListSort AlbumList String SortOrder
             | ShowAlbum String
             | AlbumPlayed String
+            | UpdateDiscogs

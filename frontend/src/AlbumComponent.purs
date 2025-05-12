@@ -123,6 +123,14 @@ handleAction = case _ of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
     H.modify_ _ { album = am, now = now, loading = false, result = Just r }
+  UpdateDiscogs -> do
+    H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
+    now <- H.liftAff getNow
+    H.liftAff $ Console.logShow now
+    api <- H.gets _.apiUrl
+    _ <- H.liftAff $ getUrl (api <> "req?event=update")
+    H.liftAff $ Console.logShow "Discogs Updated"
+    updateAlbumList
 
   where
     updateAlbumList :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit

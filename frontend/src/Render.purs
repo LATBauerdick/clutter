@@ -208,10 +208,16 @@ render state = do
         , HH.br_
         , HH.p_ [HH.text ("Tidal Album <"  <> show a.albumID <> ">.")]
         , HH.br_
-        , HH.text ("Search \"" <> a.albumTitle <> "\" (" <> a.albumReleased <> ") by " <> a.albumArtist <> " on ")
+        , HH.text ("Search \"" <> a.albumTitle <> "\" (" <> a.albumReleased <> ") by " <> a.albumArtist <> " on <")
         , HH.a [HP.href $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"]
                [HH.text "DISCOGS"]
+        , HH.text (">")
         , HH.br_
+        , HH.div [ HP.class_ $ HH.ClassName "cover-img" ]
+                 [ HH.text "After adding the new Album to Discogs, "
+                 , HH.button [ HE.onClick \_ -> UpdateDiscogs ]
+                             [ HH.text "<Update>"]
+                 ]
         , HH.iframe
           [ HP.src ("https://www.discogs.com/search/?q=" <> qry <> "&type=all")
           , HP.title "iframe_a"

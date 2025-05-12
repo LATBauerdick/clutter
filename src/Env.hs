@@ -156,11 +156,9 @@ envUpdateMenuParams = do
 
 -- get laters n releases from Discogs
 -- also update folders and lists, update other metadata
-envUpdate :: Text -> Text -> Int -> AppM ()
-envUpdate tok un nreleases = do
+envUpdate :: Maybe Text -> Maybe Text -> Int -> AppM ()
+envUpdate _tok _un nreleases = do
   env <- ask
-  let discogs' = DiscogsSession tok un
-  putTextLn $ "-----------------Updating from " <> show discogs'
 
   -- save tidal albums map
   oldAlbums <- readIORef $ albumsR env
@@ -171,7 +169,9 @@ envUpdate tok un nreleases = do
       tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
 
   -- update with the new discogs info
-  _ <- writeIORef (discogsR env) discogs'
+  -- let discogs' = DiscogsSession (fromMaybe "" tok) (fromMaybe "" un)
+  -- putTextLn $ "-----------------Updating from " <> show discogs'
+  -- _ <- writeIORef (discogsR env) discogs'
 
   -- reread Discogs folders info
   newFolders <- readFolders

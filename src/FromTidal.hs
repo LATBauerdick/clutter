@@ -210,6 +210,7 @@ getReleases t = getRelease <$> tis where
                        , dformat   = "Streaming"
                        , dtidalid  = Just (show tid)
                        , damid     = Nothing
+                       , dqobuzid     = Nothing
                        , dlocation = Nothing
                        , dtags     = ["provider.tidal"]
                        , drating   = 0

@@ -70,8 +70,8 @@ type API1 =
 type API2 =
   "provider"
     :> "discogs"
-    :> Capture "token" Text
-    :> Capture "username" Text
+    :> QueryParam "token" Text
+    :> QueryParam "username" Text
     :> QueryParam "nreleases" Int -- update last n releases, all if null
     :> QueryParam "release" Int -- get another release into the database
     :> Get '[HTML] RawHtml
@@ -106,7 +106,7 @@ type API6 =
 type API7 =
   "api"
     :> "req"
-    :> Capture "event" Text
+    :> QueryParam "event" Text
     :> Get '[JSON] ReqJ
 
 type API8 =
@@ -287,7 +287,7 @@ clutterServer =
             }
     pure sj
 
-  serveReq :: Text -> AppM ReqJ
+  serveReq :: Maybe Text -> AppM ReqJ
   serveReq r = do
     liftIO $ print ("-------serveReq " :: Text, r)
     now <- liftIO getZonedTime
@@ -295,9 +295,12 @@ clutterServer =
     let sj =
           ReqJ
             { reqTime = dtl
-            , reqInfo = r
+            , reqInfo = fromMaybe "" r
             , reqResult = 1
             }
+    case r of
+      Just "update" -> envUpdate Nothing Nothing 10
+      _ -> liftIO $ print r
     pure sj
 
   serveAlbump :: Int -> AppM AlbumJ
@@ -336,7 +339,7 @@ clutterServer =
     html <- renderAlbumsView ln fs aids
     pure . RawHtml $ L.renderBS html
 
-  serveDiscogs :: Text -> Text -> Maybe Int -> Maybe Int -> AppM RawHtml
+  serveDiscogs :: Maybe Text -> Maybe Text -> Maybe Int -> Maybe Int -> AppM RawHtml
   serveDiscogs token username nreleases release = do
     liftIO $ print ("------Updating from Discogs" :: Text, token, username, nreleases, release)
     envUpdate token username (fromMaybe 0 nreleases)
