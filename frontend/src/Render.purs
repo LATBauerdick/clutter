@@ -285,8 +285,10 @@ render state = do
           | "Vinyl" `isInfixOf` f && "Box Set" `isInfixOf` f = 'b'
           | "Vinyl, Vinly" `isInfixOf` f = 'b'
           | "Vinyl" `isInfixOf` f = 'v'
+          | "SACD" `isInfixOf` f = 'g'
           | "CD" `isInfixOf` f && "Box Set" `isInfixOf` f = 'd'
           | "CD" `isInfixOf` f = 'c'
+          | "DVD" `isInfixOf` f = 'e'
           | "Hybrid" `isInfixOf` f = 'c'
           | f == "Streaming" = 's'
           | f == "Files" = 'f'
@@ -301,18 +303,25 @@ render state = do
             [ HH.span [ HP.class_ $ HH.ClassName "fas fa-record-vinyl fa-sm" ] [] ]
           't' ->
             [ HH.img
-                [ HP.src (state.menu.params.muhq <> "tidal-is.png"), HP.alt "T"
+                [ HP.src (state.menu.params.muhq <> "icons/tidal-is.png"), HP.alt "T"
                 , HP.class_ $ HH.ClassName "cover-oimage"
                 ]
             ]
           'a' ->
             [ HH.img
-                [ HP.src (state.menu.params.muhq <> "am-icon.png"), HP.alt "A"
+                [ HP.src (state.menu.params.muhq <> "icons/am-icon.png"), HP.alt "A"
                 , HP.class_ $ HH.ClassName "cover-oimage"
                 ]
             ]
+          'b' ->
+            [ HH.span [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ] [] ]
           'c' ->
-            [ HH.span [ HP.class_ $ HH.ClassName "fas fa-compact-disc fa-sm" ] [] ]
+            [ HH.img
+                [ HP.src (state.menu.params.muhq <> "icons/cd-icon.png"), HP.alt "T"
+                , HP.class_ $ HH.ClassName "cover-oimage"
+                ]
+            ]
+            -- [ HH.span [ HP.class_ $ HH.ClassName "fas fa-compact-disc fa-sm" ] [] ]
           'd' ->
             [ HH.span
                 [ HP.class_ $ HH.ClassName "fa-stack fa-sm" ]
@@ -320,10 +329,20 @@ render state = do
                 , HH.span [ HP.class_ $ HH.ClassName "fa fa-compact-disc fa-stack-1x" ] []
                 ]
             ]
-          'b' ->
-            [ HH.span [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ] [] ]
+          'e' ->
+            [ HH.img
+                [ HP.src (state.menu.params.muhq <> "icons/dvd-icon.png"), HP.alt "T"
+                , HP.class_ $ HH.ClassName "cover-oimage"
+                ]
+            ]
           'f' ->
             [ HH.span [ HP.class_ $ HH.ClassName "far fa-file-audio fa-sm" ] [] ]
+          'g' ->
+            [ HH.img
+                [ HP.src (state.menu.params.muhq <> "icons/sacd-icon.png"), HP.alt "SACD"
+                , HP.class_ $ HH.ClassName "cover-oimage"
+                ]
+            ]
           's' ->
             [ HH.span [ HP.class_ $ HH.ClassName "far fa-wifi fa-sm" ] [] ]
           _ ->
@@ -338,7 +357,7 @@ render state = do
       [ HH.a
         [ HP.href ("https://listen.tidal.com/album/" <> tid)]
         [ HH.img
-          [ HP.src (state.menu.params.muhq <> "tidal-is.png")
+          [ HP.src (state.menu.params.muhq <> "icons/tidal-is.png")
           , HP.alt "T"
           , HP.class_ $ HH.ClassName "cover-oimage"
           ]
@@ -356,7 +375,7 @@ render state = do
               else "https://music.apple.com/us/album/" <> amid
         ]
         [ HH.img
-          [ HP.src (state.menu.params.muhq <> "am-icon.png")
+          [ HP.src (state.menu.params.muhq <> "icons/am-icon.png")
           , HP.alt "A"
           , HP.class_ $ HH.ClassName "cover-oimage"
           ]
