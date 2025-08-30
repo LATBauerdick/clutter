@@ -130,6 +130,8 @@ handleAction = case _ of
     api <- H.gets _.apiUrl
     _ <- H.liftAff $ getUrl (api <> "req?event=update")
     H.liftAff $ Console.logShow "Discogs Updated"
+    let alist = AlbumList (Just "Discogs")
+    H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
 
   where

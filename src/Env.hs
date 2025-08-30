@@ -129,20 +129,20 @@ envUpdateMenuParams = do
   let uhq :: Text
       uhq = url env <> "albums/"
 
-      ss = sorts env
-      -- [ "Added", "Artist", "Default", "Title" ]
-
+      ss = sorts env -- sort criteria
       sts :: [Text] -- sorted tags
       sts =
+        -- sorted tags
         filter (isJust . T.find ('.' ==)) (M.keys (tags envr))
           <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
-      -- [ "folder.cd", "folder.pop", "genre.classical", "genre.opera", "rated.*****" ] -- sorted tags
 
-      sli = filter (not . pLocList) $ M.keys (listNames envr)
-      --  [ "2020 Listened", "2021 Listened", "2022 Listened", "All", "Apple Music",  "Discogs", "Pop", "Tidal" ]
+      sli =
+        -- sorted lists
+        filter (not . pLocList) $ M.keys (listNames envr)
 
-      slo = filter pLocList $ M.keys (listNames envr)
-  -- [ "Cube A0", "Cube B0 Pop", "Cube E0 Incoming", "Cube E1 Incoming", "Shelf A1 Opera" ]
+      slo =
+        -- sorted locations
+        filter pLocList $ M.keys (listNames envr)
 
   let ms =
         MenuParams
