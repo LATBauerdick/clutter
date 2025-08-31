@@ -240,7 +240,7 @@ render state = do
       , HH.div
         [ HP.class_ $ HH.ClassName "login-message" ]
         [ HH.span_
-          [ HH.h2 [ ] [ HH.text "...server is working..." ]
+          [ HH.h2 [ ] [ HH.text "...server is working..." ] ]
         ]
       ]
 
