@@ -245,11 +245,11 @@ img:hover {
 }
 
 .album-thumb {
-  padding: 0px 1px 10px;
+  padding: 0px 0px 10px;
 }
 
 .album-info {
-  width: 210px;
+  width: 200px;
 }
 
 p.album-title {
@@ -279,16 +279,25 @@ p.album-artist {
 /*  height:1000px; */
  }
 
-.albums {
-   padding:15px 15px 250px;
+.album-view {
+   padding:0px 0px 0px;
    margin-top:50px;
+   margin-left:25px;
+   box-sizing: content-box;
+ }
+
+.albums {
+   padding:0px 0px 0px;
+   margin-top:50px;
+   margin-left:25px;
+   box-sizing: content-box;
  }
 
 .row {
   display: flex;
-  justify-content: space-evenly;
+  justify-content: left;
   flex-wrap: wrap;
-  padding: 0 1px;
+  padding: 0 0px;
 }
 
 /* Container needed to position the overlay. Adjust the width as needed */

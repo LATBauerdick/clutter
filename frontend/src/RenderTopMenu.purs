@@ -53,7 +53,7 @@ renderTopMenu state =
       ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonList
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonLocation
-    , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonTags
+    , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonConfig
     ]
   where
 
@@ -172,10 +172,10 @@ renderTopMenu state =
                      locNames )
     ]
 
-  renderButtonTags :: forall w i. Array (HH.HTML w i)
-  renderButtonTags = [
+  renderButtonConfig :: forall w i. Array (HH.HTML w i)
+  renderButtonConfig = [
     HH.button [HP.class_ $ HH.ClassName "dropbtn"]
-    [ HH.text "Tags "
+    [ HH.text "... "
     , HH.i [ HP.class_ $ HH.ClassName "fa fa-caret-down" ] []
     ]
   , HH.div [HP.class_ $ HH.ClassName "dropdown-content"]

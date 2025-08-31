@@ -117,9 +117,9 @@ render state = do
     dt = fromRight "???????" <<< formatDateTime "YYMMDD" $ now -- "2022-10-19T20:01"
     dtl = fromRight "???????" <<< formatDateTime "YYYY-MM-DDTHH:mm" $ now -- "2022-10-19T20:01"
     discogsView =
-      HH.div [  ]
-        [ HH.h1_ [ HH.br_  ]
-        , HH.div [ HP.class_ $ HH.ClassName "cover-container"]
+      HH.div [ HP.class_ $ HH.ClassName "album-view" ]
+        [ HH.div
+          [ HP.class_ $ HH.ClassName "cover-container" ]
           [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ] $
             [ HH.a
               [ HP.href a.albumURL] $
@@ -198,15 +198,8 @@ render state = do
           )
         ]
     testView = let qry = S.replaceAll ( Pattern " " ) ( Replacement "+" ) $ a.albumArtist <> "+-+" <> a.albumTitle in
-      HH.div [  ]
-        [ HH.br_
-        , HH.br_
-        , HH.br_
-        , HH.br_
-        , HH.br_
-        , HH.br_
-        , HH.br_
-        , HH.p_ [HH.text ("Tidal Album <"  <> show a.albumID <> ">.")]
+      HH.div [ HP.class_ $ HH.ClassName "album-view" ]
+        [ HH.p_ [HH.text ("Tidal Album <"  <> show a.albumID <> ">.")]
         , HH.br_
         , HH.text ("Search \"" <> a.albumTitle <> "\" (" <> a.albumReleased <> ") by " <> a.albumArtist <> " on <")
         , HH.a [HP.href $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"]
@@ -247,11 +240,7 @@ render state = do
       , HH.div
         [ HP.class_ $ HH.ClassName "login-message" ]
         [ HH.span_
-          [ HH.text "Unknown album, sorry! Please see "
-          , HH.a
-            [HP.href $ state.menu.params.muhq]
-            [HH.text "Discogs Albums"]
-          ]
+          [ HH.h2 [ ] [ HH.text "...server is working..." ]
         ]
       ]
 
