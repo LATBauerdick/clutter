@@ -282,6 +282,7 @@ render state = do
         isInfixOf :: String -> String -> Boolean
         isInfixOf p s = S.indexOf (Pattern p) s /= Nothing
         c
+          | f == "CD-R" = 'r'
           | "Vinyl" `isInfixOf` f && "Box Set" `isInfixOf` f = 'b'
           | "Vinyl, Vinly" `isInfixOf` f = 'b'
           | "Vinyl" `isInfixOf` f = 'v'
@@ -317,7 +318,7 @@ render state = do
             [ HH.span [ HP.class_ $ HH.ClassName "far fa-clone fa-sm" ] [] ]
           'c' ->
             [ HH.img
-                [ HP.src (state.menu.params.muhq <> "icons/cd-icon.png"), HP.alt "T"
+                [ HP.src (state.menu.params.muhq <> "icons/cd-icon.png"), HP.alt "CD"
                 , HP.class_ $ HH.ClassName "cover-oimage"
                 ]
             ]
@@ -340,6 +341,12 @@ render state = do
           'g' ->
             [ HH.img
                 [ HP.src (state.menu.params.muhq <> "icons/sacd-icon.png"), HP.alt "SACD"
+                , HP.class_ $ HH.ClassName "cover-oimage"
+                ]
+            ]
+          'r' ->
+            [ HH.img
+                [ HP.src (state.menu.params.muhq <> "icons/cd-r-icon.png"), HP.alt "CDR"
                 , HP.class_ $ HH.ClassName "cover-oimage"
                 ]
             ]

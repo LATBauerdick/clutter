@@ -456,6 +456,7 @@ getR lns dr = r
   fs = case lookupName lns folder_id of
     Just "Streaming" -> one "Streaming"
     Just "Files" -> one "Files"
+    Just "CD-R" -> one "CD-R"
     _ -> concatMap _fs formats
   -- tags from notes, genres, styles, formats, order#, if there is a tidal or apple music version, discogs
   tagsFormats :: [Text] -> [Text]
