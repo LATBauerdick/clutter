@@ -60,20 +60,16 @@ render state = do
   albumView :: forall m. Maybe Album -> DateTime -> H.ComponentHTML Action () m
   albumView am now = case am of
                     Just a -> HH.div_ [ renderAlbumView a now
-                                      , renderPlayedButton a now
+                                      -- , renderPlayedButton a now
                                       ]
                     Nothing -> HH.div_ [ noAlbum ]
 
-  renderPlayedButton :: forall m. Album -> DateTime -> H.ComponentHTML Action () m
-  renderPlayedButton a _ =
-        HH.div_ [ HH.br_
-                , HH.br_
-                , HH.div [ HP.class_ $ HH.ClassName "cover-img" ]
-                    [ HH.text "Press this Button when the Album "
-                    , HH.button [ HE.onClick \_ -> AlbumPlayed (show a.albumID) ]
-                      [ HH.text "<Played>"]
-                    ]
-                ]
+  -- renderPlayedButton :: forall m. Album -> DateTime -> H.ComponentHTML Action () m
+  -- renderPlayedButton a _ =
+  --   HH.div [ HP.class_ $ HH.ClassName "album-view" ]
+  --          [ HH.button [ HE.onClick \_ -> AlbumPlayed (show a.albumID) ]
+  --                      [ HH.text " Album Played "]
+  --          ]
 
   renderListView :: forall m. H.ComponentHTML Action () m
   renderListView =
@@ -98,19 +94,37 @@ render state = do
               ]
           ] <> renderBadges idx a
         )
-      , HH.div [ HP.class_ $ HH.ClassName "album-info" ]
-          [ HH.p [ HP.class_ $ HH.ClassName "album-title"]
-            [ HH.text a.albumTitle ]
-          , HH.p [ HP.class_ $ HH.ClassName "album-artist"]
-            [ HH.text a.albumArtist ]
-          ]
+      -- , HH.span [ HP.class_ $ HH.ClassName "hovtext" ]
+      --       [ HH.text a.albumTitle
+      --       , HH.text a.albumArtist
+      --       ]
+      , renderHovAlbumInfo a
+      , renderAlbumInfo a
       ]
+
+  renderHovAlbumInfo :: forall m. Album -> H.ComponentHTML Action () m
+  renderHovAlbumInfo a =
+    HH.div [ HP.class_ $ HH.ClassName "hov-album-info" ]
+           [ HH.p [ HP.class_ $ HH.ClassName "album-title"]
+                  [ HH.text a.albumTitle ]
+           , HH.p [ HP.class_ $ HH.ClassName "album-artist"]
+                  [ HH.text a.albumArtist ]
+           ]
+
+  renderAlbumInfo :: forall m. Album -> H.ComponentHTML Action () m
+  renderAlbumInfo a =
+    HH.div [ HP.class_ $ HH.ClassName "album-info" ]
+           [ HH.p [ HP.class_ $ HH.ClassName "album-title"]
+                  [ HH.text a.albumTitle ]
+           , HH.p [ HP.class_ $ HH.ClassName "album-artist"]
+                  [ HH.text a.albumArtist ]
+           ]
 
   renderAlbumView :: forall m. Album -> DateTime -> H.ComponentHTML Action () m
   renderAlbumView a now =
     case a.albumFormat of
               "AppleMusic" -> discogsView
-              "Tidal"      -> testView
+              "Tidal"      -> tidalView
               _            -> discogsView
     where
     ttl = replaceAll (Pattern ":") (Replacement "_") <<< replaceAll (Pattern "/") (Replacement "·") $ a.albumArtist <> " - " <> a.albumTitle
@@ -128,15 +142,21 @@ render state = do
                       , HP.class_ $ HH.ClassName "cover-image"
                       ]
               ]
-            ] <> renderBadges 0 a
+            ]
+            <> renderBadges 0 a
           ]
         -- , renderAlbumTN 0 a
         , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
         , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
         , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]
         , HH.br_
-        , HH.div
-          [ HP.class_ ( HH.ClassName "quoteable" )
+        , HH.button [ HE.onClick \_ -> AlbumPlayed (show a.albumID) ]
+                    [ HH.text " Album Played "]
+        , HH.br_
+        , quotableView
+        ]
+    quotableView =
+      HH.div [ HP.class_ ( HH.ClassName "quoteable" )
           -- , CSS.style do
           --     fontSize $ px 20.0
           --     backgroundColor orange
@@ -196,8 +216,8 @@ render state = do
                   ]
 
           )
-        ]
-    testView = let qry = S.replaceAll ( Pattern " " ) ( Replacement "+" ) $ a.albumArtist <> "+-+" <> a.albumTitle in
+
+    tidalView = let qry = S.replaceAll ( Pattern " " ) ( Replacement "+" ) $ a.albumArtist <> "+-+" <> a.albumTitle in
       HH.div [ HP.class_ $ HH.ClassName "album-view" ]
         [ HH.p_ [HH.text ("Tidal Album <"  <> show a.albumID <> ">.")]
         , HH.br_
@@ -211,6 +231,10 @@ render state = do
                  , HH.button [ HE.onClick \_ -> UpdateDiscogs ]
                              [ HH.text "<Update>"]
                  ]
+        , HH.div [ HP.class_ $ HH.ClassName "album-view" ]
+           [ HH.button [ HE.onClick \_ -> AlbumPlayed (show a.albumID) ]
+                       [ HH.text " Album Played "]
+           ]
         , HH.iframe
           [ HP.src ("https://www.discogs.com/search/?q=" <> qry <> "&type=all")
           , HP.title "iframe_a"

@@ -48,6 +48,7 @@ li a:hover {
   width: 100%;
   transition: top 0.6s; /* Transition effect when sliding down (and up) */
   background-color: #ff7000;
+  z-index: 9;
 }
 
 #navbar a {
@@ -182,7 +183,7 @@ li a:hover {
   max-height: 600px;
   overflow: auto;
   box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-  z-index: 1;
+  /* z-index: 1; */
 }
 
 #navbar .dropdown:hover .focus-content {
@@ -200,28 +201,46 @@ li a:hover {
   text-align: left;
 }
 
+.focus {
+  display: inline;
+  float: none;
+  font-size: 12px;
+  overflow: auto;
+  background-color: inherit;
+  padding: 2px 2px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  text-align: left;
+  margin: 1px 1px;
+}
+.focus:hover {
+  background-color: orange;
+}
+
 .focus-on {
   display: inline;
   float: none;
-  color: black;
+  font-size: 12px;
+  overflow: auto;
   background-color: green;
-  padding: 5px 5px;
-  margin: 0px 0px;
+  padding: 2px 2px;
   border-radius: 6px;
-  text-decoration: none;
+  border: 1px solid #ddd;
   text-align: left;
+  margin: 1px 1px;
 }
 
 .focus-not {
   display: inline;
   float: none;
-  color: black;
+  font-size: 12px;
+  overflow: auto;
   background-color: red;
-  padding: 5px 5px;
-  margin: 0px 0px;
+  padding: 2px 2px;
   border-radius: 6px;
-  text-decoration: none;
+  border: 1px solid #ddd;
   text-align: left;
+  margin: 1px 1px;
 }
 
 #navbar .dropdown .focus-content a:hover {
@@ -245,26 +264,83 @@ img:hover {
 }
 
 .album-thumb {
-  padding: 0px 0px 10px;
+  display: grid;
+  padding: 0px 0px 0px;
+  box-sizing: content-box;
+}
+.album-thumb:hover .hov-album-info {
+  opacity: 1;
+  pointer-events: auto;
 }
 
+.cover-container {
+  grid-area: 1 / 1;
+  width:  205px;
+  height: 205px;
+  position: relative;
+  text-align: center;
+  vertical-align: middle;
+  z-index: 2;
+}
 .album-info {
+  /* to put the album-info behind (just tiles) */
+  /* position: absolute; */
   width: 200px;
+  padding-left: 4px;
+  padding-top: 4px;
+  padding-bottom: 12px;
+  padding-left: 4px;
+  z-index: 1;
+}
+
+.hov-album-info {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+
+  /* grid-area: 1 / 1; */
+  position: absolute;
+  transform: translate(50px, 100px);
+
+  /* width: 200px; */
+  overflow: visible;
+  width: max-content;
+  height: 40px;
+  margin-top: 4px;
+  margin-left: 4px;
+  padding-top: 4px;
+  /* padding-bottom: 12px; */
+  padding-left: 4px;
+  padding-right: 4px;
+
+  /* box-sizing: border-box; */
+  /* overflow: hidden; */
+  background-color: white;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), 
+              0 2px 4px rgba(0, 0, 0, 0.08);
+  z-index: 3;
+}
+
+.hov-album-info::selection,
+.hov-album-info::-moz-selection {
+    opacity: 1;
+    background: yellow;
 }
 
 p.album-title {
-  white-space: nowrap; 
-  /* border: 1px solid #ddd; */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: helvetica;
   font-size: 14px;
-  margin: 2px 0 0 0;
+  /* margin: 2px 0 0 0; */
+  padding:1px 0px;
   text-align: left;
 }
 p.album-artist {
-  white-space: nowrap; 
-  /* border: 1px solid #ddd; */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: helvetica;
@@ -300,25 +376,17 @@ p.album-artist {
   padding: 0 0px;
 }
 
-/* Container needed to position the overlay. Adjust the width as needed */
-.cover-container {
-  width:  205px;
-  height: 205px;
-  position: relative;
-  text-align: center;
-  vertical-align: middle;
-}
-.cover-container:hover {
-  box-shadow: 0 0 2px 1px rgba(0, 140, 186, 0.5);
-}
+/* .cover-container:hover { */
+/*   box-shadow: 0 0 2px 1px rgba(0, 140, 186, 0.5); */
+/* } */
 
 /* Make the image to responsive */
 .cover-image {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 4px;
-  padding: 5px;
+  border-radius: 16px; /* 4px; */
+  padding: 2px; /* 5px; */
   position: absolute;
   top: 0;
   left: 0;
