@@ -299,7 +299,8 @@ clutterServer =
             , reqResult = 1
             }
     case r of
-      Just "update" -> envUpdate Nothing Nothing 10
+      Just "update" -> envUpdate Nothing Nothing 20
+      -- default is to update last 20 release records
       _ -> liftIO $ print r
     pure sj
 
@@ -383,7 +384,8 @@ updateAlbumsPlayed a = do
   let itmp = "/tmp/__ac.jpg"
   _ <- rawSystem "curl" [iurl, "-o", itmp]
   let args = ["-j", "Albums Played", "-a", itmp, "--", "new"] <> drop 1 js
-  _ <- rawSystem "dayone2" args
+  _ <- rawSystem "dayone" args
+  print args
 
   pure ()
 

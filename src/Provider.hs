@@ -272,7 +272,8 @@ readTidalAlbums p = do
     -- tgetAlbumURL a = makeTidalURL (albumID a)
     makeTidalURL :: Int -> Text
     makeTidalURL tid =
-      T.pack $ "https://listen.tidal.com/album/" ++ show tid
+      -- T.pack $ "https://listen.tidal.com/album/" ++ show tid
+      T.pack $ "tidal://album/" ++ show tid
 
     toAlbum r =
       Album

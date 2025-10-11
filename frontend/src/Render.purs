@@ -375,7 +375,8 @@ render state = do
     Just tid -> if a.albumFormat == "Tidal" then HH.div_ [] else -- don't show if just Tidal
       HH.div [ HP.class_ $ HH.ClassName "cover-obackground1" ]
       [ HH.a
-        [ HP.href ("https://listen.tidal.com/album/" <> tid)]
+        -- [ HP.href ("https://listen.tidal.com/album/" <> tid)]
+        [ HP.href ("tidal://album/" <> tid)]
         [ HH.img
           [ HP.src (state.menu.params.muhq <> "icons/tidal-is.png")
           , HP.alt "T"
@@ -392,7 +393,8 @@ render state = do
       [ HH.a
         [ HP.href if S.take 2 amid == "l."
               then "https://music.apple.com/library/albums/" <> amid
-              else "https://music.apple.com/us/album/" <> amid
+              else "music://album/" <> amid
+              -- else "https://music.apple.com/us/album/" <> amid
         ]
         [ HH.img
           [ HP.src (state.menu.params.muhq <> "icons/am-icon.png")
