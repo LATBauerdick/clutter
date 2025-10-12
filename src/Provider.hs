@@ -19,6 +19,7 @@ module Provider (
   readFolderAids,
   updateTidalFolderAids,
   updateAMusicFolderAids,
+  extractListenedDates,
 )
 where
 
@@ -29,6 +30,7 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import qualified FromAMusic as FA (readAMusicReleases)
 import qualified FromDiscogs as FD (
+  extractListenedDates,
   readDiscogsFolders,
   readDiscogsFoldersCache,
   readDiscogsListsCache,
@@ -79,6 +81,7 @@ dToAlbum r =
     (dtags r)
     (drating r)
     (dplays r)
+    [] -- albumListenedDates - will be populated from "Listened" lists
  where
   makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
 
@@ -145,6 +148,9 @@ readFolders = do
 readDiscogsFolders :: Discogs -> IO (Map Text Int)
 readDiscogsFolders (DiscogsFile fn) = FD.readDiscogsFoldersCache fn
 readDiscogsFolders di = FD.readDiscogsFolders di
+
+extractListenedDates :: Discogs -> Map Text (Int, Vector Int) -> IO (Map Int [Text])
+extractListenedDates = FD.extractListenedDates
 
 -- populate the aids for folders from the folder+id in each Album
 -- special treatment for Tidal, Discogs, and All folders
@@ -293,7 +299,7 @@ readTidalAlbums p = do
         (dtags r)
         0
         0
-
+        [] -- albumListenedDates
   ds <- case getTidal p of
     TidalFile fn -> FT.readTidalReleasesCache fn
     _ -> FT.readTidalReleases (getTidal p)
@@ -325,6 +331,7 @@ readAMusicAlbums p = do
         (dtags r)
         0
         0
+        [] -- albumListenedDates
   ds <- FA.readAMusicReleases (getAMusic p)
   let as = toAlbum <$> ds
   -- print as

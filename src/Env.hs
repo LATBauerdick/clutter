@@ -18,6 +18,7 @@ import qualified Data.List as L (
  )
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
+import qualified Data.Text as T (find)
 import Data.Vector (Vector)
 import qualified Data.Vector as V (
   empty,
@@ -27,6 +28,7 @@ import qualified Data.Vector as V (
   toList,
  )
 import Provider (
+  extractListenedDates,
   readAMusicAlbums,
   readAlbum,
   readAlbums,
@@ -60,8 +62,6 @@ import Types (
   envGetEnvr,
   pLocList,
  )
-
-import qualified Data.Text as T (find)
 
 -- get authorization info from a text file
 getProviders :: IO (Tidal, Tidal, AMusic, Discogs, Discogs)
@@ -259,7 +259,22 @@ initInit c = do
   -- read the map of Discogs lists (still empty album ids if from API)
   lm <- readDiscogsLists dc
 
-  pure (dci, albums', fns, lm)
+  -- extract listened dates from "Listened" lists
+  putTextLn "-----------------Extracting Listened dates from lists"
+  listenedDatesMap <- extractListenedDates dc lm
+  putTextLn $ "---------------------- Found listened dates for " <> show (M.size listenedDatesMap) <> " albums"
+
+  -- update albums with listened dates
+  let as =
+        M.mapWithKey
+          ( \aid album ->
+              case M.lookup aid listenedDatesMap of
+                Just dates -> album{albumListenedDates = dates}
+                Nothing -> album
+          )
+          albums'
+
+  pure (dci, as, fns, lm)
 
 envInit :: Bool -> IO Env
 envInit c = do
@@ -291,10 +306,14 @@ envInit c = do
   _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) lists'
   let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
 
+  -- extract listened dates map
+  let listenedDatesMap = M.map albumListenedDates albums'
+
   dr <- newIORef dc
   ar <- newIORef albums'
   lr <- newIORef lists'
   lo <- newIORef allLocs
+  lds <- newIORef listenedDatesMap
   lnr <- newIORef listNames'
   sr <- newIORef "Default"
   so <- newIORef Asc
@@ -341,6 +360,7 @@ envInit c = do
       , albumsR = ar
       , listsR = lr
       , locsR = lo
+      , listenedDatesR = lds
       , listNamesR = lnr
       , tagsR = tr
       , focusR = fr
@@ -458,4 +478,5 @@ envUpdateSort msb mso = do
             _ -> Asc
       _ <- writeIORef (sortOrderR env) so
       pure so
-  pure $ EnvR am lm lcs lns sn so dc tm fs
+  lds <- readIORef (listenedDatesR env)
+  pure $ EnvR am lm lcs lds lns sn so dc tm fs

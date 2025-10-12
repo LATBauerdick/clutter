@@ -9,6 +9,7 @@
 module FromDiscogs (
   -- AppM
   readListAids,
+  readListAidsWithComments,
   -- IO
   readLists,
   readDiscogsReleases,
@@ -18,6 +19,10 @@ module FromDiscogs (
   readDiscogsListsCache,
   readDiscogsFolders,
   readDiscogsFoldersCache,
+  extractListenedDates,
+  -- Types for external use
+  WAid (..),
+  WLItems (..),
 )
 where
 
@@ -28,13 +33,14 @@ import Data.Text as T (
   breakOnEnd,
   filter,
   intercalate,
+  isSuffixOf,
   null,
   stripPrefix,
   take,
   toCaseFold,
  )
 import Data.Vector (Vector)
-import qualified Data.Vector as V (empty, fromList)
+import qualified Data.Vector as V (empty, fromList, toList)
 import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
@@ -157,12 +163,16 @@ instance FromJSON WLItems where
     d_ <- o .: "items"
     pure $ WLItems d_
 
-newtype WAid = WAid {wlaid :: Int} deriving (Show)
+data WAid = WAid
+  { wlaid :: Int
+  , wlcomment :: Maybe Text
+  } deriving (Show)
 
 instance FromJSON WAid where
   parseJSON = withObject "waid" $ \o -> do
     d_ <- o .: "id"
-    pure $ WAid d_
+    c_ <- o .:? "comment"
+    pure $ WAid d_ c_
 
 instance FromJSON WTest
 
@@ -735,6 +745,32 @@ readListAidsCache fn i = do
 readWLItemsCache :: FilePath -> IO (Either String WLItems)
 readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
 
+-- Read list items with comments (for "Listened" lists)
+readListAidsWithComments :: Discogs -> Int -> IO (Vector (Int, Maybe Text))
+readListAidsWithComments di i = do
+  let (tok, _) = getToken di
+  m <- liftIO $ newManager tlsManagerSettings
+  let dc = mkClientEnv m discogsBaseUrl
+  let query :: ClientM WLItems
+      query = discogsGetList i (Just tok) userAgent
+  res <- liftIO $ runClientM query dc
+  case res of
+    Left err -> putTextLn $ "Error: " <> show err
+    Right _ -> pure ()
+  let aids = (\WAid{wlaid = aid, wlcomment = c} -> (aid, c)) <$> V.fromList (wlitems (fromRight (WLItems []) res))
+  pure aids
+
+readListAidsWithCommentsCache :: FilePath -> Int -> IO (Vector (Int, Maybe Text))
+readListAidsWithCommentsCache fn i = do
+  putTextLn $ "-----------------Getting List " <> show i <> " with comments from Discogs Cache-----"
+  let fn' = fn <> "l" <> show i <> "-raw.json"
+  res <- readWLItemsCache fn'
+  case res of
+    Left err -> putTextLn $ "Error: " <> show err
+    Right _ -> pure ()
+  let aids = (\WAid{wlaid = aid, wlcomment = c} -> (aid, c)) <$> V.fromList (wlitems (fromRight (WLItems []) res))
+  pure aids
+
 readLists :: Discogs {-   -} -> IO (Map Text (Int, Vector Int))
 readLists di = do
   let (tok, un) = getToken di
@@ -754,3 +790,30 @@ readLists di = do
   let lm :: Map Text (Int, Vector Int)
       lm = M.fromList . map (\WList{id = i, name = n} -> (n, (i, V.empty))) $ ls
   pure lm
+
+-- Extract listened dates from "Listened" lists
+-- Looks for lists with names ending in "Listened" and extracts dates from comments
+extractListenedDates :: Discogs -> Map Text (Int, Vector Int) -> IO (Map Int [Text])
+extractListenedDates dc ls = do
+  let listenedLists = Relude.filter (isListenedList . fst) $ M.toList ls
+  allDates <- mapM (processListenedList dc) listenedLists
+  pure $ M.unionsWith (++) allDates
+ where
+  isListenedList :: Text -> Bool
+  isListenedList name = "Listened" `T.isSuffixOf` name
+
+  processListenedList :: Discogs -> (Text, (Int, Vector Int)) -> IO (Map Int [Text])
+  processListenedList di (_, (listId, _)) = do
+    case di of
+      DiscogsFile fn -> do
+        items <- readListAidsWithCommentsCache fn listId
+        pure $ buildListenedMap items
+      DiscogsSession _ _ -> do
+        items <- readListAidsWithComments di listId
+        pure $ buildListenedMap items
+
+  buildListenedMap :: Vector (Int, Maybe Text) -> Map Int [Text]
+  buildListenedMap items =
+    M.fromListWith (++)
+      . mapMaybe (\(aid, mComment) -> fmap (\c -> (aid, one c)) mComment)
+      $ V.toList items

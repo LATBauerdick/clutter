@@ -78,6 +78,7 @@ data Env = Env
   , listNamesR :: IORef (Map Text Int)
   , listsR :: IORef (Map Text (Int, Vector Int))
   , locsR :: IORef (Map Int (Text, Int)) -- lookup (location, pos) by from albumID
+  , listenedDatesR :: IORef (Map Int [Text]) -- lookup listened dates by albumID
   , sortNameR :: IORef Text
   , sortOrderR :: IORef SortOrder
   , discogsR :: IORef Discogs
@@ -107,18 +108,20 @@ envGetEnvr = do
   am <- readIORef (albumsR env)
   lm <- readIORef (listsR env)
   lcs <- readIORef (locsR env)
+  lds <- readIORef (listenedDatesR env)
   lns <- readIORef (listNamesR env)
   sn <- readIORef (sortNameR env)
   so <- readIORef (sortOrderR env)
   di <- readIORef (discogsR env)
   tm <- readIORef (tagsR env)
   fs <- readIORef (focusR env)
-  pure $ EnvR am lm lcs lns sn so di tm fs
+  pure $ EnvR am lm lcs lds lns sn so di tm fs
 
 data EnvR = EnvR
   { albums :: Map Int Album
   , lists :: Map Text (Int, Vector Int)
   , locs :: Map Int (Text, Int) -- lookup (location, pos) by from albumID
+  , listenedDates :: Map Int [Text] -- lookup listened dates by albumID
   , listNames :: Map Text Int
   , sortName :: Text
   , sortOrder :: SortOrder
@@ -163,6 +166,7 @@ data Album = Album
   , albumTags :: [Text]
   , albumRating :: Int
   , albumPlays :: Int
+  , albumListenedDates :: [Text]  -- Dates when album was listened (from "Listened" lists)
   }
   deriving (Show, Generic)
 instance Eq Album where

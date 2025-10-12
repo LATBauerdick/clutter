@@ -237,7 +237,7 @@ clutterServer =
     let aids = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) . V.fromList $ aids'
     ---------------------------------------------------------------------------------
     envr <- envUpdateSort msb mso
-    let EnvR am _ _ _ sn so _ _ _ = envr
+    let EnvR am _ _ _ _ sn so _ _ _ = envr
     let doSort = getSort env am sn
     pure . doSort so $ aids
 
