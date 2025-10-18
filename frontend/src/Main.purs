@@ -20,7 +20,7 @@ import Types (AlbumsJ, State, AlbumList(..), MenuState, MenuParams, ParamsJ, Sor
 import AlbumComponent (aComponent)
 
 baseUrl :: String
-baseUrl = "http://lmini:8080/"
+baseUrl = "/"
 
 main :: Effect Unit
 main = HA.runHalogenAff do
