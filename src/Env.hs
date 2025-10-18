@@ -228,19 +228,20 @@ updateTags a m =
 --
 initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
 initInit c = do
-  (tidal, _tidal, aMusic, dci, dci_) <- getProviders
+  (tidal, tidalCached, aMusic, dci, dci_) <- getProviders
 
+  let t = if c then tidalCached else tidal
   let dc = if c then dci_ else dci
   if c
-    then putTextLn "-----------------using cached Discogs collection info"
-    else putTextLn "-----------------reading Discogs collection info from the web"
+    then putTextLn "-----------------using cached Discogs and Tidal collection info"
+    else putTextLn "-----------------reading Discogs and Tidal collection info from the web"
 
   -- read the map of Discogs folder names and ids
   -- fns :: Map Text Int
   fns <- readDiscogsFolders dc
 
   -- vda/vma/vta :: Vector of Album
-  vta <- readTidalAlbums _tidal
+  vta <- readTidalAlbums t
   vma <- readAMusicAlbums aMusic
   vda <- liftIO $ readDiscogsAlbums dc fns
 
