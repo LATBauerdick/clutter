@@ -18,5 +18,6 @@ in myHaskellPackages.shellFor {
         python310Packages.typing-extensions
         python310Packages.isodate
         python310Packages.mpegdash
+        python310Packages.pyaes
       ];
   }

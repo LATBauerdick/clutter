@@ -8,7 +8,7 @@
 # needs git clone https://github.com/tamland/python-tidal
 
 #####!/usr/bin/env python3
-
+#### this is outdated, now works with the latest versions of tidalapi
 #### How To get the tidalapi package vs 0.7.0:
 ####   python3 -m pip install git+https://github.com/tamland/python-tidal@ee120d94d897f6f6ee644fd835a35fb68942b331
 #### or check out from github:

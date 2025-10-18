@@ -59,6 +59,7 @@ instance ToJSON MenuParams
 
 pLocList :: Text -> Bool -- lists with location info
 pLocList n = case viaNonEmpty head . words $ n of
+  Just "Basement" -> True
   Just "Box" -> True
   Just "Cube" -> True
   Just "Shelf" -> True

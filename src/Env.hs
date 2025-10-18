@@ -87,7 +87,7 @@ getProviders = do
 
 envTidalConnect :: Int -> AppM Env
 envTidalConnect _nalbums = do
-  (tidal, _, aMusic, _, _) <- liftIO getProviders
+  (_, tidal, aMusic, _, _) <- liftIO getProviders
 
   env <- ask
   oldAlbums <- readIORef $ albumsR env
@@ -240,7 +240,7 @@ initInit c = do
   fns <- readDiscogsFolders dc
 
   -- vda/vma/vta :: Vector of Album
-  vta <- readTidalAlbums tidal
+  vta <- readTidalAlbums _tidal
   vma <- readAMusicAlbums aMusic
   vda <- liftIO $ readDiscogsAlbums dc fns
 

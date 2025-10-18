@@ -29,7 +29,7 @@ where
 import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.!=), (.:), (.:?))
 import Data.Char as Ch (isDigit)
 import qualified Data.Map as M
-import Data.Text as T (
+import qualified Data.Text as T (
   breakOnEnd,
   filter,
   intercalate,
@@ -166,7 +166,8 @@ instance FromJSON WLItems where
 data WAid = WAid
   { wlaid :: Int
   , wlcomment :: Maybe Text
-  } deriving (Show)
+  }
+  deriving (Show)
 
 instance FromJSON WAid where
   parseJSON = withObject "waid" $ \o -> do
@@ -347,7 +348,7 @@ getR lns dr = r
     _ -> Nothing
   tags :: [Text]
   tags =
-    mapMaybe (stripPrefix "#")
+    mapMaybe (T.stripPrefix "#")
       . words
       $ fromMaybe "" nts
   -- parse location text (field 4), look for T<tidalID> and A<AppleMusicID>
@@ -428,7 +429,7 @@ getR lns dr = r
                           else Just t
                   )
                 . mapMaybe
-                  ( \t -> case stripPrefix "A" t of
+                  ( \t -> case T.stripPrefix "A" t of
                       Nothing -> Just t
                       Just ta ->
                         if T.null (T.filter (not . Ch.isDigit) ta) || (T.take 2 ta == "l.")
@@ -436,7 +437,7 @@ getR lns dr = r
                           else Just t
                   )
                 . mapMaybe
-                  ( \t -> case stripPrefix "Q" t of
+                  ( \t -> case T.stripPrefix "Q" t of
                       Nothing -> Just t
                       Just _ -> Nothing
                   )
@@ -793,23 +794,24 @@ readLists di = do
 
 -- Extract listened dates from "Listened" lists
 -- Looks for lists with names ending in "Listened" and extracts dates from comments
+-- works of a Map of (list ids,  vector of album IDs), indexed by list name
 extractListenedDates :: Discogs -> Map Text (Int, Vector Int) -> IO (Map Int [Text])
 extractListenedDates dc ls = do
-  let listenedLists = Relude.filter (isListenedList . fst) $ M.toList ls
-  allDates <- mapM (processListenedList dc) listenedLists
+  let lls = filter (isListenedList . fst) $ M.toList ls
+  allDates <- mapM (processListenedList dc) lls
   pure $ M.unionsWith (++) allDates
  where
   isListenedList :: Text -> Bool
   isListenedList name = "Listened" `T.isSuffixOf` name
 
   processListenedList :: Discogs -> (Text, (Int, Vector Int)) -> IO (Map Int [Text])
-  processListenedList di (_, (listId, _)) = do
-    case di of
+  processListenedList dc' (_, (listId, _)) = do
+    case dc' of
       DiscogsFile fn -> do
         items <- readListAidsWithCommentsCache fn listId
         pure $ buildListenedMap items
       DiscogsSession _ _ -> do
-        items <- readListAidsWithComments di listId
+        items <- readListAidsWithComments dc' listId
         pure $ buildListenedMap items
 
   buildListenedMap :: Vector (Int, Maybe Text) -> Map Int [Text]
