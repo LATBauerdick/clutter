@@ -28,5 +28,4 @@ generated-docs
 .venv
 .direnv
 frontend/index.js
-static/index.js
 AlbumsPlayed

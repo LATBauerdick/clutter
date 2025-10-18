@@ -99,10 +99,7 @@ renderAlbumsView ln fs aids = do
 rbIndex :: Int -> L.Html ()
 rbIndex idx = do
   L.div_ [L.class_ "idx"]
-    $
-    -- L.a_ [L.href_ ("http://lmini:8080/album/" <> show (albumID a))] $
-    -- L.a_ [L.href_ (albumURL a)] $
-    " "
+    $ " "
     <> show idx
     <> " "
 
