@@ -26,7 +26,7 @@ session = tidalapi.Session()
 session.login_oauth_simple()
 # then print out the access_token etc
 #print(session.user.username)
-print(session.user.id)
+#print(session.user.id)
 print(session.session_id)
 print(session.country_code)
 print(session.access_token)

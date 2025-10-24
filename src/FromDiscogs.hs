@@ -20,9 +20,6 @@ module FromDiscogs (
   readDiscogsFolders,
   readDiscogsFoldersCache,
   extractListenedDates,
-  -- Types for external use
-  WAid (..),
-  WLItems (..),
 )
 where
 
@@ -34,11 +31,14 @@ import qualified Data.Text as T (
   filter,
   intercalate,
   isSuffixOf,
+  lines,
   null,
   stripPrefix,
   take,
   toCaseFold,
+  unpack,
  )
+import Data.Time (Day, defaultTimeLocale, parseTimeM)
 import Data.Vector (Vector)
 import qualified Data.Vector as V (empty, fromList, toList)
 import GHC.Generics ()
@@ -156,24 +156,45 @@ newtype WRelease' = WRelease'
   }
   deriving (Show, Generic)
 
-newtype WLItems = WLItems {wlitems :: [WAid]} deriving (Show, Generic)
+-- List Items
+newtype WLItems = WLItems {wlitems :: [WLAid]} deriving (Show, Generic)
 
 instance FromJSON WLItems where
   parseJSON = withObject "wlitems" $ \o -> do
     d_ <- o .: "items"
     pure $ WLItems d_
 
-data WAid = WAid
+data WLAid = WLAid
   { wlaid :: Int
   , wlcomment :: Maybe Text
   }
   deriving (Show)
 
-instance FromJSON WAid where
-  parseJSON = withObject "waid" $ \o -> do
+instance FromJSON WLAid where
+  parseJSON = withObject "wlaid" $ \o -> do
     d_ <- o .: "id"
     c_ <- o .:? "comment"
-    pure $ WAid d_ c_
+    pure $ WLAid d_ c_
+
+-- WantList Items
+data WWList = WWList
+  { pagination :: WPagination
+  , wants :: [WWItem]
+  }
+  deriving (Show, Generic)
+instance FromJSON WWList
+
+data WWItem = WWItem
+  { wwaid :: Int
+  , wwnotes :: Maybe Text
+  }
+  deriving (Show)
+
+instance FromJSON WWItem where
+  parseJSON = withObject "wants" $ \o -> do
+    d1 <- o .: "id"
+    d2 <- o .: "notes"
+    pure $ WWItem d1 d2
 
 instance FromJSON WTest
 
@@ -662,7 +683,10 @@ readDiscogsListsCache fn = do
   -- let lm :: [ ( Text, (Int, Vector Int) ) ]
   lm <- traverse (getAids fn) ls
 
-  pure $ M.fromList lm
+  -- Wantlist
+  wl <- readWantListAidsCache fn
+
+  pure . M.fromList $ lm <> one ("Want", (7, wl))
 
 foldersFromDiscogsApi :: Discogs -> IO (Either String WFolders)
 foldersFromDiscogsApi di = do
@@ -743,6 +767,28 @@ readListAidsCache fn i = do
   let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
   pure aids
 
+readWantListAidsCache :: FilePath -> IO (Vector Int)
+readWantListAidsCache fn = do
+  putTextLn "-----------------Getting Want List from Discogs Cache-----"
+  -- res <- runClientM ( discogsGetList i ( Just tok ) userAgent ) dc
+  let fn' = fn <> "wants1.json"
+  res <- readWWListCache fn'
+  case res of
+    Left err -> putTextLn $ "Reading Wantlist: " <> show err
+    Right _ -> pure ()
+  let wls :: [WWItem]
+      wls = case res of
+        Left _ -> []
+        Right wl -> wants wl
+  let aids = wwaid <$> V.fromList wls
+  let notess = wwnotes <$> V.fromList wls
+  print aids
+  print notess
+  pure aids
+
+readWWListCache :: FilePath -> IO (Either String WWList)
+readWWListCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WWList)
+
 readWLItemsCache :: FilePath -> IO (Either String WLItems)
 readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
 
@@ -758,7 +804,7 @@ readListAidsWithComments di i = do
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
-  let aids = (\WAid{wlaid = aid, wlcomment = c} -> (aid, c)) <$> V.fromList (wlitems (fromRight (WLItems []) res))
+  let aids = (\WLAid{wlaid = aid, wlcomment = c} -> (aid, c)) <$> V.fromList (wlitems (fromRight (WLItems []) res))
   pure aids
 
 readListAidsWithCommentsCache :: FilePath -> Int -> IO (Vector (Int, Maybe Text))
@@ -769,7 +815,7 @@ readListAidsWithCommentsCache fn i = do
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
-  let aids = (\WAid{wlaid = aid, wlcomment = c} -> (aid, c)) <$> V.fromList (wlitems (fromRight (WLItems []) res))
+  let aids = (\WLAid{wlaid = aid, wlcomment = c} -> (aid, c)) <$> V.fromList (wlitems (fromRight (WLItems []) res))
   pure aids
 
 readLists :: Discogs {-   -} -> IO (Map Text (Int, Vector Int))
@@ -795,7 +841,7 @@ readLists di = do
 -- Extract listened dates from "Listened" lists
 -- Looks for lists with names ending in "Listened" and extracts dates from comments
 -- works of a Map of (list ids,  vector of album IDs), indexed by list name
-extractListenedDates :: Discogs -> Map Text (Int, Vector Int) -> IO (Map Int [Text])
+extractListenedDates :: Discogs -> Map Text (Int, Vector Int) -> IO (Map Int [Day])
 extractListenedDates dc ls = do
   let lls = filter (isListenedList . fst) $ M.toList ls
   allDates <- mapM (processListenedList dc) lls
@@ -804,7 +850,7 @@ extractListenedDates dc ls = do
   isListenedList :: Text -> Bool
   isListenedList name = "Listened" `T.isSuffixOf` name
 
-  processListenedList :: Discogs -> (Text, (Int, Vector Int)) -> IO (Map Int [Text])
+  processListenedList :: Discogs -> (Text, (Int, Vector Int)) -> IO (Map Int [Day])
   processListenedList dc' (_, (listId, _)) = do
     case dc' of
       DiscogsFile fn -> do
@@ -814,8 +860,17 @@ extractListenedDates dc ls = do
         items <- readListAidsWithComments dc' listId
         pure $ buildListenedMap items
 
-  buildListenedMap :: Vector (Int, Maybe Text) -> Map Int [Text]
+  buildListenedMap :: Vector (Int, Maybe Text) -> Map Int [Day]
   buildListenedMap items =
     M.fromListWith (++)
-      . mapMaybe (\(aid, mComment) -> fmap (\c -> (aid, one c)) mComment)
+      . mapMaybe (\(aid, mComment) -> fmap (\c -> (aid, parseDates c)) mComment)
       $ V.toList items
+
+  -- parseComment :: Text -> [] Text
+  -- parseComment = filter (not . T.null) . T.lines
+
+  parseDates :: Text -> [Day]
+  parseDates text = fromMaybe [] $ mapM parseDate (T.lines text)
+   where
+    parseDate :: Text -> Maybe Day
+    parseDate dateText = parseTimeM True defaultTimeLocale "%Y-%m-%d" (T.unpack dateText)

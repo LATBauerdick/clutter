@@ -23,6 +23,7 @@ module Types (
 ) where
 
 import qualified Data.Map.Strict as M
+import Data.Time (Day)
 import Data.Vector (Vector)
 import Relude
 import Servant (Handler)
@@ -79,7 +80,7 @@ data Env = Env
   , listNamesR :: IORef (Map Text Int)
   , listsR :: IORef (Map Text (Int, Vector Int))
   , locsR :: IORef (Map Int (Text, Int)) -- lookup (location, pos) by from albumID
-  , listenedDatesR :: IORef (Map Int [Text]) -- lookup listened dates by albumID
+  , listenedDatesR :: IORef (Map Int [Day]) -- lookup listened dates by albumID
   , sortNameR :: IORef Text
   , sortOrderR :: IORef SortOrder
   , discogsR :: IORef Discogs
@@ -122,7 +123,7 @@ data EnvR = EnvR
   { albums :: Map Int Album
   , lists :: Map Text (Int, Vector Int)
   , locs :: Map Int (Text, Int) -- lookup (location, pos) by from albumID
-  , listenedDates :: Map Int [Text] -- lookup listened dates by albumID
+  , listenedDates :: Map Int [Day] -- lookup listened dates by albumID
   , listNames :: Map Text Int
   , sortName :: Text
   , sortOrder :: SortOrder
@@ -167,7 +168,7 @@ data Album = Album
   , albumTags :: [Text]
   , albumRating :: Int
   , albumPlays :: Int
-  , albumListenedDates :: [Text]  -- Dates when album was listened (from "Listened" lists)
+  , albumListenedDates :: [Day] -- Dates when album was listened (from "Listened" lists)
   }
   deriving (Show, Generic)
 instance Eq Album where

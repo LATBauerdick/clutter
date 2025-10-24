@@ -227,12 +227,12 @@ updateTags a m =
 -- we do not yet have the App Monad, so this is in the IO Monad instead
 --
 initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
-initInit c = do
+initInit cached = do
   (tidal, tidalCached, aMusic, dci, dci_) <- getProviders
 
-  let t = if c then tidalCached else tidal
-  let dc = if c then dci_ else dci
-  if c
+  let t = if cached then tidalCached else tidal
+  let dc = if cached then dci_ else dci
+  if cached
     then putTextLn "-----------------using cached Discogs and Tidal collection info"
     else putTextLn "-----------------reading Discogs and Tidal collection info from the web"
 
@@ -250,13 +250,6 @@ initInit c = do
         M.fromList $
           (\a -> (albumID a, a)) <$> V.toList (vda <> vta <> vma)
 
-  -- create the Tags index
-  putTextLn "-----------------Updating Tags index"
-  let tagsMap :: Map Text [Int]
-      tagsMap = foldr updateTags M.empty (M.elems albums')
-  putTextLn "---------------------- list of Tags found: "
-  print (M.keys tagsMap)
-
   -- read the map of Discogs lists (still empty album ids if from API)
   lm <- readDiscogsLists dc
 
@@ -264,18 +257,19 @@ initInit c = do
   putTextLn "-----------------Extracting Listened dates from lists"
   listenedDatesMap <- extractListenedDates dc lm
   putTextLn $ "---------------------- Found listened dates for " <> show (M.size listenedDatesMap) <> " albums"
-
+  print (M.lookup 3300 listenedDatesMap)
+  --
   -- update albums with listened dates
-  let as =
-        M.mapWithKey
-          ( \aid album ->
-              case M.lookup aid listenedDatesMap of
-                Just dates -> album{albumListenedDates = dates}
-                Nothing -> album
-          )
-          albums'
+  -- let as =
+  --       M.mapWithKey
+  --         ( \aid album ->
+  --             case M.lookup aid listenedDatesMap of
+  --               Just dates -> album{albumListenedDates = dates}
+  --               Nothing -> album
+  --         )
+  --         albums'
 
-  pure (dci, as, fns, lm)
+  pure (dci, albums', fns, lm)
 
 envInit :: Bool -> IO Env
 envInit c = do
@@ -297,6 +291,8 @@ envInit c = do
   putTextLn "-------------- Updating Tags index"
   let tagsMap :: Map Text [Int]
       tagsMap = foldr updateTags M.empty (M.elems albums')
+  putTextLn "---------------------- list of Tags found: "
+  print (M.keys tagsMap)
 
   let fm :: Map Text (Int, Vector Int)
       fm = readFolderAids fns albums'

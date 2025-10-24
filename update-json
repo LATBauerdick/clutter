@@ -8,11 +8,11 @@ TID=$(sed '5!d' ../tok.dat)
 TCC=$(sed '7!d' ../tok.dat)
 TDT=$(sed '8!d' ../tok.dat)
 
-echo $TOK
-echo $USR
-echo $TID
-echo $TCC
-echo $TDT
+#echo $TOK
+#echo $USR
+#echo $TID
+#echo $TCC
+#echo $TDT
 
 curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=1&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw1.json
 curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=2&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw2.json
@@ -21,11 +21,13 @@ curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=4&pe
 
 
 curl "https://api.discogs.com/users/$USR/collection/folders" -H "Authorization: Discogs token=$TOK" > folders-raw.json
+
 curl "https://api.discogs.com/users/$USR/lists" -H "Authorization: Discogs token=$TOK" > lists-raw.json
-
 cat lists-raw.json | jq -r '.lists[] | {id} | join("\t")' > all-list-ids
-
 for i in $(cat all-list-ids); do curl "https://api.discogs.com/lists/$i" -H "Authorization: Discogs token=$TOK" > l$i-raw.json; done
+
+# Want list
+curl "https://api.discogs.com/users/$USR/wants?page=1&per_page=500" -H "Authorization: Discogs token=$TOK" > wants1.json
 
 # Tidal
 curl -H "Authorization: Bearer $TDT"  "https://api.tidalhifi.com/v1/users/$TID/favorites/albums/?countryCode=$TCC&limit=9999"  > traw.json
