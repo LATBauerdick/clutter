@@ -34,11 +34,10 @@ import Provider (
   readAlbums,
   readDiscogsAlbums,
   readDiscogsFolders,
+  readDiscogsListAids,
   readDiscogsLists,
   readFolderAids,
   readFolders,
-  readListAids,
-  readLists,
   readTidalAlbums,
   updateAMusicFolderAids,
   updateTidalFolderAids,
@@ -59,6 +58,7 @@ import Types (
   SortOrder (..),
   Tidal (..),
   TidalInfo (..),
+  envGetDiscogs,
   envGetEnvr,
   pLocList,
  )
@@ -87,7 +87,8 @@ getProviders = do
 
 envTidalConnect :: Int -> AppM Env
 envTidalConnect _nalbums = do
-  (_, tidal, aMusic, _, _) <- liftIO getProviders
+  -- (_, tidal, aMusic, _, _) <- liftIO getProviders
+  (_, tidal, aMusic, dci, _) <- liftIO getProviders
 
   env <- ask
   oldAlbums <- readIORef $ albumsR env
@@ -107,7 +108,7 @@ envTidalConnect _nalbums = do
   print (M.keys tagsMap)
 
   -- reread Discogs lists info
-  lm <- readLists
+  lm <- liftIO $ readDiscogsLists dci
   -- reread folder album ids
   let fm :: Map Text (Int, Vector Int)
       fm = readFolderAids newFolders allAlbums
@@ -198,7 +199,8 @@ envUpdate _tok _un nreleases = do
   print (M.keys tagsMap)
 
   -- reread Discogs lists info
-  lm <- readLists
+  dci <- envGetDiscogs
+  lm <- liftIO $ readDiscogsLists dci
   -- reread folder album ids
   let fm :: Map Text (Int, Vector Int)
       fm = readFolderAids newFolders allAlbums
@@ -380,7 +382,7 @@ getList' ln = do
   let (lid, aids') = fromMaybe (0, V.empty) (M.lookup ln ls')
   if V.null aids'
     then do
-      aids <- readListAids lid
+      aids <- readDiscogsListAids lid
       -- update location info in albums
       --   go through this list and update location in albums
       -- am <- liftIO ( readIORef (albumsR env) )
@@ -432,7 +434,7 @@ envUpdateAlbum aid = do
       -- update lists and folders
       newFolders <- readFolders
       -- reread Discogs lists info
-      lm <- readLists
+      lm <- liftIO $ readDiscogsLists dc
       -- reread folder album ids
       let fm :: Map Text (Int, Vector Int)
           fm = readFolderAids newFolders am

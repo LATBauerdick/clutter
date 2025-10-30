@@ -4,11 +4,11 @@
 
 module Provider (
   -- AppM
-  readListAids,
+  readDiscogsListAids,
   readAlbum,
   readAlbums,
   readFolders,
-  readLists,
+  -- readLists,
   -- IO
   readDiscogsAlbums,
   readDiscogsLists,
@@ -34,12 +34,12 @@ import qualified FromDiscogs as FD (
   extractListenedDates,
   readDiscogsFolders,
   readDiscogsFoldersCache,
+  readDiscogsListAids,
+  readDiscogsLists,
   readDiscogsListsCache,
   readDiscogsRelease,
   readDiscogsReleases,
   readDiscogsReleasesCache,
-  readListAids,
-  readLists,
  )
 import qualified FromTidal as FT (readTidalReleases, readTidalReleasesCache)
 import Relude
@@ -86,16 +86,17 @@ dToAlbum r =
  where
   makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
 
-readLists :: AppM (Map Text (Int, Vector Int))
-readLists = do
+-- was readLists
+readDiscogsLists' :: AppM (Map Text (Int, Vector Int))
+readDiscogsLists' = do
   p <- envGetDiscogs
   case p of
-    DiscogsFile fn -> error $ "Bug: Provider Discogs does not read lists from files " <> toText fn
-    _ -> liftIO $ FD.readLists p
+    DiscogsFile fn -> liftIO $ FD.readDiscogsListsCache fn -- error $ "Bug: Provider Discogs does not read lists from files " <> toText fn
+    _ -> liftIO $ FD.readDiscogsLists p
 
 readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector Int))
 readDiscogsLists (DiscogsFile fn) = FD.readDiscogsListsCache fn
-readDiscogsLists di = FD.readLists di
+readDiscogsLists di = FD.readDiscogsLists di
 
 readAlbum :: Int -> AppM (Maybe Album)
 readAlbum aid = do
@@ -130,14 +131,14 @@ readDiscogsAlbums di lns = do
   putTextLn $ "Total # Discogs Albums read: " <> show (length as)
   pure $ V.fromList as
 
-readListAids :: Int -> AppM (Vector Int)
-readListAids i = do
+readDiscogsListAids :: Int -> AppM (Vector Int)
+readDiscogsListAids i = do
   di <- envGetDiscogs
   ln <- envGetListName i
   putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
   case di of
     DiscogsFile _ -> pure V.empty -- maybe not ok
-    _ -> liftIO $ FD.readListAids di i
+    _ -> liftIO $ FD.readDiscogsListAids di i
 
 readFolders :: AppM (Map Text Int)
 readFolders = do

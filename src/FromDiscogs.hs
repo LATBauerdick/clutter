@@ -8,10 +8,10 @@
 
 module FromDiscogs (
   -- AppM
-  readListAids,
+  readDiscogsListAids,
   readListAidsWithComments,
   -- IO
-  readLists,
+  -- readLists,
   readDiscogsReleases,
   readDiscogsReleasesCache,
   readDiscogsRelease,
@@ -288,6 +288,17 @@ type DiscogsAPI =
       -- :> Header "Authorization: Discogs token" Token
       :> Header "User-Agent" UserAgent
       :> Get '[JSON] WReleases
+    -- Get want list items
+    -- "https://api.discogs.com/users/$USR/wants?page=1&per_page=500" -H "Authorization: Discogs token=$TOK"
+    :<|> "users"
+      :> Capture "name" UserName
+      :> "wants"
+      :> QueryParam "page" Int
+      :> QueryParam "per_page" Int
+      :> QueryParam "token" Token
+      -- :> Header "Authorization: Discogs token" Token
+      :> Header "User-Agent" UserAgent
+      :> Get '[JSON] WWList
 
 --
 -- Get Folder items
@@ -332,9 +343,16 @@ discogsGetRelease ::
   Maybe Token ->
   Maybe UserAgent ->
   ClientM WReleases
+discogsGetWantList ::
+  UserName ->
+  Maybe Int -> -- page# 1..
+  Maybe Int -> -- per page, max 500?
+  Maybe Token ->
+  Maybe UserAgent ->
+  ClientM WWList
 discogsAPI :: Proxy DiscogsAPI
 discogsAPI = Proxy
-discogsGetReleases :<|> discogsGetFolders :<|> discogsGetLists :<|> discogsGetList :<|> discogsGetRelease = client discogsAPI
+discogsGetReleases :<|> discogsGetFolders :<|> discogsGetLists :<|> discogsGetList :<|> discogsGetRelease :<|> discogsGetWantList = client discogsAPI
 
 getWr :: WReleases -> [WRelease]
 getWr wr = rs
@@ -660,7 +678,13 @@ readDiscogsLists di = do
 
   let lm :: [(Text, (Int, Vector Int))]
       lm = (\WList{id = i, name = n} -> (n, (i, V.empty))) <$> ls
-  pure $ M.fromList lm
+
+  -- Wantlist
+  wl <- readWantListAids di
+
+  pure . M.fromList $ lm <> one ("Want", (7, wl))
+
+-- pure $ M.fromList lm
 
 listsFromCacheFile :: FilePath -> IO (Either String WLists)
 listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") :: IO (Either String WLists)
@@ -739,8 +763,8 @@ readDiscogsFoldersCache fn = do
 -- we're treating Discog folders like lists,
 -- also assuming that their IDs are unique
 -- NB: the JSON required to extract album id info is different between them
-readListAids :: Discogs -> Int -> IO (Vector Int)
-readListAids di i = do
+readDiscogsListAids :: Discogs -> Int -> IO (Vector Int)
+readDiscogsListAids di i = do
   let (tok, _) = getToken di
   m <- liftIO $ newManager tlsManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
@@ -765,6 +789,28 @@ readListAidsCache fn i = do
     Right _ -> pure ()
   -- F.traverse_ print $ take 5 . wlitems $ ls
   let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
+  pure aids
+
+readWantListAids :: Discogs -> IO (Vector Int)
+readWantListAids di = do
+  putTextLn "-----------------Getting Want List from Discogs-----"
+  let (tok, un) = getToken di
+  m <- liftIO $ newManager tlsManagerSettings
+  let dc = mkClientEnv m discogsBaseUrl
+  let query :: ClientM WWList
+      query = discogsGetWantList un (Just 1) (Just 500) (Just tok) userAgent
+  res <- liftIO $ runClientM query dc
+  case res of
+    Left err -> putTextLn $ "Reading Wantlist: " <> show err
+    Right _ -> pure ()
+  let wls :: [WWItem]
+      wls = case res of
+        Left _ -> []
+        Right wl -> wants wl
+  let aids = wwaid <$> V.fromList wls
+  let notess = wwnotes <$> V.fromList wls
+  print aids
+  print notess
   pure aids
 
 readWantListAidsCache :: FilePath -> IO (Vector Int)
@@ -818,25 +864,29 @@ readListAidsWithCommentsCache fn i = do
   let aids = (\WLAid{wlaid = aid, wlcomment = c} -> (aid, c)) <$> V.fromList (wlitems (fromRight (WLItems []) res))
   pure aids
 
-readLists :: Discogs {-   -} -> IO (Map Text (Int, Vector Int))
-readLists di = do
-  let (tok, un) = getToken di
-  m <- newManager tlsManagerSettings -- defaultManagerSettings
-  let dc = mkClientEnv m discogsBaseUrl
-  let query :: ClientM WLists
-      query = discogsGetLists un (Just tok) userAgent
-  putTextLn "-----------------reading Lists from Discogs-----"
-  res <- runClientM query dc
-  case res of
-    Left err -> putTextLn $ "Error: " <> show err
-    Right _ -> pure ()
-  let ls = case res of
-        Left _ -> []
-        Right wls -> lists wls
-  -- map with all lists
-  let lm :: Map Text (Int, Vector Int)
-      lm = M.fromList . map (\WList{id = i, name = n} -> (n, (i, V.empty))) $ ls
-  pure lm
+-- readLists :: Discogs {-   -} -> IO (Map Text (Int, Vector Int))
+-- readLists di = do
+--   let (tok, un) = getToken di
+--   m <- newManager tlsManagerSettings -- defaultManagerSettings
+--   let dc = mkClientEnv m discogsBaseUrl
+--   let query :: ClientM WLists
+--       query = discogsGetLists un (Just tok) userAgent
+--   putTextLn "-----------------reading Lists from Discogs-----"
+--   res <- runClientM query dc
+--   case res of
+--     Left err -> putTextLn $ "Error: " <> show err
+--     Right _ -> pure ()
+--   let ls = case res of
+--         Left _ -> []
+--         Right wls -> lists wls
+--   -- map with all lists
+--   let lm :: [(Text, (Int, Vector Int))]
+--       lm = (\WList{id = i, name = n} -> (n, (i, V.empty))) <$> ls
+--
+--   -- Wantlist
+--   wl <- readWantListAids di
+--
+--   pure . M.fromList $ lm <> one ("Want", (7, wl))
 
 -- Extract listened dates from "Listened" lists
 -- Looks for lists with names ending in "Listened" and extracts dates from comments

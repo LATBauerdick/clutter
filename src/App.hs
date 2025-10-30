@@ -37,6 +37,7 @@ import Network.Wai.Handler.Warp
 import Relude
 import Render (renderAlbumJournal, renderAlbumText, renderAlbumView, renderAlbumsView, renderApp)
 import Servant
+import System.Exit (ExitCode (..))
 import System.Process (rawSystem)
 import Types (Album, AppM, Env (..), EnvR (..), MenuParams (..), envGetEnvr)
 
@@ -382,9 +383,16 @@ updateAlbumsPlayed a = do
   print js
   let iurl = fromMaybe "!!error!!" $ viaNonEmpty head js
   let itmp = "/tmp/__ac.jpg"
-  _ <- rawSystem "curl" [iurl, "-o", itmp]
+  exitCode <- rawSystem "curl" [iurl, "-o", itmp]
+  unless (exitCode == ExitSuccess) $
+    putTextLn $
+      "ERROR getting cover img: curl failed with exit code: " <> show exitCode
+
   let args = ["-j", "Albums Played", "-a", itmp, "--", "new"] <> drop 1 js
-  _ <- rawSystem "dayone" args
+  exitCode' <- rawSystem "dayone" args
+  unless (exitCode' == ExitSuccess) $
+    putTextLn $
+      "ERROR adding to DayOne.app: failed with exit code: " <> show exitCode
   print args
 
   pure ()
