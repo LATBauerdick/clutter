@@ -134,6 +134,7 @@ data EnvR = EnvR
 
 data Release = Release
   { daid :: Int
+  , dinst :: Int
   , dtitle :: !Text
   , dartists :: [Text]
   , dreleased :: !Text
@@ -153,6 +154,7 @@ data Release = Release
 
 data Album = Album
   { albumID :: Int
+  , albumInst :: Int
   , albumTitle :: Text
   , albumArtist :: Text
   , albumReleased :: Text

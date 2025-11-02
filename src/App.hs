@@ -18,8 +18,10 @@ import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 import Control.Monad (foldM)
 import qualified Data.IntSet as Set
 import qualified Data.Map.Strict as M
-import Data.Text as T (stripPrefix, unlines, unpack)
+import Data.Text as T (replace, stripPrefix, unlines, unpack)
 import Data.Text.IO as TIO (writeFile)
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
 import qualified Data.Vector as V
 import Env (
   envGetTag,
@@ -38,10 +40,25 @@ import Relude
 import Render (renderAlbumJournal, renderAlbumText, renderAlbumView, renderAlbumsView, renderApp)
 import Servant
 import System.Exit (ExitCode (..))
-import System.Process (rawSystem)
-import Types (Album, AppM, Env (..), EnvR (..), MenuParams (..), envGetEnvr)
+import System.Process (rawSystem, readProcess)
+import Types (
+  Album (..),
+  AppM,
+  Discogs (..),
+  Env (..),
+  EnvR (..),
+  MenuParams (..),
+  envGetDiscogs,
+  envGetEnvr,
+ )
 
-import Data.Aeson (ToJSON (..))
+import Data.Aeson (FromJSON (..), ToJSON (..), eitherDecode, withObject, (.!=), (.:?))
+
+newtype WantsJ = WantsJ {wnotes :: Text} deriving (Show, Generic)
+instance FromJSON WantsJ where
+  parseJSON = withObject "wants" $ \o -> do
+    wnotes_ <- o .:? "notes" .!= ""
+    pure $ WantsJ wnotes_
 
 data HTML
 
@@ -309,7 +326,7 @@ clutterServer =
   serveAlbump i = do
     liftIO $ print ("-------serveAlbump " :: Text, i)
     ma <- envUpdateAlbum i
-    liftIO $ maybe (print ("no Album" :: Text)) updateAlbumsPlayed ma
+    maybe (print ("no Album" :: Text)) updateAlbumsPlayed ma
     let aj = case ma of
           Just a -> AlbumJ{aid = i, album = Just a}
           _ -> AlbumJ{aid = 0, album = Nothing}
@@ -361,35 +378,114 @@ clutterServer =
     html <- renderAlbumsView ln [] aids
     pure . RawHtml $ L.renderBS html
 
-updateAlbumsPlayed :: Album -> IO ()
+updateAlbumsPlayed :: Album -> AppM ()
 updateAlbumsPlayed a = do
   --
   -- add a Note in Obsidian
   -- assumes that the Obsidian Vault is linked to `./AlbumsPlayed`
-  now <- getZonedTime
+  now <- liftIO getZonedTime
   let ts = renderAlbumText a now
 
   let fn = fromMaybe "!!error!!" $ viaNonEmpty head ts
   let pathName = "AlbumsPlayed/" <> fn <> ".md"
   putTextLn ("-----updating albums played: " <> pathName)
-  TIO.writeFile (T.unpack pathName) (T.unlines $ drop 1 ts)
+  liftIO $ TIO.writeFile (T.unpack pathName) (T.unlines $ drop 1 ts)
   --
   -- enter a journal entry in Day One
   -- enable Day One CLI w/ `sudo bash /Applications/Day\ One.app/Contents/Resources/install_cli.sh`
   -- make sure Journal named "Albums Played" does already exist
   --  let ns = renderAlbumDayOne a
   let js = map T.unpack $ renderAlbumJournal a now
-  putTextLn "-----enter a journal entry into Day One"
+  putTextLn "-----add entry into Day One Journal Albums Played, file in AlbumsPlayed, add to Discogs Want List"
   print js
   let iurl = fromMaybe "!!error!!" $ viaNonEmpty head js
   let itmp = "/tmp/__ac.jpg"
-  exitCode <- rawSystem "curl" [iurl, "-o", itmp]
+  exitCode <- liftIO $ rawSystem "curl" [iurl, "-o", itmp]
   unless (exitCode == ExitSuccess) $
     putTextLn $
       "ERROR getting cover img: curl failed with exit code: " <> show exitCode
 
+  DiscogsSession ttok tu <- envGetDiscogs
+
+  let taid = show $ albumID a
+  let tinst = show $ albumInst a
+  let tpls = case albumPlays a of
+        6 -> "" -- ????LATB should be a configuration parameter
+        _ -> show $ 1 + albumPlays a
+
+  -- see if this release is on Want list, and get current notes
+  res <-
+    ( eitherDecode . TLE.encodeUtf8 . TL.pack
+        <$> liftIO
+          ( readProcess
+              "curl"
+              [ "-X"
+              , "PUT"
+              , "-H"
+              , "Authorization: Discogs token=" <> unpack ttok
+              , "-H"
+              , "Content-Type: application/json; charset=utf-8"
+              , "https://api.discogs.com/users/" <> unpack tu <> "/wants/" <> unpack taid
+              ]
+              ""
+          )
+    ) ::
+      AppM (Either String WantsJ)
+  case res of
+    Left err -> putTextLn $ "Error decoding Want List: " <> show err
+    Right wants -> print wants -- pure ()
+  let tno = case res of
+        Left _ -> ""
+        Right wants -> wnotes wants
+
+  let td = toText $ formatTime defaultTimeLocale "%Y%m%d" now
+      escapeNewlines :: Text -> Text
+      escapeNewlines = T.replace "\n" "\\n"
+
+      tn = case tno of
+        "" -> td
+        _ -> escapeNewlines $ td <> "\n" <> tno -- need to URL-ify tno
+  exitCode3 <-
+    liftIO $
+      rawSystem
+        "curl"
+        [ "-X"
+        , "POST"
+        , "-H"
+        , "Authorization: Discogs token=" <> unpack ttok
+        , "-H"
+        , "Content-Type: application/json; charset=utf-8"
+        , "--data"
+        , "{\"notes\": \"" <> unpack tn <> "\"}"
+        , "https://api.discogs.com/users/" <> unpack tu <> "/wants/" <> unpack taid
+        ]
+  unless (exitCode3 == ExitSuccess) $
+    putTextLn $
+      "ERROR adding date to Discogs Want List: failed with exit code: " <> show exitCode
+  --
+  -- increment played count
+  let tfield = "7" -- ????LATB should be a configuration parameter
+  exitCode4 <-
+    liftIO $
+      rawSystem
+        "curl"
+        [ "-X"
+        , "POST"
+        , "-H"
+        , "Authorization: Discogs token=" <> unpack ttok
+        , "-H"
+        , "Content-Type: application/json; charset=utf-8"
+        , "--data"
+        , "{\"value\": \"" <> unpack tpls <> "\"}"
+        , "https://api.discogs.com/users/" <> unpack tu <> "/collection/folders/0/releases/" <> unpack taid <> "/instances/" <> unpack tinst <> "/fields/" <> unpack tfield
+        ]
+  unless (exitCode4 == ExitSuccess) $
+    putTextLn $
+      "ERROR adding date to Discogs Want List: failed with exit code: " <> show exitCode
+
+  putTextLn ""
   let args = ["-j", "Albums Played", "-a", itmp, "--", "new"] <> drop 1 js
-  exitCode' <- rawSystem "dayone" args
+  exitCode' <- liftIO $ rawSystem "dayone" args
   unless (exitCode' == ExitSuccess) $
     putTextLn $
       "ERROR adding to DayOne.app: failed with exit code: " <> show exitCode

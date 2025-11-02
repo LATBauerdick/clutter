@@ -96,6 +96,7 @@ data WReleases = WReleases
 
 data WRelease = WRelease
   { id :: Int
+  , instance_id :: Int
   , date_added :: !Text
   , folder_id :: Int
   , rating :: Int
@@ -107,12 +108,13 @@ data WRelease = WRelease
 instance FromJSON WRelease where
   parseJSON = withObject "release" $ \o -> do
     daid_ <- o .: "id"
+    dinst_ <- o .: "instance_id"
     dadded_ <- o .: "date_added"
     fid_ <- o .: "folder_id"
     rating_ <- o .: "rating"
     bi_ <- o .: "basic_information"
     notes_ <- o .:? "notes" .!= []
-    pure $ WRelease daid_ dadded_ fid_ rating_ bi_ notes_
+    pure $ WRelease daid_ dinst_ dadded_ fid_ rating_ bi_ notes_
 
 data WBasicInfo = WBasicInfo
   { title :: !Text
@@ -373,6 +375,7 @@ getR lns dr = r
  where
   WRelease
     { id = did
+    , instance_id
     , date_added
     , folder_id
     , rating
@@ -543,6 +546,7 @@ getR lns dr = r
   r =
     Release
       { daid = did
+      , dinst = instance_id
       , dtitle = title
       , dartists = as
       , dreleased = show year

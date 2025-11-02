@@ -67,6 +67,7 @@ dToAlbum :: Release -> Album
 dToAlbum r =
   Album
     (daid r)
+    (dinst r)
     (dtitle r)
     (T.intercalate ", " $ dartists r)
     (dreleased r)
@@ -286,6 +287,7 @@ readTidalAlbums p = do
     toAlbum r =
       Album
         (daid r)
+        (dinst r)
         (dtitle r)
         (T.intercalate ", " $ dartists r)
         (dreleased r)
@@ -318,6 +320,7 @@ readAMusicAlbums p = do
     toAlbum r =
       Album
         (daid r)
+        (dinst r)
         (dtitle r)
         (T.intercalate ", " $ dartists r)
         (dreleased r)

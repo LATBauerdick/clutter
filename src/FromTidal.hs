@@ -201,6 +201,7 @@ getReleases t = getRelease <$> tis where
                   } = tii
           as = (\ WTArtist { name=n } -> n ) <$> tartists
           r = Release  { daid      = tid
+                       , dinst     = 0
                        , dtitle    = ttitle
                        , dartists  = as
                        , dreleased = treleased
@@ -210,7 +211,7 @@ getReleases t = getRelease <$> tis where
                        , dformat   = "Streaming"
                        , dtidalid  = Just (show tid)
                        , damid     = Nothing
-                       , dqobuzid     = Nothing
+                       , dqobuzid  = Nothing
                        , dlocation = Nothing
                        , dtags     = ["provider.tidal"]
                        , drating   = 0

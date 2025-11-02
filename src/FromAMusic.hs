@@ -289,6 +289,7 @@ getReleases t = (mapMaybe getRelease ams, nxt, tot)
           Just
             Release
               { daid = if cid == "" then hash . toString $ lid else readInt . toString $ cid
+              , dinst = 0
               , dtitle = ttitle
               , dartists = [tartist]
               , dreleased = treleased
