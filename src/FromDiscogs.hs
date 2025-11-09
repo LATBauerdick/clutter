@@ -530,11 +530,11 @@ getR lns dr = r
   tagsRated :: Int -> [Text]
   tagsRated i = case i of
     0 -> one "rated.not"
-    1 -> ["rated.*", "rated.dislike"]
-    2 -> ["rated.**", "rated.dislike"]
-    3 -> ["rated.***"]
-    4 -> ["rated.****", "rated.like"]
-    _ -> ["rated.*****", "rated.like"]
+    1 -> ["rated.", "rated.*", "rated.dislike"]
+    2 -> ["rated.", "rated.**", "rated.dislike"]
+    3 -> ["rated.", "rated.***"]
+    4 -> ["rated.", "rated.****", "rated.like"]
+    _ -> ["rated.", "rated.*****", "rated.like"]
   tagsPlays :: Int -> [Text]
   tagsPlays i = case i of
     0 -> one "played.never"
@@ -798,7 +798,7 @@ readListAidsCache fn i = do
   pure aids
 
 sortByMultipleDates :: [] Int -> [Maybe Text] -> [] Int
-sortByMultipleDates a d = fst <$> sortBy (comparing (Down . snd)) pairs
+sortByMultipleDates aids dates = fst <$> sortBy (comparing (Down . snd)) pairs
  where
   pairs =
     concatMap
@@ -810,7 +810,7 @@ sortByMultipleDates a d = fst <$> sortBy (comparing (Down . snd)) pairs
                    in map (\d -> (aid, d)) individualDates
             _ -> [] -- Nothing or empty text -> exclude this ID
       )
-      (zip a d)
+      (zip aids dates)
 
 readWantListAids :: Discogs -> IO (Vector Int)
 readWantListAids di = do
