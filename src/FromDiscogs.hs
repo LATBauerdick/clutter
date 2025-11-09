@@ -530,11 +530,11 @@ getR lns dr = r
   tagsRated :: Int -> [Text]
   tagsRated i = case i of
     0 -> one "rated.not"
-    1 -> ["rated.", "rated.*"]
-    2 -> ["rated.", "rated.**"]
-    3 -> ["rated.", "rated.***"]
-    4 -> ["rated.", "rated.****"]
-    _ -> ["rated.", "rated.*****"]
+    1 -> ["rated.*", "rated.dislike"]
+    2 -> ["rated.**", "rated.dislike"]
+    3 -> ["rated.***"]
+    4 -> ["rated.****", "rated.like"]
+    _ -> ["rated.*****", "rated.like"]
   tagsPlays :: Int -> [Text]
   tagsPlays i = case i of
     0 -> one "played.never"
