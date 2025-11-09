@@ -188,6 +188,7 @@ instance FromJSON WWList
 
 data WWItem = WWItem
   { wwaid :: Int
+  , wwdate_added :: !Text
   , wwnotes :: Maybe Text
   }
   deriving (Show)
@@ -195,8 +196,9 @@ data WWItem = WWItem
 instance FromJSON WWItem where
   parseJSON = withObject "wants" $ \o -> do
     d1 <- o .: "id"
-    d2 <- o .: "notes"
-    pure $ WWItem d1 d2
+    d2 <- o .: "date_added"
+    d3 <- o .: "notes"
+    pure $ WWItem d1 d2 d3
 
 instance FromJSON WTest
 
@@ -795,6 +797,21 @@ readListAidsCache fn i = do
   let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
   pure aids
 
+sortByMultipleDates :: [] Int -> [Maybe Text] -> [] Int
+sortByMultipleDates a d = fst <$> sortBy (comparing (Down . snd)) pairs
+ where
+  pairs =
+    concatMap
+      ( \(aid, maybeDatesText) ->
+          case maybeDatesText of
+            Just datesText
+              | not (T.null datesText) ->
+                  let individualDates = T.lines datesText
+                   in map (\d -> (aid, d)) individualDates
+            _ -> [] -- Nothing or empty text -> exclude this ID
+      )
+      (zip a d)
+
 readWantListAids :: Discogs -> IO (Vector Int)
 readWantListAids di = do
   putTextLn "-----------------Getting Want List from Discogs-----"
@@ -811,11 +828,12 @@ readWantListAids di = do
       wls = case res of
         Left _ -> []
         Right wl -> wants wl
-  let aids = wwaid <$> V.fromList wls
-  let notess = wwnotes <$> V.fromList wls
-  print aids
-  print notess
-  pure aids
+  let aids = wwaid <$> wls
+  let notess = wwnotes <$> wls
+  let dates = wwdate_added <$> wls
+  print $ zip3 aids dates notess
+  print $ sortByMultipleDates aids notess
+  pure . V.fromList $ sortByMultipleDates aids notess
 
 readWantListAidsCache :: FilePath -> IO (Vector Int)
 readWantListAidsCache fn = do
@@ -830,11 +848,12 @@ readWantListAidsCache fn = do
       wls = case res of
         Left _ -> []
         Right wl -> wants wl
-  let aids = wwaid <$> V.fromList wls
-  let notess = wwnotes <$> V.fromList wls
-  print aids
-  print notess
-  pure aids
+  let aids = wwaid <$> wls
+  let notess = wwnotes <$> wls
+  let dates = wwdate_added <$> wls
+  print $ zip3 aids dates notess
+  print $ sortByMultipleDates aids notess
+  pure . V.fromList $ sortByMultipleDates aids notess
 
 readWWListCache :: FilePath -> IO (Either String WWList)
 readWWListCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WWList)

@@ -438,7 +438,8 @@ updateAlbumsPlayed a = do
         Left _ -> ""
         Right wants -> wnotes wants
 
-  let td = toText $ formatTime defaultTimeLocale "%Y%m%d" now
+  -- let td = toText $ formatTime defaultTimeLocale "%Y%m%d" now
+  let td = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
       escapeNewlines :: Text -> Text
       escapeNewlines = T.replace "\n" "\\n"
 
