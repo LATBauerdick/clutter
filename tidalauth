@@ -16,7 +16,7 @@
 ####   cd python-tidal
 ####   git checkout ee120d94d897f6f6ee644fd835a35fb68942b331
 ####
-import sys
+import sys, subprocess
 sys.path.append('./python-tidal') #the directory that contains my_pkg
 ####print(sys.path)
 import tidalapi
@@ -26,8 +26,12 @@ session = tidalapi.Session()
 session.login_oauth_simple()
 # then print out the access_token etc
 print(session.user.username)
-print(session.user.id)
-print(session.session_id)
-print(session.country_code)
-print(session.access_token)
+with open('.tok-tidal.dat', 'w') as f:
+    print(session.user.id, file=f)
+    print(session.session_id, file=f)
+    print(session.country_code, file=f)
+    print(session.access_token, file=f)
 
+result = subprocess.run('{ head -n -4 tok.dat && cat .tok-tidal.dat; } > tok.dat.tmp && mv tok.dat.tmp tok.dat', shell=True, capture_output=True, text=True)
+
+print(result.stdout)
