@@ -19,6 +19,7 @@ import qualified Data.List as L (
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Text as T (find)
+import Data.Time (Day)
 import Data.Vector (Vector)
 import qualified Data.Vector as V (
   empty,
@@ -28,7 +29,7 @@ import qualified Data.Vector as V (
   toList,
  )
 import Provider (
-  extractListenedDates,
+  -- extractListenedDates,
   readAMusicAlbums,
   readAlbum,
   readAlbums,
@@ -256,20 +257,8 @@ initInit cached = do
   lm <- readDiscogsLists dc
 
   -- extract listened dates from "Listened" lists
-  putTextLn "-----------------Extracting Listened dates from lists"
-  listenedDatesMap <- extractListenedDates dc lm
-  putTextLn $ "---------------------- Found listened dates for " <> show (M.size listenedDatesMap) <> " albums"
-  print (M.lookup 3300 listenedDatesMap)
-  --
-  -- update albums with listened dates
-  -- let as =
-  --       M.mapWithKey
-  --         ( \aid album ->
-  --             case M.lookup aid listenedDatesMap of
-  --               Just dates -> album{albumListenedDates = dates}
-  --               Nothing -> album
-  --         )
-  --         albums'
+  -- putTextLn "-----------------Extracting Listened dates from lists"
+  -- listenedDatesMap <- extractListenedDates dc lm
 
   pure (dci, albums', fns, lm)
 
@@ -306,8 +295,8 @@ envInit c = do
   let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
 
   -- extract listened dates map
-  let listenedDatesMap = M.map albumListenedDates albums'
-
+  let listenedDatesMap :: Map Int [Day] -- lookup listened dates by albumID
+      listenedDatesMap = M.empty -- M.map albumListenedDates albums'
   dr <- newIORef dc
   ar <- newIORef albums'
   lr <- newIORef lists'

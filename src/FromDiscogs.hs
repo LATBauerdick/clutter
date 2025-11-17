@@ -9,6 +9,7 @@
 module FromDiscogs (
   -- AppM
   readDiscogsListAids,
+  readDiscogsListAidsCache,
   readListAidsWithComments,
   -- IO
   -- readLists,
@@ -16,7 +17,6 @@ module FromDiscogs (
   readDiscogsReleasesCache,
   readDiscogsRelease,
   readDiscogsLists,
-  readDiscogsListsCache,
   readDiscogsFolders,
   readDiscogsFoldersCache,
   extractListenedDates,
@@ -509,24 +509,29 @@ getR lns dr = r
     (if q /= "1" then [n, n <> " x " <> q] else [n]) <> fromMaybe [] md -- <> maybeToList _mt
   fs :: [Text]
   fs = case lookupName lns folder_id of
+    -- in case of Straeming, Files, or CDR, ignore Discogs formats
     Just "Streaming" -> one "Streaming"
     Just "Files" -> one "Files"
-    Just "CD-R" -> one "CD-R"
+    Just "CDR" -> one "CDR"
     _ -> concatMap _fs formats
+  gs :: [Text]
+  gs =
+    genres
+      -- add genre Piano or Opera if in the corresponding folder, or if Style
+      <> case lookupName lns folder_id of
+        Just "Piano" -> one "Piano"
+        Just "Opera&Vocal" -> one "Opera"
+        _ -> []
+      <> (maybe [] one . find (("opera" ==) . T.toCaseFold) $ styles)
+      <> (maybe [] one . find (("piano" ==) . T.toCaseFold) $ styles)
   -- tags from notes, genres, styles, formats, order#, if there is a tidal or apple music version, discogs
   tagsFormats :: [Text] -> [Text]
   tagsFormats = map (("format." <>) . T.toCaseFold)
   tagsFolder :: Int -> [Text]
   tagsFolder = one . T.toCaseFold . ("folder." <>) . fromMaybe "???" . lookupName lns
-  -- add opera if style is opera
+  -- add opera if style is opera, and piano if folder is Piano
   tagsGenres :: [Text] -> [Text]
-  tagsGenres ts =
-    map (("genre." <>) . T.toCaseFold) $
-      ts
-        <> ( maybe [] one
-              . find (("opera" ==) . T.toCaseFold)
-              $ styles
-           )
+  tagsGenres = map (("genre." <>) . T.toCaseFold)
   tagsRated :: Int -> [Text]
   tagsRated i = case i of
     0 -> one "rated.not"
@@ -544,7 +549,7 @@ getR lns dr = r
   tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.qobuz"]) qobuzid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
 
   tagsList :: [Text]
-  tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres genres <> map T.toCaseFold styles <> tagsPlays plays <> tagsRated rating <> tagsFolder folder_id
+  tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres gs <> map T.toCaseFold styles <> tagsPlays plays <> tagsRated rating <> tagsFolder folder_id
   r =
     Release
       { daid = did
@@ -672,9 +677,15 @@ listsFromDiscogsApi di = do
     Right r -> Right r
 
 readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector Int))
+-- readDiscogsLists (DiscogsFile fn) = readDiscogsListsCache fn
 readDiscogsLists di = do
-  putTextLn "-----------------Getting Lists from Discogs-----"
-  res <- listsFromDiscogsApi di
+  res <- case di of
+    DiscogsFile fn -> listsFromCacheFile fn
+    _ -> listsFromDiscogsApi di
+
+  -- putTextLn "-----------------Getting Lists from Discogs Cache-----"
+  -- putTextLn "-----------------Getting Lists from Discogs-----"
+  -- res <- listsFromDiscogsApi di
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
@@ -682,21 +693,23 @@ readDiscogsLists di = do
         Left _ -> []
         Right wls -> lists wls
 
+  -- lists are returened empty...
   let lm :: [(Text, (Int, Vector Int))]
       lm = (\WList{id = i, name = n} -> (n, (i, V.empty))) <$> ls
 
-  -- Wantlist
+  -- ...except the Wantlist
   wl <- readWantListAids di
+  wl' <- readBoxListAids di
 
-  pure . M.fromList $ lm <> one ("Want", (7, wl))
+  pure . M.fromList $ lm <> one ("Want", (7, wl)) <> one ("Box xxx", (6, wl'))
 
 -- pure $ M.fromList lm
 
 listsFromCacheFile :: FilePath -> IO (Either String WLists)
 listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") :: IO (Either String WLists)
 
-readDiscogsListsCache :: FilePath -> IO (Map Text (Int, Vector Int))
-readDiscogsListsCache fn = do
+xxreadDiscogsListsCache :: FilePath -> IO (Map Text (Int, Vector Int))
+xxreadDiscogsListsCache fn = do
   putTextLn "-----------------Getting Lists from Discogs Cache-----"
   res <- listsFromCacheFile fn
   case res of
@@ -715,8 +728,9 @@ readDiscogsListsCache fn = do
 
   -- Wantlist
   wl <- readWantListAidsCache fn
+  wl' <- readBoxListAidsCache fn
 
-  pure . M.fromList $ lm <> one ("Want", (7, wl))
+  pure . M.fromList $ lm <> one ("Want", (7, wl)) <> one ("Box xxx", (6, wl'))
 
 foldersFromDiscogsApi :: Discogs -> IO (Either String WFolders)
 foldersFromDiscogsApi di = do
@@ -771,12 +785,26 @@ readDiscogsFoldersCache fn = do
 -- NB: the JSON required to extract album id info is different between them
 readDiscogsListAids :: Discogs -> Int -> IO (Vector Int)
 readDiscogsListAids di i = do
+  putTextLn $ "-----------------Getting List " <> show i <> " from Discogs-----"
   let (tok, _) = getToken di
   m <- liftIO $ newManager tlsManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
   let query :: ClientM WLItems
       query = discogsGetList i (Just tok) userAgent
   res <- liftIO $ runClientM query dc
+  case res of
+    Left err -> putTextLn $ "Error: " <> show err
+    Right _ -> pure ()
+  -- F.traverse_ print $ take 5 . wlitems $ ls
+  let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
+  pure aids
+
+readDiscogsListAidsCache :: FilePath -> Int -> IO (Vector Int)
+readDiscogsListAidsCache fn i = do
+  putTextLn $ "-----------------Getting List " <> show i <> " from Discogs Cache-----"
+  -- res <- runClientM ( discogsGetList i ( Just tok ) userAgent ) dc
+  let fn' = fn <> "l" <> show i <> "-raw.json"
+  res <- readWLItemsCache fn'
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
@@ -812,7 +840,48 @@ sortByMultipleDates aids dates = fst <$> sortBy (comparing (Down . snd)) pairs
       )
       (zip aids dates)
 
+readBoxListAids :: Discogs -> IO (Vector Int)
+readBoxListAids (DiscogsFile fn) = readBoxListAidsCache fn
+readBoxListAids di = do
+  putTextLn "-----------------Getting Box List from Discogs-----"
+  let i = 1627102
+  let (tok, _) = getToken di
+  m <- liftIO $ newManager tlsManagerSettings
+  let dc = mkClientEnv m discogsBaseUrl
+  let query :: ClientM WLItems
+      query = discogsGetList i (Just tok) userAgent
+  res <- liftIO $ runClientM query dc
+  case res of
+    Left err -> putTextLn $ "Error: " <> show err
+    Right _ -> pure ()
+  -- F.traverse_ print $ take 5 . wlitems $ ls
+  let wls :: [WLAid]
+      wls = case res of
+        Left _ -> []
+        Right wl -> wlitems wl
+  let aids = wlaid <$> wls
+  let cs = wlcomment <$> wls
+  pure . V.fromList $ sortByMultipleDates aids cs
+
+readBoxListAidsCache :: FilePath -> IO (Vector Int)
+readBoxListAidsCache fn = do
+  putTextLn "-----------------Getting Box List from Discogs Cache-----"
+  let fn' = fn <> "l" <> "1627102" <> "-raw.json"
+  res <- readWLItemsCache fn'
+  case res of
+    Left err -> putTextLn $ "Reading BoxList: " <> show err
+    Right _ -> pure ()
+  -- F.traverse_ print $ take 5 . wlitems $ ls
+  let wls :: [WLAid]
+      wls = case res of
+        Left _ -> []
+        Right wl -> wlitems wl
+  let aids = wlaid <$> wls
+  let cs = wlcomment <$> wls
+  pure . V.fromList $ sortByMultipleDates aids cs
+
 readWantListAids :: Discogs -> IO (Vector Int)
+readWantListAids (DiscogsFile fn) = readWantListAidsCache fn
 readWantListAids di = do
   putTextLn "-----------------Getting Want List from Discogs-----"
   let (tok, un) = getToken di

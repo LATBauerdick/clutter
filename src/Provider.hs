@@ -19,7 +19,7 @@ module Provider (
   readFolderAids,
   updateTidalFolderAids,
   updateAMusicFolderAids,
-  extractListenedDates,
+  -- extractListenedDates,
 )
 where
 
@@ -35,8 +35,8 @@ import qualified FromDiscogs as FD (
   readDiscogsFolders,
   readDiscogsFoldersCache,
   readDiscogsListAids,
+  readDiscogsListAidsCache,
   readDiscogsLists,
-  readDiscogsListsCache,
   readDiscogsRelease,
   readDiscogsReleases,
   readDiscogsReleasesCache,
@@ -83,21 +83,13 @@ dToAlbum r =
     (dtags r)
     (drating r)
     (dplays r)
-    [] -- albumListenedDates - will be populated from "Listened" lists
  where
+  -- [] -- albumListenedDates - will be populated from "Listened" lists
+
   makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
 
--- was readLists
-readDiscogsLists' :: AppM (Map Text (Int, Vector Int))
-readDiscogsLists' = do
-  p <- envGetDiscogs
-  case p of
-    DiscogsFile fn -> liftIO $ FD.readDiscogsListsCache fn -- error $ "Bug: Provider Discogs does not read lists from files " <> toText fn
-    _ -> liftIO $ FD.readDiscogsLists p
-
 readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector Int))
-readDiscogsLists (DiscogsFile fn) = FD.readDiscogsListsCache fn
-readDiscogsLists di = FD.readDiscogsLists di
+readDiscogsLists = FD.readDiscogsLists
 
 readAlbum :: Int -> AppM (Maybe Album)
 readAlbum aid = do
@@ -138,7 +130,7 @@ readDiscogsListAids i = do
   ln <- envGetListName i
   putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
   case di of
-    DiscogsFile _ -> pure V.empty -- maybe not ok
+    DiscogsFile fn -> liftIO $ FD.readDiscogsListAidsCache fn i -- pure V.empty -- maybe not ok
     _ -> liftIO $ FD.readDiscogsListAids di i
 
 readFolders :: AppM (Map Text Int)
@@ -303,7 +295,7 @@ readTidalAlbums p = do
         (dtags r)
         0
         0
-        [] -- albumListenedDates
+  -- [] -- albumListenedDates
   ds <- case getTidal p of
     TidalFile fn -> FT.readTidalReleasesCache fn
     _ -> FT.readTidalReleases (getTidal p)
@@ -336,7 +328,7 @@ readAMusicAlbums p = do
         (dtags r)
         0
         0
-        [] -- albumListenedDates
+  -- [] -- albumListenedDates
   ds <- FA.readAMusicReleases (getAMusic p)
   let as = toAlbum <$> ds
   -- print as

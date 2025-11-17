@@ -5,6 +5,8 @@ stack.yaml.lock
 spago.lock
 cache
 tok.dat
+.tok-tidal.dat
+AlbumsPlayed
 dist-newstyle
 cabal.project.local
 result

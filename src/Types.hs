@@ -170,7 +170,7 @@ data Album = Album
   , albumTags :: [Text]
   , albumRating :: Int
   , albumPlays :: Int
-  , albumListenedDates :: [Day] -- Dates when album was listened (from "Listened" lists)
+  -- , albumListenedDates :: [Day] -- Dates when album was listened (from "Listened" lists)
   }
   deriving (Show, Generic)
 instance Eq Album where
