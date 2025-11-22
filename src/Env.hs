@@ -293,6 +293,8 @@ envInit c = do
       listNames' = M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList lists'
   _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) lists'
   let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
+  putTextLn "--------------------- all locs:"
+  print . take 10 . M.toList $ allLocs
 
   -- extract listened dates map
   let listenedDatesMap :: Map Int [Day] -- lookup listened dates by albumID

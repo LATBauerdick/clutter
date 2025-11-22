@@ -35,7 +35,6 @@ import qualified FromDiscogs as FD (
   readDiscogsFolders,
   readDiscogsFoldersCache,
   readDiscogsListAids,
-  readDiscogsListAidsCache,
   readDiscogsLists,
   readDiscogsRelease,
   readDiscogsReleases,
@@ -129,9 +128,7 @@ readDiscogsListAids i = do
   di <- envGetDiscogs
   ln <- envGetListName i
   putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
-  case di of
-    DiscogsFile fn -> liftIO $ FD.readDiscogsListAidsCache fn i -- pure V.empty -- maybe not ok
-    _ -> liftIO $ FD.readDiscogsListAids di i
+  liftIO $ FD.readDiscogsListAids di i
 
 readFolders :: AppM (Map Text Int)
 readFolders = do

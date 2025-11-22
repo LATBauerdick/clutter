@@ -9,7 +9,6 @@
 module FromDiscogs (
   -- AppM
   readDiscogsListAids,
-  readDiscogsListAidsCache,
   readListAidsWithComments,
   -- IO
   -- readLists,
@@ -680,12 +679,13 @@ readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector Int))
 -- readDiscogsLists (DiscogsFile fn) = readDiscogsListsCache fn
 readDiscogsLists di = do
   res <- case di of
-    DiscogsFile fn -> listsFromCacheFile fn
-    _ -> listsFromDiscogsApi di
+    DiscogsFile fn -> do
+      putTextLn "-----------------Getting Lists from Discogs Cache-----"
+      listsFromCacheFile fn
+    _ -> do
+      putTextLn "-----------------Getting Lists from Discogs-----"
+      listsFromDiscogsApi di
 
-  -- putTextLn "-----------------Getting Lists from Discogs Cache-----"
-  -- putTextLn "-----------------Getting Lists from Discogs-----"
-  -- res <- listsFromDiscogsApi di
   case res of
     Left err -> putTextLn $ "Error: " <> show err
     Right _ -> pure ()
@@ -697,40 +697,14 @@ readDiscogsLists di = do
   let lm :: [(Text, (Int, Vector Int))]
       lm = (\WList{id = i, name = n} -> (n, (i, V.empty))) <$> ls
 
-  -- ...except the Wantlist
-  wl <- readWantListAids di
-  wl' <- readBoxListAids di
+  -- ...except the Wantlist and Box CDs
+  -- wl <- readWantListAids di
+  -- wl' <- readBoxListAids di
 
-  pure . M.fromList $ lm <> one ("Want", (7, wl)) <> one ("Box xxx", (6, wl'))
-
--- pure $ M.fromList lm
+  pure . M.fromList $ lm <> one ("Want", (7, V.empty))
 
 listsFromCacheFile :: FilePath -> IO (Either String WLists)
 listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") :: IO (Either String WLists)
-
-xxreadDiscogsListsCache :: FilePath -> IO (Map Text (Int, Vector Int))
-xxreadDiscogsListsCache fn = do
-  putTextLn "-----------------Getting Lists from Discogs Cache-----"
-  res <- listsFromCacheFile fn
-  case res of
-    Left err -> putTextLn $ "Error: " <> show err
-    Right _ -> pure ()
-  let ls = case res of
-        Left _ -> []
-        Right wls -> lists wls -- [WList]
-  let getAids :: FilePath -> WList -> IO (Text, (Int, Vector Int))
-      getAids f WList{id = i, name = n} = do
-        is <- readListAidsCache f i
-        pure (n, (i, is))
-
-  -- let lm :: [ ( Text, (Int, Vector Int) ) ]
-  lm <- traverse (getAids fn) ls
-
-  -- Wantlist
-  wl <- readWantListAidsCache fn
-  wl' <- readBoxListAidsCache fn
-
-  pure . M.fromList $ lm <> one ("Want", (7, wl)) <> one ("Box xxx", (6, wl'))
 
 foldersFromDiscogsApi :: Discogs -> IO (Either String WFolders)
 foldersFromDiscogsApi di = do
@@ -785,45 +759,35 @@ readDiscogsFoldersCache fn = do
 -- NB: the JSON required to extract album id info is different between them
 readDiscogsListAids :: Discogs -> Int -> IO (Vector Int)
 readDiscogsListAids di i = do
-  putTextLn $ "-----------------Getting List " <> show i <> " from Discogs-----"
-  let (tok, _) = getToken di
-  m <- liftIO $ newManager tlsManagerSettings
+
+  case i of 
+    1627102 -> readBoxListAids di
+    7 -> readWantListAids di
+    _ -> do
+      res <- case di of
+        DiscogsFile fn -> do
+          let fn' = fn <> "l" <> show i <> "-raw.json"
+          readWLItemsCache fn'
+        DiscogsSession tok _ -> readWLItems tok i
+      case res of
+        Left err -> putTextLn $ "Error: " <> show err
+        Right _ -> pure ()
+
+      -- F.traverse_ print $ take 5 . wlitems $ ls
+      let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
+      pure aids
+
+readWLItemsCache :: FilePath -> IO (Either String WLItems)
+readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
+
+readWLItems :: Text -> Int -> IO (Either String WLItems)
+readWLItems tok i = do
+  m <- newManager tlsManagerSettings
   let dc = mkClientEnv m discogsBaseUrl
-  let query :: ClientM WLItems
-      query = discogsGetList i (Just tok) userAgent
-  res <- liftIO $ runClientM query dc
-  case res of
-    Left err -> putTextLn $ "Error: " <> show err
-    Right _ -> pure ()
-  -- F.traverse_ print $ take 5 . wlitems $ ls
-  let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
-  pure aids
-
-readDiscogsListAidsCache :: FilePath -> Int -> IO (Vector Int)
-readDiscogsListAidsCache fn i = do
-  putTextLn $ "-----------------Getting List " <> show i <> " from Discogs Cache-----"
-  -- res <- runClientM ( discogsGetList i ( Just tok ) userAgent ) dc
-  let fn' = fn <> "l" <> show i <> "-raw.json"
-  res <- readWLItemsCache fn'
-  case res of
-    Left err -> putTextLn $ "Error: " <> show err
-    Right _ -> pure ()
-  -- F.traverse_ print $ take 5 . wlitems $ ls
-  let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
-  pure aids
-
-readListAidsCache :: FilePath -> Int -> IO (Vector Int)
-readListAidsCache fn i = do
-  putTextLn $ "-----------------Getting List " <> show i <> " from Discogs Cache-----"
-  -- res <- runClientM ( discogsGetList i ( Just tok ) userAgent ) dc
-  let fn' = fn <> "l" <> show i <> "-raw.json"
-  res <- readWLItemsCache fn'
-  case res of
-    Left err -> putTextLn $ "Error: " <> show err
-    Right _ -> pure ()
-  -- F.traverse_ print $ take 5 . wlitems $ ls
-  let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
-  pure aids
+  res <- runClientM (discogsGetList i (Just tok) userAgent) dc
+  pure $ case res of
+    Left err -> Left ("Error: " <> show err)
+    Right x -> Right x
 
 sortByMultipleDates :: [] Int -> [Maybe Text] -> [] Int
 sortByMultipleDates aids dates = fst <$> sortBy (comparing (Down . snd)) pairs
@@ -927,9 +891,6 @@ readWantListAidsCache fn = do
 readWWListCache :: FilePath -> IO (Either String WWList)
 readWWListCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WWList)
 
-readWLItemsCache :: FilePath -> IO (Either String WLItems)
-readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
-
 -- Read list items with comments (for "Listened" lists)
 readListAidsWithComments :: Discogs -> Int -> IO (Vector (Int, Maybe Text))
 readListAidsWithComments di i = do
@@ -955,30 +916,6 @@ readListAidsWithCommentsCache fn i = do
     Right _ -> pure ()
   let aids = (\WLAid{wlaid = aid, wlcomment = c} -> (aid, c)) <$> V.fromList (wlitems (fromRight (WLItems []) res))
   pure aids
-
--- readLists :: Discogs {-   -} -> IO (Map Text (Int, Vector Int))
--- readLists di = do
---   let (tok, un) = getToken di
---   m <- newManager tlsManagerSettings -- defaultManagerSettings
---   let dc = mkClientEnv m discogsBaseUrl
---   let query :: ClientM WLists
---       query = discogsGetLists un (Just tok) userAgent
---   putTextLn "-----------------reading Lists from Discogs-----"
---   res <- runClientM query dc
---   case res of
---     Left err -> putTextLn $ "Error: " <> show err
---     Right _ -> pure ()
---   let ls = case res of
---         Left _ -> []
---         Right wls -> lists wls
---   -- map with all lists
---   let lm :: [(Text, (Int, Vector Int))]
---       lm = (\WList{id = i, name = n} -> (n, (i, V.empty))) <$> ls
---
---   -- Wantlist
---   wl <- readWantListAids di
---
---   pure . M.fromList $ lm <> one ("Want", (7, wl))
 
 -- Extract listened dates from "Listened" lists
 -- Looks for lists with names ending in "Listened" and extracts dates from comments
