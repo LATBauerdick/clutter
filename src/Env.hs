@@ -256,10 +256,6 @@ initInit cached = do
   -- read the map of Discogs lists (still empty album ids if from API)
   lm <- readDiscogsLists dc
 
-  -- extract listened dates from "Listened" lists
-  -- putTextLn "-----------------Extracting Listened dates from lists"
-  -- listenedDatesMap <- extractListenedDates dc lm
-
   pure (dci, albums', fns, lm)
 
 envInit :: Bool -> IO Env

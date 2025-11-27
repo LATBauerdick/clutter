@@ -266,6 +266,7 @@ clutterServer =
     [Text] ->
     AppM AlbumsJ
   serveAlbumsq ln msb mso fs = do
+    liftIO . putTextLn $ "-------serveAlbumsq " <> ln
     aids <- decodeListQuery ln msb mso fs
     envr <- envGetEnvr
     -- gl <- asks getList
@@ -279,7 +280,7 @@ clutterServer =
             )
             . V.toList
             $ aids
-    -- liftIO $ print la
+    liftIO $ print la
     let asj = AlbumsJ{listName = ln, lalbums = la}
     pure asj
 

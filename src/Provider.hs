@@ -19,19 +19,16 @@ module Provider (
   readFolderAids,
   updateTidalFolderAids,
   updateAMusicFolderAids,
-  -- extractListenedDates,
 )
 where
 
 -- import Data.Text.Encoding ( decodeUtf8 )
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
-import Data.Time (Day)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import qualified FromAMusic as FA (readAMusicReleases)
 import qualified FromDiscogs as FD (
-  extractListenedDates,
   readDiscogsFolders,
   readDiscogsFoldersCache,
   readDiscogsListAids,
@@ -140,9 +137,6 @@ readFolders = do
 readDiscogsFolders :: Discogs -> IO (Map Text Int)
 readDiscogsFolders (DiscogsFile fn) = FD.readDiscogsFoldersCache fn
 readDiscogsFolders di = FD.readDiscogsFolders di
-
-extractListenedDates :: Discogs -> Map Text (Int, Vector Int) -> IO (Map Int [Day])
-extractListenedDates = FD.extractListenedDates
 
 -- populate the aids for folders from the folder+id in each Album
 -- special treatment for Tidal, Discogs, and All folders
