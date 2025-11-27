@@ -29,10 +29,13 @@ import qualified Data.Text as T (
   intercalate,
   lines,
   null,
+  splitOn,
+  strip,
   stripPrefix,
   take,
   toCaseFold,
  )
+import qualified Data.Text.Read as TR (decimal)
 import Data.Vector (Vector)
 import qualified Data.Vector as V (empty, fromList)
 import GHC.Generics ()
@@ -772,6 +775,18 @@ readDiscogsFoldersCache fn = do
 -- we're treating Discog folders like lists,
 -- also assuming that their IDs are unique
 -- NB: the JSON required to extract album id info is different between them
+readWLItemsCache :: FilePath -> IO (Either String WLItems)
+readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
+
+readWLItems :: Text -> Int -> IO (Either String WLItems)
+readWLItems tok i = do
+  m <- newManager tlsManagerSettings
+  let dc = mkClientEnv m discogsBaseUrl
+  res <- runClientM (discogsGetList i (Just tok) userAgent) dc
+  pure $ case res of
+    Left err -> Left ("Error: " <> show err)
+    Right x -> Right x
+
 readDiscogsListAids :: Discogs -> Int -> IO (Vector Int)
 readDiscogsListAids di i = do
   case i of
@@ -791,32 +806,21 @@ readDiscogsListAids di i = do
       let aids = wlaid <$> V.fromList (wlitems (fromRight (WLItems []) res))
       pure aids
 
-readWLItemsCache :: FilePath -> IO (Either String WLItems)
-readWLItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WLItems)
-
-readWLItems :: Text -> Int -> IO (Either String WLItems)
-readWLItems tok i = do
-  m <- newManager tlsManagerSettings
-  let dc = mkClientEnv m discogsBaseUrl
-  res <- runClientM (discogsGetList i (Just tok) userAgent) dc
-  pure $ case res of
-    Left err -> Left ("Error: " <> show err)
-    Right x -> Right x
-
-sortByMultipleDates :: [] Int -> [Maybe Text] -> [] Int
-sortByMultipleDates aids dates = fst <$> sortBy (comparing (Down . snd)) pairs
+sortByNums :: [] Int -> [Maybe Text] -> [] Int
+sortByNums aids nums = fst <$> sortOn snd pairs
  where
+  pairs :: [(Int, Int)]
   pairs =
     concatMap
-      ( \(aid, maybeDatesText) ->
-          case maybeDatesText of
-            Just datesText
-              | not (T.null datesText) ->
-                  let individualDates = T.lines datesText
-                   in map (\d -> (aid, d)) individualDates
+      ( \(aid, maybeNums) ->
+          case maybeNums of
+            Just numsText
+              | not (T.null numsText) ->
+                  let individualNums = mapMaybe (either (const Nothing) (Just . fst) . TR.decimal . T.strip) . T.splitOn "," $ numsText
+                   in map (\d -> (aid, d)) individualNums
             _ -> [] -- Nothing or empty text -> exclude this ID
       )
-      (zip aids dates)
+      (zip aids nums)
 
 readBoxListAids :: Discogs -> IO (Vector Int)
 readBoxListAids di = do
@@ -839,7 +843,25 @@ readBoxListAids di = do
         Right wl -> wlitems wl
   let aids = wlaid <$> wls
   let cs = wlcomment <$> wls
-  pure . V.fromList $ sortByMultipleDates aids cs
+  putTextLn "-----------------readBoxListAids"
+  print $ zip aids cs
+  print $ sortByNums aids cs
+  pure . V.fromList $ sortByNums aids cs
+
+sortByMultipleDates :: [] Int -> [Maybe Text] -> [] Int
+sortByMultipleDates aids dates = fst <$> sortBy (comparing (Down . snd)) pairs
+ where
+  pairs =
+    concatMap
+      ( \(aid, maybeDatesText) ->
+          case maybeDatesText of
+            Just datesText
+              | not (T.null datesText) ->
+                  let individualDates = T.lines datesText
+                   in map (\d -> (aid, d)) individualDates
+            _ -> [] -- Nothing or empty text -> exclude this ID
+      )
+      (zip aids dates)
 
 readWantListAids :: Discogs -> IO (Vector Int)
 readWantListAids di = do
@@ -861,8 +883,8 @@ readWantListAids di = do
   let aids = wwaid <$> wls
   let notess = wwnotes <$> wls
   let dates = wwdate_added <$> wls
-  print $ zip3 aids dates notess
-  print $ sortByMultipleDates aids notess
+  -- print $ zip3 aids dates notess
+  -- print $ sortByMultipleDates aids notess
   pure . V.fromList $ sortByMultipleDates aids notess
 
 readWWItemsCache :: FilePath -> IO (Either String WWList)

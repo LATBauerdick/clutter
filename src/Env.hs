@@ -102,10 +102,10 @@ envTidalConnect _nalbums = do
   _ <- liftIO $ writeIORef (albumsR env) allAlbums
 
   -- create the Tags index
-  putTextLn "-------------- Updating Tags index"
+  putTextLn "----------------------envTidalConnect: Updating Tags index"
   let tagsMap :: Map Text [Int]
       tagsMap = foldr updateTags M.empty (M.elems allAlbums)
-  putTextLn "---------------------- list of Tags found: "
+  putTextLn "----------------------envTidalConnect: list of Tags found: "
   print (M.keys tagsMap)
 
   -- reread Discogs lists info
@@ -193,10 +193,10 @@ envUpdate _tok _un nreleases = do
   _ <- writeIORef (albumsR env) allAlbums
 
   -- create the Tags index
-  putTextLn "-------------- Updating Tags index"
+  putTextLn "----------------------envUpdate: Updating Tags index"
   let tagsMap :: Map Text [Int]
       tagsMap = foldr updateTags M.empty (M.elems allAlbums)
-  putTextLn "---------------------- list of Tags found: "
+  putTextLn "----------------------envUpdate: list of Tags found: "
   print (M.keys tagsMap)
 
   -- reread Discogs lists info
@@ -275,10 +275,10 @@ envInit c = do
   (dc, albums', fns, lm) <- initInit c
 
   -- create the Tags index
-  putTextLn "-------------- Updating Tags index"
+  putTextLn "----------------------envInit: Updating Tags index"
   let tagsMap :: Map Text [Int]
       tagsMap = foldr updateTags M.empty (M.elems albums')
-  putTextLn "---------------------- list of Tags found: "
+  putTextLn "----------------------envInit: list of Tags found: "
   print (M.keys tagsMap)
 
   let fm :: Map Text (Int, Vector Int)
@@ -289,7 +289,7 @@ envInit c = do
       listNames' = M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList lists'
   _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) lists'
   let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
-  putTextLn "--------------------- all locs:"
+  putTextLn "----------------------envInit: first 10 locs: "
   print . take 10 . M.toList $ allLocs
 
   -- extract listened dates map
@@ -433,6 +433,7 @@ envUpdateAlbum aid = do
       pure ()
     Nothing -> pure ()
   -- let mAlbum = M.lookup aid am
+  putTextLn "----------------envUpdateAlbum-----------------------------"
   print ma
   pure ma
 
