@@ -300,9 +300,10 @@ getReleases t = (mapMaybe getRelease ams, nxt, tot)
               , dtidalid = Nothing
               , damid = Just cid
               , dqobuzid = Nothing
+              , djellyfinid = Nothing
+              , dlocIdx = Nothing
               , dlocation = Just lid
               , dtags = ["provider.applemusic"] <> map (("genre." <>) . T.toCaseFold) gns
               , drating = 0
               , dplays = 0
               }
-
