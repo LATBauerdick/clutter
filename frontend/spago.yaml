@@ -12,6 +12,7 @@ package:
     - halogen-css
     - prelude
     - strings
+    - stringutils
   test:
     main: Test.Main
     dependencies: []

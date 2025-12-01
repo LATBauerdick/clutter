@@ -1,18 +1,28 @@
 
 mkdir -p ./cache
 cd ./cache
-AMT=$(sed '1!d' ../tok.dat)
-TOK=$(sed '3!d' ../tok.dat)
-USR=$(sed '4!d' ../tok.dat)
-TID=$(sed '5!d' ../tok.dat)
-TCC=$(sed '7!d' ../tok.dat)
-TDT=$(sed '8!d' ../tok.dat)
+AMT=$(jq -r '.amt' ../tok.json)
+TOK=$(jq -r '.tok' ../tok.json)
+USR=$(jq -r '.usr' ../tok.json)
+JKY=$(jq -r '.jky' ../tok.json)
+TID=$(jq -r '.tid' ../tok.json)
+TCC=$(jq -r '.tcc' ../tok.json)
+TDT=$(jq -r '.tdt' ../tok.json)
 
-#echo $TOK
-#echo $USR
-#echo $TID
-#echo $TCC
-#echo $TDT
+#AMT=$(sed '1!d' ../tok.dat)
+#TOK=$(sed '3!d' ../tok.dat)
+#USR=$(sed '4!d' ../tok.dat)
+#JKY=$(sed '5!d' ../tok.dat)
+#TID=$(sed '6!d' ../tok.dat)
+#TCC=$(sed '8!d' ../tok.dat)
+#TDT=$(sed '9!d' ../tok.dat)
+
+echo $TOK
+echo $USR
+echo $JKY
+echo $TID
+echo $TCC
+echo $TDT
 
 curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=1&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw1.json
 curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=2&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw2.json

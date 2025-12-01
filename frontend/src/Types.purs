@@ -8,17 +8,20 @@ module Types  ( Album
               , AlbumList (..)
               , ParamsJ
               , Action (..)
+              , pLocList
               ) where
 
-import Prelude (class Eq, class Show)
+import Prelude (class Eq, class Show, (<<<), ($))
 import Data.Newtype
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple (Tuple)
 import Data.DateTime (DateTime)
 import Web.Event.Event (Event)
 -- import Web.UIEvent.MouseEvent (MouseEvent)
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
+import Data.String.Utils ( words )
+import Data.Array ( head )
 
 data SortOrder = Asc | Desc
 derive instance eqSortOrder :: Eq SortOrder
@@ -26,9 +29,22 @@ derive instance genericSortOrder :: Generic SortOrder _
 instance showSortOrder :: Show SortOrder where
   show = genericShow
 
+pLocList :: AlbumList -> Boolean -- lists with location info
+pLocList (AlbumList xx) = maybe false xxx xx where
+ xxx :: String -> Boolean
+ xxx n = case head <<< words $ n of
+  Just "Basement" -> true
+  Just "Box" -> true
+  Just "Cube" -> true
+  Just "Shelf" -> true
+  Just "Incoming" -> true
+  Just "Lost&Found" -> true
+  _ -> false
+
 type Album =      { albumID :: Int
                   , albumAMusic :: Maybe String
                   , albumTidal :: Maybe String
+                  , albumJellyfin :: Maybe String
                   , albumAdded :: Maybe String
                   , albumArtist :: String
                   , albumTitle :: String
@@ -36,6 +52,7 @@ type Album =      { albumID :: Int
                   , albumURL :: String
                   , albumFormat :: String
                   , albumLocation :: Maybe String
+                  , albumLocIdx :: Maybe Int
                   , albumTags :: Array String
                   , albumFolder :: Int
                   , albumPlays :: Int

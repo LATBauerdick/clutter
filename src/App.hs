@@ -280,7 +280,8 @@ clutterServer =
             )
             . V.toList
             $ aids
-    liftIO $ print la
+    liftIO . putTextLn $ "-------serveAlbumsq: first 3 elements from [(album, locs)] of list " <> ln
+    liftIO . print . take 3 $ la
     let asj = AlbumsJ{listName = ln, lalbums = la}
     pure asj
 

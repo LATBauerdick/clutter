@@ -75,6 +75,8 @@ dToAlbum r =
     (dtidalid r)
     (damid r)
     (dqobuzid r)
+    (djellyfinid r)
+    (dlocIdx r)
     (dlocation r)
     (dtags r)
     (drating r)
@@ -283,6 +285,8 @@ readTidalAlbums p = do
         Nothing
         Nothing
         Nothing
+        Nothing
+        Nothing
         (dtags r)
         0
         0
@@ -314,6 +318,8 @@ readAMusicAlbums p = do
         "AppleMusic"
         Nothing
         (damid r)
+        Nothing
+        Nothing
         Nothing
         (dlocation r)
         (dtags r)

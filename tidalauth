@@ -26,12 +26,13 @@ session = tidalapi.Session()
 session.login_oauth_simple()
 # then print out the access_token etc
 print(session.user.username)
-with open('.tok-tidal.dat', 'w') as f:
-    print(session.user.id, file=f)
-    print(session.session_id, file=f)
-    print(session.country_code, file=f)
-    print(session.access_token, file=f)
+with open('.tok-tidal.tmp', 'w') as f:
+    print(f'  "tid": "{session.user.id}",', file=f)
+    print(f'  "tsi": "{session.session_id}",', file=f)
+    print(f'  "tcc": "{session.country_code}",', file=f)
+    print(f'  "tdt": "{session.access_token}"', file=f)
+    print("}", file=f)
 
-result = subprocess.run('{ head -n -4 tok.dat && cat .tok-tidal.dat; } > tok.dat.tmp && mv tok.dat.tmp tok.dat', shell=True, capture_output=True, text=True)
+result = subprocess.run('{ head -n -5 tok.json && cat .tok-tidal.tmp; } > tok.json.tmp && mv tok.json.tmp tok.json', shell=True, capture_output=True, text=True)
 
 print(result.stdout)

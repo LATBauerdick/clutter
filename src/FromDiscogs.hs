@@ -29,11 +29,11 @@ import qualified Data.Text as T (
   intercalate,
   lines,
   null,
-  splitOn,
   strip,
   stripPrefix,
   take,
   toCaseFold,
+  unpack,
  )
 import qualified Data.Text.Read as TR (decimal)
 import Data.Vector (Vector)
@@ -447,11 +447,17 @@ getR lns dr = r
         )
           <> (mapMaybe (T.stripPrefix "Q") . words $ fromMaybe "" loct)
       )
-  -- remove A<id> and T<id> tokens -- probably should use attoparsec instead
-  _xxx :: Maybe Text
-  _xxx = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
-    Just a -> if a /= "" then Just a else Nothing
-    _ -> Nothing
+  jellyfinid =
+    viaNonEmpty
+      head
+      ( mapMaybe (T.stripPrefix "J") . words $ fromMaybe "" loct
+      )
+  cdboxid :: Maybe Int
+  cdboxid =
+    viaNonEmpty head $
+      mapMaybe (T.stripPrefix "C" >=> (readMaybe . T.unpack)) $
+        words (fromMaybe "" loct)
+  -- remove A/T/Q/J<id> and C<id>etc tokens -- probably should use attoparsec instead
   loc :: Maybe Text
   loc = case listToMaybe . mapMaybe (\WNote{field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
     Just a ->
@@ -485,6 +491,11 @@ getR lns dr = r
                   )
                 . mapMaybe
                   ( \t -> case T.stripPrefix "C" t of
+                      Nothing -> Just t
+                      Just t' -> Just ("Box CDs" <> t')
+                  )
+                . mapMaybe
+                  ( \t -> case T.stripPrefix "J" t of
                       Nothing -> Just t
                       Just _ -> Nothing
                   )
@@ -549,7 +560,7 @@ getR lns dr = r
     1 -> ["played.", "played.once"]
     2 -> ["played.", "played.twice"]
     _ -> ["played.", "played.often"]
-  tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.qobuz"]) qobuzid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
+  tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.qobuz"]) qobuzid <> maybe [] (const ["provider.jellyfin"]) jellyfinid <> maybe [] (const ["provider.cdbox"]) cdboxid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
 
   tagsList :: [Text]
   tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres gs <> map T.toCaseFold styles <> tagsPlays plays <> tagsRated rating <> tagsFolder folder_id
@@ -566,7 +577,9 @@ getR lns dr = r
       , dformat = T.intercalate ", " fs
       , dtidalid = tidalid
       , dqobuzid = qobuzid
+      , djellyfinid = jellyfinid
       , damid = amid
+      , dlocIdx = cdboxid
       , dlocation = if loc == Just "" then Nothing else loc
       , dtags = tagsList
       , drating = rating
@@ -787,6 +800,11 @@ readWLItems tok i = do
     Left err -> Left ("Error: " <> show err)
     Right x -> Right x
 
+-- create list of [ <albumID>, (locList name, locList position) ]
+-- dicsogsLocList :: (Text, (Int, Vector Int)) -> [(Int, (Text, Int))]
+-- dicsogsLocList (ln, (1627102, aids)) = []
+-- discogsLocList (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
+
 readDiscogsListAids :: Discogs -> Int -> IO (Vector Int)
 readDiscogsListAids di i = do
   case i of
@@ -816,9 +834,11 @@ sortByNums aids nums = fst <$> sortOn snd pairs
           case maybeNums of
             Just numsText
               | not (T.null numsText) ->
-                  let individualNums = mapMaybe (either (const Nothing) (Just . fst) . TR.decimal . T.strip) . T.splitOn "," $ numsText
+                  -- let individualNums = mapMaybe (either (const Nothing) (Just . fst) . TR.decimal . T.strip) . T.splitOn "," $ numsText
+                  let individualNums = mapMaybe (either (const Nothing) (Just . fst) . TR.decimal . T.strip) [numsText]
                    in map (\d -> (aid, d)) individualNums
-            _ -> [] -- Nothing or empty text -> exclude this ID
+            -- _ -> [] -- Nothing or empty text or not a number -> exclude this ID
+            _ -> [(aid, 0)]
       )
       (zip aids nums)
 
@@ -843,9 +863,9 @@ readBoxListAids di = do
         Right wl -> wlitems wl
   let aids = wlaid <$> wls
   let cs = wlcomment <$> wls
-  putTextLn "-----------------readBoxListAids"
-  print $ zip aids cs
-  print $ sortByNums aids cs
+  -- putTextLn "-----------------readBoxListAids"
+  -- print $ zip aids cs
+  -- print $ sortByNums aids cs
   pure . V.fromList $ sortByNums aids cs
 
 sortByMultipleDates :: [] Int -> [Maybe Text] -> [] Int

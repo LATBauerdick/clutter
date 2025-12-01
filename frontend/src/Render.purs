@@ -7,10 +7,10 @@ import Prelude
 -- import CSS as CSS
 -- import CSS.Background (backgroundColor)
 -- import CSS.Color (Color, rgb)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
-import Data.Tuple (Tuple(..))
-import Data.Array (range, length, zip)
+import Data.Tuple (Tuple(..), snd)
+import Data.Array (range, length, replicate, zip)
 import Halogen as H
 import Halogen.HTML as HH
 -- import Halogen.HTML.CSS as HC
@@ -19,11 +19,11 @@ import Halogen.HTML.Events as HE
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
-import Data.String (take, indexOf, replaceAll) as S
+import Data.String (take, indexOf, replaceAll, contains) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
-import Types (Album, State, AlbumList(..), Action(..), SortOrder(..))
+import Types (Album, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
 import RenderTopMenu (renderTopMenu)
 
 render :: forall m0. State -> H.ComponentHTML Action () m0
@@ -76,12 +76,16 @@ render state = do
     HH.div  [ HP.class_ $ HH.ClassName "albums" ]
             [ HH.div
               [ HP.class_ $ HH.ClassName "row"]
-              ( map (\(Tuple i a) -> renderAlbumTN i a) $ zip (range 1 (length as)) as )
+              ( map (\(Tuple i a) -> renderAlbumTN i a) $ zip idxs  as )
             ]
     where as = state.albumList
+          idxs = if pLocList state.listName
+            then replicate (length as) 0
+            else range 1 (length as)
 
   renderAlbumTN :: forall m. Int -> Album -> H.ComponentHTML Action () m
-  renderAlbumTN idx a =
+  renderAlbumTN idx' a =
+    let idx = maybe idx' snd a.albumShelf in
     HH.div [ HP.class_ $ HH.ClassName "album-thumb" ]
       [ HH.div [ HP.class_ $ HH.ClassName "cover-container" ] (
           [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ]
@@ -274,6 +278,7 @@ render state = do
     , rbFormat a
     , rbTidal a
     , rbAMusic a
+    , rbJellyfin a
     , rbRating a
     , rbPlays a
     , rbLocation a
@@ -404,6 +409,20 @@ render state = do
         ]
       ]
 
+  rbJellyfin :: forall m. Album -> H.ComponentHTML Action () m
+  rbJellyfin a = case a.albumJellyfin of
+    Nothing -> HH.div_ []
+    Just jid -> if a.albumFormat == "Jellyfin" then HH.div_ [] else -- don't show if just Jellyfin
+      HH.div [ HP.class_ $ HH.ClassName "cover-obackground4"]
+      [ HH.a
+        [ HP.href ("http://umac:8096/web/#/details?id=" <> jid)]
+        [ HH.img
+            [ HP.src (state.menu.params.muhq <> "icons/jellyfin-icon.png"), HP.alt "J"
+            , HP.class_ $ HH.ClassName "cover-oimage"
+            ]
+        ]
+      ]
+
   rbRating :: forall m. Album -> H.ComponentHTML Action () m
   rbRating a = case a.albumRating of
     1 ->  HH.div [ HP.class_ $ HH.ClassName "rat" ]
@@ -478,18 +497,32 @@ render state = do
   rbLocation :: forall m. Album -> H.ComponentHTML Action () m
   rbLocation a = case a.albumLocation of
     Just loc ->
-      HH.div [ HP.class_ $ HH.ClassName "cover-obackground2" ]
-        [ HH.i [ HP.class_ $ HH.ClassName "fa fa-barcode" , HP.style "color:red" ] []
-        , HH.span
-          [ HP.class_ $ HH.ClassName "hovtext" ] [ HH.text "Location: "
-          , HH.a
-              [ HP.class_ $ HH.ClassName "loclink"
-              , HP.href ( loc <> "?sortBy=Default&sortOrder=" <> show Asc)
-              ]
-              [ HH.text $ loc <> " #" <> show 12
-              ]
+      let shelf = "Box CDs" in
+      if S.contains (Pattern shelf) $ S.take 7 loc
+        then
+        -- treat CD Box special: this was a Discogs Release tagged with Loc C<id>
+          HH.div [ HP.class_ $ HH.ClassName "cover-obackground2" ]
+          [ HH.i [ HP.class_ $ HH.ClassName "fa fa-barcode" , HP.style "color:black" ] []
+          , HH.button
+            [ HP.class_ $ HH.ClassName "hovtext"
+            , HE.onClick \_ -> ShowListSort (AlbumList (Just shelf)) "Default" Asc ]
+            [ HH.text $ shelf <> " #" <> show (fromMaybe 0 a.albumLocIdx)
+            ]
           ]
-        ]
+        else
+        -- treat it as a URL...
+          HH.div [ HP.class_ $ HH.ClassName "cover-obackground2" ]
+            [ HH.i [ HP.class_ $ HH.ClassName "fa fa-barcode" , HP.style "color:red" ] []
+            , HH.span
+              [ HP.class_ $ HH.ClassName "hovtext" ] [ HH.text ""
+              , HH.a
+                  [ HP.class_ $ HH.ClassName "loclink"
+                  , HP.href loc
+                  ]
+                  [ HH.text $ loc
+                  ]
+              ]
+            ]
     Nothing ->
       case a.albumShelf of
         Just (Tuple shelf ipos) ->
@@ -498,8 +531,23 @@ render state = do
           , HH.button
             [ HP.class_ $ HH.ClassName "hovtext"
             , HE.onClick \_ -> ShowListSort (AlbumList (Just shelf)) "Default" Asc ]
-            [ HH.text $ "Location: " <> shelf <> " #" <> show ipos
+            [ HH.text $ "" <> shelf <> " #" <> show ipos
             ]
           ]
-        Nothing -> HH.div [] []
-
+        Nothing ->
+          case a.albumLocation of
+            Just loc ->
+              -- just treat loc as an URL
+              HH.div [ HP.class_ $ HH.ClassName "cover-obackground2" ]
+                [ HH.i [ HP.class_ $ HH.ClassName "fa fa-barcode" , HP.style "color:red" ] []
+                , HH.span
+                  [ HP.class_ $ HH.ClassName "hovtext" ] [ HH.text "Location: "
+                  , HH.a
+                      [ HP.class_ $ HH.ClassName "loclink"
+                      , HP.href loc
+                      ]
+                      [ HH.text $ loc <> " #" <> show 12
+                      ]
+                  ]
+                ]
+            Nothing -> HH.div [] []

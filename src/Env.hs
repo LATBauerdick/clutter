@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 -- {-# LANGUAGE OverloadedStrings #-}
 -- {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wno-missing-fields #-}
@@ -13,6 +14,7 @@ module Env (
 )
 where
 
+import Data.Aeson (FromJSON (..), decode)
 import qualified Data.List as L (
   union,
  )
@@ -64,20 +66,54 @@ import Types (
   pLocList,
  )
 
+data TokJ = TokJ
+  { amt :: Text
+  , aky :: Text
+  , tok :: Text
+  , usr :: Text
+  , jky :: Text
+  , tid :: Text
+  , tsi :: Text
+  , tcc :: Text
+  , tdt :: Text
+  }
+  deriving (Generic, Show)
+instance FromJSON TokJ
+
 -- get authorization info from a text file
 getProviders :: IO (Tidal, Tidal, AMusic, Discogs, Discogs)
 getProviders = do
-  t <- readFileBS "tok.dat" -- for debug, get from file with authentication data
-  let ts :: [Text]
-      ts = words . decodeUtf8 $ t
-      appleMusicDevToken = fromJust $ ts !!? 0 -- t6
-      appleMusicUserToken = fromJust $ ts !!? 1 -- t7
-      discogsDevToken = fromJust $ ts !!? 2
-      discogsUserName = fromJust $ ts !!? 3
-      tidalUserId = fromMaybe 0 $ readMaybe (toString . fromJust $ ts !!? 4) :: Int
-      tidalSessionId = fromJust $ ts !!? 5 -- t3
-      tidalCountryCode = fromJust $ ts !!? 6 -- t4
-      tidalAccessToken = fromJust $ ts !!? 7 -- t5
+  ejson <- (decode <$> readFileLBS "tok.json") :: IO (Maybe TokJ)
+  -- ts <- case ejson of
+  --   Nothing -> exitFailure
+  --   -- putTextLn $ "Error: " <> show err
+  --   -- putTextLn "Failed to parse JSON"
+  --   Just x -> pure x
+  let ts = fromJust ejson
+  -- jsonData <- B.readFile "tok.json"
+  -- let mts = eitherDecode jsonData :: Maybe TokJ
+  -- let ts = fromJust mts
+  let appleMusicDevToken = amt ts
+      appleMusicUserToken = aky ts
+      discogsDevToken = tok ts
+      discogsUserName = usr ts
+      jellyfinAPIKey = jky ts
+      tidalUserId = fromMaybe 0 $ readMaybe (toString $ tid ts) :: Int
+      tidalSessionId = tsi ts
+      tidalCountryCode = tcc ts
+      tidalAccessToken = tdt ts
+  -- t <- readFileBS "tok.dat" -- for debug, get from file with authentication data
+  -- let ts :: [Text]
+  --     ts = words . decodeUtf8 $ t
+  --     appleMusicDevToken = fromJust $ ts !!? 0 -- t6
+  --     appleMusicUserToken = fromJust $ ts !!? 1 -- t7
+  --     discogsDevToken = fromJust $ ts !!? 2
+  --     discogsUserName = fromJust $ ts !!? 3
+  --     jellyfinAPIKey = fromJust $ ts !!? 4
+  --     tidalUserId = fromMaybe 0 $ readMaybe (toString . fromJust $ ts !!? 5) :: Int
+  --     tidalSessionId = fromJust $ ts !!? 6 -- t3
+  --     tidalCountryCode = fromJust $ ts !!? 7 -- t4
+  --     tidalAccessToken = fromJust $ ts !!? 8 -- t5
   pure
     ( Tidal $ TidalSession tidalUserId tidalSessionId tidalCountryCode tidalAccessToken
     , Tidal $ TidalFile "cache/traw.json" -- Tidal from cache
@@ -214,8 +250,10 @@ envUpdate _tok _un nreleases = do
   _ <- writeIORef (sortOrderR env) Asc
   pure ()
 
-fromListMap :: (Text, (Int, Vector Int)) -> [(Int, (Text, Int))]
-fromListMap (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
+-- create list of [ <albumID>, (locList name, locList position) ]
+discogsLocList :: (Text, (Int, Vector Int)) -> [(Int, (Text, Int))]
+discogsLocList (ln, (1627102, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
+discogsLocList (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
 
 updateTags :: Album -> Map Text [Int] -> Map Text [Int]
 updateTags a m =
@@ -288,9 +326,9 @@ envInit c = do
   let listNames' :: Map Text Int
       listNames' = M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList lists'
   _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) lists'
-  let allLocs = M.fromList . concatMap fromListMap . filter (pLocList . fst) . M.toList $ lm
+  let lcs' = M.fromList . concatMap discogsLocList . filter (pLocList . fst) . M.toList $ lm
   putTextLn "----------------------envInit: first 10 locs: "
-  print . take 10 . M.toList $ allLocs
+  print . take 10 . M.toList $ lcs'
 
   -- extract listened dates map
   let listenedDatesMap :: Map Int [Day] -- lookup listened dates by albumID
@@ -298,7 +336,7 @@ envInit c = do
   dr <- newIORef dc
   ar <- newIORef albums'
   lr <- newIORef lists'
-  lo <- newIORef allLocs
+  lcs <- newIORef lcs'
   lds <- newIORef listenedDatesMap
   lnr <- newIORef listNames'
   sr <- newIORef "Default"
@@ -345,7 +383,7 @@ envInit c = do
       { discogsR = dr
       , albumsR = ar
       , listsR = lr
-      , locsR = lo
+      , locsR = lcs
       , listenedDatesR = lds
       , listNamesR = lnr
       , tagsR = tr
@@ -377,7 +415,7 @@ getList' ln = do
       -- _ <- writeIORef (albumsR env) am'
       when (pLocList ln) $ do
         lcs <- readIORef (locsR env)
-        let lcs' = M.union (M.fromList (fromListMap (ln, (lid, aids)))) lcs
+        let lcs' = M.union (M.fromList (discogsLocList (ln, (lid, aids)))) lcs
         _ <- writeIORef (locsR env) lcs'
         pure ()
       -- write back modified lists

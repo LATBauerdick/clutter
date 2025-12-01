@@ -145,6 +145,8 @@ data Release = Release
   , dtidalid :: Maybe Text
   , damid :: Maybe Text
   , dqobuzid :: Maybe Text
+  , djellyfinid :: Maybe Text
+  , dlocIdx :: Maybe Int
   , dlocation :: Maybe Text
   , dtags :: [Text]
   , drating :: Int
@@ -166,6 +168,8 @@ data Album = Album
   , albumTidal :: Maybe Text
   , albumAMusic :: Maybe Text
   , albumQobuz :: Maybe Text
+  , albumJellyfin :: Maybe Text
+  , albumLocIdx :: Maybe Int
   , albumLocation :: Maybe Text
   , albumTags :: [Text]
   , albumRating :: Int
