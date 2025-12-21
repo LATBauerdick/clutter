@@ -398,7 +398,7 @@ render state = do
       [ HH.a
         [ HP.href if S.take 2 amid == "l."
               then "https://music.apple.com/library/albums/" <> amid
-              else "music://album/" <> amid
+              else "music://music.apple.com/us/album/" <> amid
               -- else "https://music.apple.com/us/album/" <> amid
         ]
         [ HH.img
