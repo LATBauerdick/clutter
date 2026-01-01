@@ -27,7 +27,7 @@ renderTopMenu state =
     , HH.div [HP.class_ $ HH.ClassName "dropdown"]
       [ HH.button
         [ HP.class_ $ HH.ClassName "dropbtn1"
-        , HE.onClick \_ -> ShowListSort (AlbumList (Just "2025 Listened")) "Default" Desc
+        , HE.onClick \_ -> ShowListSort (AlbumList (Just "Want")) "Default" Asc
         , HP.type_ HP.ButtonSubmit
         , HP.disabled state.loading
         ]
