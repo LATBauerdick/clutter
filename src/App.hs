@@ -401,8 +401,14 @@ updateAlbumsPlayed a = do
   putTextLn "-----add entry into Day One Journal Albums Played, file in AlbumsPlayed, add to Discogs Want List"
   print js
   let iurl = fromMaybe "!!error!!" $ viaNonEmpty head js
-  let itmp = "/tmp/__ac.jpg"
-  exitCode <- liftIO $ rawSystem "curl" [iurl, "-o", itmp]
+  -- The Day One CLI (symlinked from /usr/local/bin into the app bundle since
+  -- 2026-09-18) runs App-Sandboxed and can only read its own containers, so
+  -- the cover must be staged inside the Day One app-group container, not /tmp.
+  home <- fromMaybe "/tmp" <$> lookupEnv "HOME"
+  let itmp = home <> "/Library/Group Containers/5U8NS4GX82.dayoneapp2/__ac.jpg"
+  -- -f: an HTTP error body (Discogs "You are making requests too quickly")
+  -- must not be left behind masquerading as a JPEG
+  exitCode <- liftIO $ rawSystem "curl" ["-fsSL", iurl, "-o", itmp]
   unless (exitCode == ExitSuccess) $
     putTextLn $
       "ERROR getting cover img: curl failed with exit code: " <> show exitCode
@@ -487,7 +493,9 @@ updateAlbumsPlayed a = do
       "ERROR adding date to Discogs Want List: failed with exit code: " <> show exitCode
 
   putTextLn ""
-  let args = ["-j", "Albums Played", "-a", itmp, "--", "new"] <> drop 1 js
+  -- only attach the cover if the download actually succeeded
+  let attachArgs = if exitCode == ExitSuccess then ["-a", itmp] else []
+  let args = ["-j", "Albums Played"] <> attachArgs <> ["--", "new"] <> drop 1 js
   exitCode' <- liftIO $ rawSystem "dayone" args
   unless (exitCode' == ExitSuccess) $
     putTextLn $
