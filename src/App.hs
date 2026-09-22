@@ -9,6 +9,7 @@
 module App (
   startApp,
   app,
+  appWith,
 )
 where
 
@@ -18,7 +19,7 @@ import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 import Control.Monad (foldM)
 import qualified Data.IntSet as Set
 import qualified Data.Map.Strict as M
-import Data.Text as T (replace, stripPrefix, unlines, unpack)
+import Data.Text as T (isSuffixOf, replace, stripPrefix, unlines, unpack)
 import Data.Text.IO as TIO (writeFile)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -39,7 +40,10 @@ import Network.Wai.Handler.Warp
 import Relude
 import Render (renderAlbumJournal, renderAlbumText, renderAlbumView, renderAlbumsView, renderApp)
 import Servant
+import System.Directory (doesFileExist, makeAbsolute)
 import System.Exit (ExitCode (..))
+import System.FilePath ((</>))
+import System.IO (hPutStrLn)
 import System.Process (rawSystem, readProcess)
 import Types (
   Album (..),
@@ -197,6 +201,28 @@ addOriginsAllowed =
   mapResponseHeaders $
     (:) ("Access-Control-Allow-Origin", "*")
 
+---
+--- keep a rebuilt frontend bundle (or stylesheet) from being served out of a stale
+--- browser cache. With no Cache-Control at all the browser is free to invent a
+--- freshness lifetime from the file's age (~10% of it), so weeks after a build a
+--- plain reload can still run the old index.js. "no-cache" does not disable the
+--- cache, it only forces revalidation -- and the static file server answers
+--- If-Modified-Since with a 304, so the cost is one conditional request.
+---
+addNoCacheMiddleware :: Application -> Application
+addNoCacheMiddleware baseApp req responseFunc =
+  baseApp req (responseFunc . if isAssetPath (pathInfo req) then addNoCache else id)
+
+isAssetPath :: [Text] -> Bool
+isAssetPath ps = case reverse ps of
+  (p : _) -> any (`T.isSuffixOf` p) [".js", ".css"]
+  [] -> False
+
+addNoCache :: Response -> Response
+addNoCache =
+  mapResponseHeaders $
+    (:) ("Cache-Control", "no-cache")
+
 -- (:) ("Content-Security-Policy", "navigate-to * ")
 
 -- type AppM = ReaderT Env Handler defined in Types.hs
@@ -204,10 +230,13 @@ nt :: Env -> (ReaderT Env) Handler a -> Handler a
 nt env x = x `runReaderT` env
 
 app :: Env -> Application
-app env = addAllOriginsMiddleware $ serve clutterAPI (hoistServer clutterAPI (`runReaderT` env) clutterServer)
+app = appWith "static"
 
-clutterServer :: ServerT ClutterAPI AppM
-clutterServer =
+appWith :: FilePath -> Env -> Application
+appWith sd env = addAllOriginsMiddleware . addNoCacheMiddleware $ serve clutterAPI (hoistServer clutterAPI (`runReaderT` env) (clutterServer sd))
+
+clutterServer :: FilePath -> ServerT ClutterAPI AppM
+clutterServer sd =
   serveAlbum
     :<|> serveAlbums
     :<|> serveDiscogs
@@ -218,7 +247,7 @@ clutterServer =
     :<|> serveReq
     :<|> serveAlbump
     :<|> serveApp
-    :<|> serveDirectoryFileServer "static"
+    :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector Int)
   decodeListQuery ln msb mso fs = do
@@ -506,4 +535,31 @@ updateAlbumsPlayed a = do
 
 -- init env from files (AppM not yet available) and run app
 startApp :: Int -> Bool -> IO ()
-startApp p c = envInit c >>= (run p . app)
+startApp p c = do
+  sd <- resolveStaticDir
+  env <- envInit c
+  run p (appWith sd env)
+
+---
+--- the static assets (index.js, style.css, icons) live next to the sources, not in
+--- the installed package, and were looked up relative to the process working
+--- directory -- so a restart from anywhere else served a page with no script and no
+--- stylesheet, with nothing in the log to say why. Resolve the directory once at
+--- startup, make it absolute so a later chdir cannot break it, allow an override,
+--- and complain loudly if the bundle is not where we think it is.
+---
+resolveStaticDir :: IO FilePath
+resolveStaticDir = do
+  sd <- makeAbsolute . fromMaybe "static" =<< lookupEnv "CLUTTER_STATIC"
+  haveBundle <- doesFileExist (sd </> "index.js")
+  --- stderr, not stdout: stdout is block-buffered once redirected to a log file,
+  --- so a warning printed there can sit unflushed for the life of the process.
+  if haveBundle
+    then hPutStrLn stderr $ "serving static assets from " <> sd
+    else
+      hPutStrLn stderr $
+        "WARNING: no index.js under "
+          <> sd
+          <> " -- the web UI will not load. Start clutter from the clutter"
+          <> " source directory, or point CLUTTER_STATIC at its static/ directory."
+  pure sd

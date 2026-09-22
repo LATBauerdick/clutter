@@ -69,6 +69,8 @@ library
     , text
     , time
     , process
+    , directory
+    , filepath
     , vector
     , wai
     , warp
@@ -107,6 +109,8 @@ executable clutter
     , text
     , time
     , process
+    , directory
+    , filepath
     , vector
     , wai
     , warp

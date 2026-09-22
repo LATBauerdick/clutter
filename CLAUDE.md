@@ -21,6 +21,17 @@ cabal run clutter -- -c
 
 # Run with custom port
 cabal run clutter -- -c 8080
+```
+
+Static assets (`index.js`, `style.css`, `bootstrap.min.css`, `icons/`) are served from
+`static/`, resolved **relative to the working directory** and absent from the installed
+Nix package — so the server must be started from the source directory, or
+`CLUTTER_STATIC` must point at a `static/` directory. It logs the resolved path to
+stderr at startup and warns there if `index.js` is missing. Note that `tok.json` and
+`cache/` are working-directory-relative too, so the source directory is still the only
+place the server starts cleanly.
+
+```bash
 
 # Development with auto-reload
 ghcid --command="cabal repl app/Main.hs"
@@ -45,7 +56,7 @@ npm run build
 # Build and serve with hot reload
 npm run serve
 
-# Bundle for production (outputs to ../backend/static/index.js)
+# Bundle for production (outputs to frontend/index.js, which static/index.js symlinks to)
 npm run bundle
 
 # Run tests

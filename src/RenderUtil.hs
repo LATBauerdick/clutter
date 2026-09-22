@@ -82,14 +82,15 @@ renderApp t = do
         L.head_ $ do
           L.title_ $ L.toHtml t
           L.meta_ [L.charset_ "utf-8"]
-          L.link_ [ L.rel_ "stylesheet", L.href_  "https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css", L.crossorigin_ "anonymous"]
+          L.link_ [ L.rel_ "icon", L.href_ "/icons/vinyl-icon.png" ]
+          L.link_ [ L.rel_ "stylesheet", L.href_  "/bootstrap.min.css" ]
           L.meta_ [L.name_ "viewport", L.content_ "width=device-width, initial-scale=1.0"]
           L.meta_ [L.httpEquiv_ "X-UA-Compatible", L.content_ "ie=edge"]
           L.script_ [L.src_ "https://kit.fontawesome.com/dd23371146.js", L.crossorigin_ "anonymous"] ttt
-          L.link_ [ L.rel_ "stylesheet", L.href_  "style.css" ]
+          L.link_ [ L.rel_ "stylesheet", L.href_  "/style.css" ]
         L.body_ $ do
           L.div_ [ L.id_ "container" ] $ L.toHtml ttt
-          L.script_ [ L.type_ "module", L.src_ "./index.js"] ttt
+          L.script_ [ L.type_ "module", L.src_ "/index.js"] ttt
   pure h
 
 renderHead :: Text -> L.Html ()
@@ -97,6 +98,7 @@ renderHead t =
   L.head_ $ do
     L.title_ $ L.toHtml t
     L.meta_ [L.charset_ "utf-8"]
+    L.link_ [ L.rel_ "icon", L.href_ "/icons/vinyl-icon.png" ]
     L.meta_ [L.name_ "viewport", L.content_ "width=device-width, initial-scale=1.0"]
     L.meta_ [L.httpEquiv_ "X-UA-Compatible", L.content_ "ie=edge"]
     let ttt :: Text; ttt = ""
