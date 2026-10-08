@@ -10,6 +10,7 @@ package:
     - formatters
     - halogen
     - halogen-css
+    - now
     - prelude
     - strings
     - stringutils
