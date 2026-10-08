@@ -147,7 +147,7 @@ rbFormat a = do
         'f' ->
           L.span_ [L.class_ "far fa-file-audio fa-sm"] ""
         's' ->
-          L.span_ [L.class_ "far fa-wifi fa-sm"] ""
+          L.span_ [L.class_ "fas fa-wifi fa-sm"] ""
         _ ->
           L.span_ [L.class_ "fa fa-square-o fa-stack-1x"] ""
     -- L.toHtml (albumFormat a)

@@ -369,7 +369,7 @@ render state = do
                 ]
             ]
           's' ->
-            [ HH.span [ HP.class_ $ HH.ClassName "far fa-wifi fa-sm" ] [] ]
+            [ HH.span [ HP.class_ $ HH.ClassName "fas fa-wifi fa-sm" ] [] ]
           _ ->
             [ HH.text a.albumFormat ]
     ]
