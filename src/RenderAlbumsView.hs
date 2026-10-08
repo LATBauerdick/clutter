@@ -79,7 +79,7 @@ renderAlbumsView ln fs aids = do
                 L.img_
                   [ L.src_ (albumCover a)
                   , L.class_ "cover-image"
-                  , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
+                  , L.onerror_ "this.onerror=null;this.src='/icons/no-cover.png';"
                   ]
             rbIndex idx
             renderBadges a
@@ -134,7 +134,7 @@ rbFormat a = do
         -- L.img_ [ L.src_ "/discogs-icon.png", L.alt_ "D", L.class_ "cover-oimage" ]
         't' -> L.div_ ""
         'a' -> do
-          L.img_ [L.src_ "/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
+          L.img_ [L.src_ "/icons/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
           L.div_ ""
         'c' ->
           L.span_ [L.class_ "fas fa-compact-disc fa-sm"] ""
@@ -160,7 +160,7 @@ rbTidal a =
     Nothing -> ""
     Just tid -> L.div_ [L.class_ "cover-obackground1"] $ do
       L.a_ [L.href_ ("https://listen.tidal.com/album/" <> tid)] $ do
-        L.img_ [L.src_ "/tidal-icon.png", L.alt_ "T", L.class_ "cover-oimage"]
+        L.img_ [L.src_ "/icons/tidal-icon.png", L.alt_ "T", L.class_ "cover-oimage"]
 rbAMusic :: Album -> L.Html ()
 rbAMusic a =
   case albumAMusic a of
@@ -170,7 +170,7 @@ rbAMusic a =
         if T.take 2 amid == "l."
           then L.a_ [L.href_ ("https://music.apple.com/library/albums/" <> amid)]
           else L.a_ [L.href_ ("https://music.apple.com/us/album/" <> amid)]
-      $ do L.img_ [L.src_ "/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
+      $ do L.img_ [L.src_ "/icons/am-icon.png", L.alt_ "A", L.class_ "cover-oimage"]
 rbRating :: Album -> L.Html ()
 rbRating a = do
   case albumRating a of

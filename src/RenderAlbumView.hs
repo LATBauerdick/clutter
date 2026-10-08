@@ -60,7 +60,7 @@ renderAlbumView mAlbum now = do
                   L.img_
                     [ L.src_ (albumCover a)
                     , L.alt_ "cover image"
-                    , L.onerror_ "this.onerror=null;this.src='/no-cover.png';"
+                    , L.onerror_ "this.onerror=null;this.src='/icons/no-cover.png';"
                     , L.class_ "cover-image"
                     ]
                 renderBadges a
