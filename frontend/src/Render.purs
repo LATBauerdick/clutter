@@ -415,7 +415,7 @@ render state = do
     Just jid -> if a.albumFormat == "Jellyfin" then HH.div_ [] else -- don't show if just Jellyfin
       HH.div [ HP.class_ $ HH.ClassName "cover-obackground4"]
       [ HH.a
-        [ HP.href ("http://umac:8096/web/#/details?id=" <> jid)]
+        [ HP.href ("http://usrv.local:8096/web/#/details?id=" <> jid)]
         [ HH.img
             [ HP.src (state.menu.params.muhq <> "icons/jellyfin-icon.png"), HP.alt "J"
             , HP.class_ $ HH.ClassName "cover-oimage"
