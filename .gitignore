@@ -7,6 +7,8 @@ cache
 tok.dat
 tok.json
 .tok-tidal.tmp
+tidal-session.json
+tok.json.tmp
 AlbumsPlayed
 dist-newstyle
 cabal.project.local

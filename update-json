@@ -1,4 +1,7 @@
 
+# fresh Tidal token first (silent refresh; prints a login link only if the session is gone)
+./tidalauth || echo "tidalauth failed -- Tidal fetch will use the old token" >&2
+
 mkdir -p ./cache
 cd ./cache
 AMT=$(jq -r '.amt' ../tok.json)

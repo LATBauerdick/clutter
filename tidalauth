@@ -1,38 +1,106 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
-# run this after nix develop --command zsh
+# Refresh the Tidal fields (tid, tsi, tcc, tdt) in tok.json.  Plain python, no nix shell.
 #
-####!/usr/bin/env nix-shell
-####!nix-shell -i python3 -p "python3.withPackages(ps: [ ps.requests ps.python-dateutil ])"
+# Tidal access tokens live 4 hours; the refresh token that comes with them lasts until
+# the device is logged out.  The refresh token is kept in tidal-session.json (git-ignored,
+# mode 600), so only the first run -- or a revoked session -- needs the browser link.
+# Run from the clutter directory before starting the server.
+#
+#   ./tidalauth          refresh if possible, otherwise log in
+#   ./tidalauth --login  force a new device login
+#
+import base64
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
-# needs git clone https://github.com/tamland/python-tidal
+TOK = "tok.json"
+SESSION = "tidal-session.json"
+AUTH = "https://auth.tidal.com/v1/oauth2/"
+SCOPE = "r_usr w_usr w_sub"
+# the device-flow client used by python-tidal
+_b = base64.b64decode
+CLIENT_ID = _b(_b(b"WmxneVNuaGtiVzUw") + _b(b"V2xkTE1HbDRWQT09")).decode()
+CLIENT_SECRET = _b(_b(b"TVU1dU9VRm1SRUZxZUhKblNrWktZa3RPVjB4bFFY")
+                   + _b(b"bExSMVpIYlVsT2RWaFFVRXhJVmxoQmRuaEJaejA9")).decode()
 
-#####!/usr/bin/env python3
-#### this is outdated, now works with the latest versions of tidalapi
-#### How To get the tidalapi package vs 0.7.0:
-####   python3 -m pip install git+https://github.com/tamland/python-tidal@ee120d94d897f6f6ee644fd835a35fb68942b331
-#### or check out from github:
-####   git clone https://github.com/tamland/python-tidal
-####   cd python-tidal
-####   git checkout ee120d94d897f6f6ee644fd835a35fb68942b331
-####
-import sys, subprocess
-sys.path.append('./python-tidal') #the directory that contains my_pkg
-####print(sys.path)
-import tidalapi
-session = tidalapi.Session()
-# new oauth-based authentication
-# Will run until you visit the printed url and link your account
-session.login_oauth_simple()
-# then print out the access_token etc
-print(session.user.username)
-with open('.tok-tidal.tmp', 'w') as f:
-    print(f'  "tid": "{session.user.id}",', file=f)
-    print(f'  "tsi": "{session.session_id}",', file=f)
-    print(f'  "tcc": "{session.country_code}",', file=f)
-    print(f'  "tdt": "{session.access_token}"', file=f)
-    print("}", file=f)
 
-result = subprocess.run('{ head -n -5 tok.json && cat .tok-tidal.tmp; } > tok.json.tmp && mv tok.json.tmp tok.json', shell=True, capture_output=True, text=True)
+def post(url: str, params: dict) -> tuple[int, dict]:
+    req = urllib.request.Request(url, data=urllib.parse.urlencode(params).encode(), method="POST")
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.load(r)
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"{}")
 
-print(result.stdout)
+
+def device_login() -> dict:
+    st, d = post(AUTH + "device_authorization", {"client_id": CLIENT_ID, "scope": SCOPE})
+    if st != 200:
+        sys.exit(f"device authorization failed: {st} {d}")
+    print(f"Visit https://{d['verificationUriComplete'].removeprefix('https://')} to log in", flush=True)
+    end = time.time() + d["expiresIn"]
+    while time.time() < end:
+        time.sleep(d.get("interval", 2))
+        st, t = post(AUTH + "token", {
+            "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET, "scope": SCOPE,
+            "device_code": d["deviceCode"],
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code"})
+        if st == 200:
+            return t
+    sys.exit("login link expired")
+
+
+def refresh(refresh_token: str) -> dict | None:
+    st, t = post(AUTH + "token", {
+        "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET, "scope": SCOPE,
+        "grant_type": "refresh_token", "refresh_token": refresh_token})
+    if st != 200:
+        print(f"refresh failed ({st}), logging in again", file=sys.stderr)
+        return None
+    t.setdefault("refresh_token", refresh_token)  # a refresh response may omit it
+    return t
+
+
+def save_session(t: dict) -> None:
+    fd = os.open(SESSION, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump({"refresh_token": t["refresh_token"]}, f)
+
+
+def main() -> None:
+    t = None
+    if "--login" not in sys.argv and os.path.exists(SESSION):
+        with open(SESSION) as f:
+            t = refresh(json.load(f)["refresh_token"])
+    if t is None:
+        t = device_login()
+    save_session(t)
+
+    req = urllib.request.Request("https://api.tidal.com/v1/sessions",
+                                 headers={"Authorization": f"Bearer {t['access_token']}"})
+    with urllib.request.urlopen(req) as r:
+        s = json.load(r)
+
+    with open(TOK) as f:
+        tok = json.load(f)
+    for k in ("tid", "tsi", "tcc", "tdt"):  # keep the Tidal fields last
+        tok.pop(k, None)
+    tok |= {"tid": str(s["userId"]), "tsi": s["sessionId"], "tcc": s["countryCode"],
+            "tdt": t["access_token"]}
+    tmp = TOK + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(tok, f, indent=1)
+        f.write("\n")
+    os.replace(tmp, TOK)
+    expires = time.strftime("%H:%M", time.localtime(time.time() + t.get("expires_in", 14400)))
+    print(f"tok.json updated for Tidal user {s['userId']} ({s['countryCode']}), token valid until {expires}")
+
+
+if __name__ == "__main__":
+    main()
