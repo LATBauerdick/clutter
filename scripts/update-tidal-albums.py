@@ -5,7 +5,8 @@
 # Keeps ~/Sync/clutter/tidal-albums.json (CLUTTER_TIDAL_ALBUMS overrides) with every Tidal
 # album that was ever a favourite or was played, so albums can be deleted from the Tidal
 # favourites without disappearing from clutter. Per album: the raw Tidal album record,
-# favourite since/until, and genre "classical" or "popular" from a text rule.
+# favourite since/until, and the genre: Apple Music's, looked up by UPC (no login), or where
+# Apple does not know the album, "classical" from a text rule.
 #
 # Run by update-json after it fetched cache/traw.json; also seeds itself from the snapshots
 # in ~/Sync/clutter/tidal-favorites/. Only Tidal albums that were played but are neither a
@@ -20,6 +21,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -54,7 +56,8 @@ LABELS = re.compile(r"(deutsche grammophon|decca|ecm new series|harmonia mundi|n
                     r"chandos|sony classical|warner classics|erato|alpha classics|pentatone|archiv|philips|"
                     r"emi classics|teldec|virgin classics|nonesuch|ondine|capriccio|\bcpo\b|brilliant classics|"
                     r"orfeo|melodiya|supraphon|hänssler|channel classics|linn|signum|onyx|avie|outhere|"
-                    r"ricercar|glossa|russian compact disc)")
+                    r"ricercar|glossa|russian compact disc|sono luminus|bis records|cedille|delos|bridge records|"
+                    r"navona|orchid classics|rubicon|resonus|evil penguin|accentus|berlin classics)")
 
 
 def classical_performers(coll):
@@ -82,10 +85,66 @@ def is_classical(artists, title, label, performers):
     return score >= 2
 
 
-def classify(album, performers):
+APPLE_CLASSICAL = {"Classical", "Opera", "Orchestral", "Chamber Music", "Baroque Era", "Classical Era",
+                   "Romantic Era", "Modern Era", "Contemporary Era", "Renaissance", "Medieval Era", "Choral",
+                   "Art Song", "Minimalism", "Impressionist", "High Classical"}
+# Apple genres that say little about classical or not: there the text rule decides
+APPLE_VAGUE = {"Holiday", "Soundtrack", "Original Score", "Piano", "Solo Instrumental", "Vocal",
+               "Classical Crossover", "Instrumental", "Easy Listening"}
+
+
+def genre_of(e, performers):
+    """Apple's genre when Apple knows the album ("classical" for Classical and Opera),
+    else "classical" if the text rule says so, else none"""
+    g = (e.get("apple") or {}).get("genre")
+    if g in APPLE_CLASSICAL:
+        return "classical"
+    if g and g not in APPLE_VAGUE:
+        return g.casefold()
+    album = e["album"]
     artists = [a["name"] for a in album.get("artists") or []]
-    return "classical" if is_classical(artists, album.get("title", ""), album.get("copyright") or "", performers) \
-        else "popular"
+    if is_classical(artists, album.get("title", ""), album.get("copyright") or "", performers):
+        return "classical"
+    return g.casefold() if g else None
+
+
+def norm_title(t):
+    t = re.sub(r"\s*[\(\[].*?[\)\]]", "", t.casefold())
+    t = re.sub(r"\s+-\s+(ep|single)$", "", t)
+    return re.sub(r"\W+", "", t)
+
+
+def apple_lookup(entries, today):
+    """Apple Music's genre for albums with a UPC, 100 per request; the answers carry no UPC,
+    so they are matched back by title (and artist when titles repeat)"""
+    asked = found = 0
+    todo = [e for e in entries if e.get("album") and e["album"].get("upc") and "apple" not in e]
+    for i in range(0, len(todo), 100):
+        batch = todo[i:i + 100]
+        url = "https://itunes.apple.com/lookup?entity=album&upc=" + ",".join(e["album"]["upc"] for e in batch)
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                res = [x for x in json.load(r).get("results", []) if x.get("wrapperType") == "collection"]
+        except (urllib.error.URLError, TimeoutError, ValueError):
+            continue  # asked again next run
+        asked += len(batch)
+        for e in batch:
+            t = norm_title(e["album"]["title"])
+            cands = [x for x in res if norm_title(x.get("collectionName", "")) == t]
+            if not cands and len(t) >= 6:  # "Bach: Goldberg Variations" vs "Goldberg Variations"
+                cands = [x for x in res if (n := norm_title(x.get("collectionName", ""))) and len(n) >= 6
+                         and (n in t or t in n)]
+            if len(cands) > 1:
+                artist = ((e["album"].get("artist") or {}).get("name") or "").casefold()
+                cands = [x for x in cands if artist and artist in x.get("artistName", "").casefold()] or cands[:1]
+            if cands:
+                x = cands[0]
+                e["apple"] = {"genre": x.get("primaryGenreName"), "id": x.get("collectionId"), "checked": today}
+                found += 1
+            else:
+                e["apple"] = {"checked": today}
+        time.sleep(3)
+    return asked, found
 
 
 # ---------------------------------------------------------------- inputs
@@ -213,10 +272,11 @@ def main():
             fetched += 1
         e["fetched"] = today
 
-    # classical or popular, for every album with a record
+    # the genre: Apple Music's by UPC, else the text rule for classical
+    asked, found = (0, 0) if a.dry_run else apple_lookup(albums.values(), today)
     for e in albums.values():
         if e.get("album"):
-            e["genre"] = classify(e["album"], performers)
+            e["genre"] = genre_of(e, performers)
 
     # how well the rule agrees with Discogs, on albums a Discogs release links to
     agree = total = 0
@@ -229,13 +289,14 @@ def main():
     store["updated"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
     nfav = sum(1 for e in albums.values() if (e.get("favorite") or {}).get("since") and not e["favorite"].get("until"))
     ncls = sum(1 for e in albums.values() if e.get("genre") == "classical")
+    napple = sum(1 for e in albums.values() if (e.get("apple") or {}).get("genre"))
     log.append(f"{len(albums)} albums ({before} before): {nfav} favourites, "
                f"{sum(1 for e in albums.values() if (e.get('favorite') or {}).get('until'))} former favourites, "
                f"{sum(1 for e in albums.values() if not e.get('favorite'))} played only; "
                f"{new_favs} favourites again, {unfavs} newly unfavourited; "
                f"fetched {fetched} of {len(missing)} played albums ({failed} failed)")
-    log.append(f"genre: {ncls} classical, {len(albums) - ncls} popular; "
-               f"agrees with Discogs on {agree} of {total} linked albums")
+    log.append(f"genre: Apple knows {napple} albums (asked {asked} new, found {found}); {ncls} classical; "
+               f"classical agrees with Discogs on {agree} of {total} linked albums")
     if not a.dry_run:
         if os.path.exists(STORE):
             os.replace(STORE, STORE + ".bak")

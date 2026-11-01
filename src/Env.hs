@@ -144,7 +144,7 @@ envTidalConnect _nalbums = do
   -- create the Tags index
   putTextLn "----------------------envTidalConnect: Updating Tags index"
   let tagsMap :: Map Text [AlbumKey]
-      tagsMap = foldr updateTags M.empty (M.elems allAlbums)
+      tagsMap = buildTags (M.elems allAlbums)
   putTextLn "----------------------envTidalConnect: list of Tags found: "
   print (M.keys tagsMap)
 
@@ -236,7 +236,7 @@ envUpdate _tok _un nreleases = do
   -- create the Tags index
   putTextLn "----------------------envUpdate: Updating Tags index"
   let tagsMap :: Map Text [AlbumKey]
-      tagsMap = foldr updateTags M.empty (M.elems allAlbums)
+      tagsMap = buildTags (M.elems allAlbums)
   putTextLn "----------------------envUpdate: list of Tags found: "
   print (M.keys tagsMap)
 
@@ -259,6 +259,12 @@ envUpdate _tok _un nreleases = do
 discogsLocList :: (Text, (Int, Vector AlbumKey)) -> [(AlbumKey, (Text, Int))]
 discogsLocList (ln, (1627102, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
 discogsLocList (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
+
+-- the tags index for all albums in one pass; inserting album by album with L.union costs
+-- n^2 per tag, deferred to the tag's first use, which made a focus on a big tag
+-- (tidal.favorite, provider.applemusic) take a minute
+buildTags :: [Album] -> Map Text [AlbumKey]
+buildTags as = M.map (ordNub . reverse) $ M.fromListWith (<>) [(t, [albumID a]) | a <- as, t <- albumTags a]
 
 updateTags :: Album -> Map Text [AlbumKey] -> Map Text [AlbumKey]
 updateTags a m =
@@ -326,7 +332,7 @@ envInit c = do
   -- create the Tags index
   putTextLn "----------------------envInit: Updating Tags index"
   let tagsMap :: Map Text [AlbumKey]
-      tagsMap = foldr updateTags M.empty (M.elems albums')
+      tagsMap = buildTags (M.elems albums')
   putTextLn "----------------------envInit: list of Tags found: "
   print (M.keys tagsMap)
 
@@ -538,4 +544,4 @@ envRefreshPlays = do
   writeIORef ar am
   -- played.* tags change with a play: rebuild the index (a few thousand albums)
   tr <- asks tagsR
-  writeIORef tr (foldr updateTags M.empty (M.elems am))
+  writeIORef tr (buildTags (M.elems am))

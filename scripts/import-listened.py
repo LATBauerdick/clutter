@@ -69,7 +69,10 @@ TIDAL_ALIASES = {
     60579714: 504260373,  # Booka Shade – Movements 10
     182676075: 256079948,  # Bachelor – Doomin' Sun
     179752112: 252603948,  # Little Simz – Sometimes I Might Be Introvert
+    12229047: 285290779,  # Mozart – Horn Concertos 2, 3, 4 / Horn Quintet (Bruns, Fey)
 }
+# Apple ids for those, where the note had none
+TIDAL_ALIAS_APPLE = {285290779: 337268562}
 
 # Discogs releases that stood in for a stream they did not match; their plays are plays of
 # the Tidal album (LATB 2026-11-01: removed from the collection)
@@ -385,7 +388,8 @@ def main():
         artist, title = split_title(n["title"])
         if n["discogs"] is None and (n["tidal"] or n["apple"]):
             src = "tidal" if n["tidal"] else "apple"
-            out.append(event(ts=iso(n["when"]), src=src, tidal=n["tidal"], apple=n["apple"],
+            out.append(event(ts=iso(n["when"]), src=src, tidal=n["tidal"],
+                             apple=n["apple"] or TIDAL_ALIAS_APPLE.get(n["tidal"]),
                              artist=artist, title=title, via="import:albumsplayed"))
             report["recovered"].append(n)
         elif n["discogs"] is None:

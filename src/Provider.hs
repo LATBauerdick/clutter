@@ -286,7 +286,7 @@ readTidalAlbums p = do
         (makeTidalURL (daid r))
         "Tidal"
         (Just (show (daid r)))
-        Nothing
+        (damid r) -- Apple Music id, from the Tidal album store
         Nothing
         Nothing
         Nothing

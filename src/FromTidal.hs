@@ -253,10 +253,13 @@ data TStoreEntry = TStoreEntry
   { seAlbum :: Maybe WTIItem
   , seFavorite :: Maybe TFavorite
   , seGenre :: Maybe Text
+  , seApple :: Maybe Int -- Apple Music album id, found by UPC
   }
 instance FromJSON TStoreEntry where
-  parseJSON = withObject "tidal store entry" $ \o ->
-    TStoreEntry <$> o .:? "album" <*> o .:? "favorite" <*> o .:? "genre"
+  parseJSON = withObject "tidal store entry" $ \o -> do
+    apple <- o .:? "apple"
+    appleId <- maybe (pure Nothing) (withObject "apple" (.:? "id")) apple
+    TStoreEntry <$> o .:? "album" <*> o .:? "favorite" <*> o .:? "genre" <*> pure appleId
 
 data TFavorite = TFavorite {favSince :: Text, favUntil :: Maybe Text}
 instance FromJSON TFavorite where
@@ -295,12 +298,12 @@ readTidalStore fn = do
         , dfolder = fromEnum TTidal
         , dformat = "Streaming"
         , dtidalid = Just (show tid)
-        , damid = Nothing
+        , damid = show <$> seApple e
         , dqobuzid = Nothing
         , djellyfinid = Nothing
         , dlocIdx = Nothing
         , dlocation = Nothing
-        , dtags = ["provider.tidal"] <> ["tidal.favorite" | isFav] <> maybe [] (\g -> ["genre." <> g]) (seGenre e)
+        , dtags = ["provider.tidal"] <> ["provider.applemusic" | isJust (seApple e)] <> ["tidal.favorite" | isFav] <> maybe [] (\g -> ["genre." <> g]) (seGenre e)
         , drating = 0
         , dplays = 0
         }
