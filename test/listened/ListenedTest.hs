@@ -88,6 +88,11 @@ main = do
       , check "bad keys are rejected" (all (isNothing . parseKey) ["", "X12", "T", "Tabc"])
       , check "key text round trip" (parseKey (keyText (T 187293380)) == Just (T 187293380))
       , check "key as JSON" (encode (T 187293380) == "\"T187293380\"")
+      , check "never played" (playedTags 0 0 == ["played.never"])
+      , check "played only before the log" (playedTags 0 3 == ["played.", "played.early"])
+      , check "log count, marked on Discogs" (playedTags 2 1 == ["played.", "played.twice"])
+      , check "log count plus earlier plays" (playedTags 1 7 == ["played.", "played.once", "played.early"])
+      , check "often" (playedTags 5 0 == ["played.", "played.often"])
       ]
   removeDirectoryRecursive dir
   if and oks then exitSuccess else exitFailure

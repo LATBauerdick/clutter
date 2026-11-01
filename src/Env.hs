@@ -314,7 +314,13 @@ envInit c = do
   --  albums' :: Map AlbumKey Album          -- map of Albums indexed with their IDs
   --  fns :: Map Text Int               -- map of folder names with their IDs
   --  lm :: Map Text (Int, Vector AlbumKey)  -- map of list names with IDs and contents
-  (dc, albums', fns, lm) <- initInit c
+  (dc, albums'', fns, lm) <- initInit c
+
+  -- clutter's play log, attached to the albums before the tags index is built
+  ldir <- listenedDir
+  plays' <- readPlays ldir
+  hPutStrLn stderr $ "read " <> show (length plays') <> " plays from " <> ldir
+  let albums' = attachPlays plays' albums''
 
   -- create the Tags index
   putTextLn "----------------------envInit: Updating Tags index"
@@ -334,12 +340,8 @@ envInit c = do
   putTextLn "----------------------envInit: first 10 locs: "
   print . take 10 . M.toList $ lcs'
 
-  -- clutter's play log
-  ldir <- listenedDir
-  plays' <- readPlays ldir
-  hPutStrLn stderr $ "read " <> show (length plays') <> " plays from " <> ldir
   dr <- newIORef dc
-  ar <- newIORef (attachPlays plays' albums')
+  ar <- newIORef albums'
   lr <- newIORef lists'
   lcs <- newIORef lcs'
   lds <- newIORef plays'
@@ -466,7 +468,7 @@ envUpdateAlbum aid = do
 
       -- update the tags map with tags from this album
       tm <- readIORef (tagsR env)
-      _ <- writeIORef (tagsR env) (updateTags a tm)
+      _ <- writeIORef (tagsR env) (updateTags (fromMaybe a (M.lookup aid am)) tm)
 
       -- update lists and folders
       newFolders <- readFolders
@@ -531,4 +533,8 @@ withPlays am = do
 envRefreshPlays :: AppM ()
 envRefreshPlays = do
   ar <- asks albumsR
-  readIORef ar >>= withPlays >>= writeIORef ar
+  am <- readIORef ar >>= withPlays
+  writeIORef ar am
+  -- played.* tags change with a play: rebuild the index (a few thousand albums)
+  tr <- asks tagsR
+  writeIORef tr (foldr updateTags M.empty (M.elems am))

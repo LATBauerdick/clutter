@@ -16,6 +16,7 @@ module Listened (
   readPlays,
   playAlbumId,
   attachPlays,
+  playedTags,
   listenedName,
   listenedYears,
   listenedRows,
@@ -152,12 +153,30 @@ playAlbumId am = resolve
       , peApple e >>= \i -> M.lookup i appleToDiscogs <|> known (A i)
       ]
 
--- set albumListenedDates (newest first) on every album from the play log
+-- set albumListenedDates (newest first) and the played.* tags on every album
 attachPlays :: [PlayEvent] -> Map AlbumKey Album -> Map AlbumKey Album
-attachPlays es am = M.mapWithKey (\i a -> a{albumListenedDates = M.findWithDefault [] i dates}) am
+attachPlays es am = M.mapWithKey attach am
  where
+  attach i a =
+    let ds = M.findWithDefault [] i dates
+     in a
+          { albumListenedDates = ds
+          , albumTags = filter (not . ("played." `T.isPrefixOf`)) (albumTags a) <> playedTags (length ds) (albumPlays a)
+          }
   resolve = playAlbumId am
   dates = M.fromListWith (<>) [(i, [peTs e]) | e <- sortOn peTs es, Just i <- [resolve e]]
+
+-- played or not: a play in the log, or the Discogs field 7 mark (plays before the log
+-- began, 2019); how often: the log
+playedTags :: Int -> Int -> [Text]
+playedTags n discogs = howOften <> ["played.early" | discogs > n]
+ where
+  howOften = case n of
+    0 | discogs == 0 -> ["played.never"]
+    0 -> ["played."]
+    1 -> ["played.", "played.once"]
+    2 -> ["played.", "played.twice"]
+    _ -> ["played.", "played.often"]
 
 -- "Listened" -> Just Nothing (every play), "Listened 2026" -> Just (Just "2026")
 listenedName :: Text -> Maybe (Maybe Text)

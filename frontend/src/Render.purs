@@ -474,9 +474,16 @@ render state = do
 
   rbPlays :: forall m. Album -> H.ComponentHTML Action () m
   rbPlays a =
-    -- plays from clutter's play log (albumPlays is the Discogs field 7 counter)
-    let np = length a.albumListenedDates in
-    if np > 0 then
+    -- plays from clutter's play log; albumPlays is the Discogs field 7 mark, which also
+    -- holds plays from before the log began
+    let np = length a.albumListenedDates
+        early = a.albumPlays > np in
+    if np == 0 && early then
+      HH.div [ HP.class_ $ HH.ClassName "plays"]
+      [ HH.span_ [ HH.i [ HP.class_ $ HH.ClassName "far fa-check-circle", HP.style "color:lightgray" ] [] ]
+      , HH.span [ HP.class_ $ HH.ClassName "hovtext" ] [ HH.text "Played before the log" ]
+      ]
+    else if np > 0 then
       HH.div [ HP.class_ $ HH.ClassName "plays"]
       [ case np of
       cnt | cnt == 1 -> HH.span_
@@ -492,7 +499,7 @@ render state = do
               [ HP.class_ $ HH.ClassName "fa fa-thermometer-4" , HP.style "color:red" ] [] ]
       _ ->  HH.div_ []
       , HH.span [ HP.class_ $ HH.ClassName "hovtext" ]
-          [ HH.text $ "Played " <> show np <> " times, last " <> S.take 10 (fromMaybe "" (head a.albumListenedDates)) ]
+          [ HH.text $ "Played " <> show np <> " times, last " <> S.take 10 (fromMaybe "" (head a.albumListenedDates)) <> (if early then " (also before the log)" else "") ]
       ]
     else HH.div_ []
 

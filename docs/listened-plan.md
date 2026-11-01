@@ -190,6 +190,8 @@ Phases 0–4 are done. The log lives at `~/Sync/clutter/listened/` (2,052 plays)
   - **Bug:** the current code writes `""` on the 7th play, which empties the field. A much-played record then counts as never played. It is fixed in any case (`6 -> "Many"`, or not touched).
   - Decision 13: only mark. Set `1` when the field is empty, otherwise leave it; mostly no API call at all.
 
+**Done 2026-11-01:** `Listened.playedTags` computes `played.*` for every album (Discogs, Tidal, Apple) in `attachPlays`, from the log count and field 7; `FromDiscogs` no longer makes them, and reads field 7 `Many` as 7 (it was read as 0, so that release counted as never played). The tags index is rebuilt after each play (`envRefreshPlays`). The write path sets field 7 to `1` only when it is empty (`updateDiscogsPlayed`); the counting and the wrap-to-empty bug are gone. Hover: "Played N times, last …" plus "(also before the log)", or a grey check "Played before the log". Against the old server: `played.never` 399 → 397 (NPV 82 → 82), `played.early` 237, `played.often` 149 → 111 (now the log's count), Tidal albums with `played.` 91 → 101.
+
 ### Step C — the Tidal library
 
 - **Store:** `~/Sync/clutter/tidal-albums.json`, keyed by Tidal id. It lives in `~/Sync` and not in `cache/`, because an album that left the favourites or went dark on Tidal may not be fetchable again. Per album:

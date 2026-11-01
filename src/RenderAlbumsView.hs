@@ -207,9 +207,15 @@ rbRating a = do
     _ -> ""
 rbPlays :: Album -> L.Html ()
 rbPlays a = do
-  -- plays from clutter's play log (albumPlays is the Discogs field 7 counter)
+  -- plays from clutter's play log; albumPlays is the Discogs field 7 mark, which also
+  -- holds plays from before the log began
   let np = length (albumListenedDates a)
-  if np > 0
+      early = albumPlays a > np
+  if np == 0 && early
+    then L.div_ [L.class_ "plays"] $ do
+      L.span_ $ L.i_ [L.class_ "far fa-check-circle", L.style_ "color:lightgray"] ""
+      L.span_ [L.class_ "hovtext"] "Played before the log"
+    else if np > 0
     then L.div_ [L.class_ "plays"] $ do
       case np of
         cnt
@@ -229,7 +235,7 @@ rbPlays a = do
               L.span_
                 $ L.i_ [L.class_ "fa fa-thermometer-4", L.style_ "color:red"] ""
         _ -> ""
-      L.span_ [L.class_ "hovtext"] (L.toHtml $ "Played " <> show np <> " times, last " <> T.take 10 (fromMaybe "" (viaNonEmpty head (albumListenedDates a))))
+      L.span_ [L.class_ "hovtext"] (L.toHtml $ "Played " <> show np <> " times, last " <> T.take 10 (fromMaybe "" (viaNonEmpty head (albumListenedDates a))) <> (if early then " (also before the log)" else ""))
     else ""
 
 scriptqq :: Text

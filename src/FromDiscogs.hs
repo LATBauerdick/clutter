@@ -512,8 +512,10 @@ getR lns dr = r
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
 
+    -- field 7 "Play Count" is a dropdown: 1..6, Many
     plays :: Int
     plays = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 7 then Nothing else Just v) $ notes of
+      Just "Many" -> 7
       Just a -> fromMaybe 0 (readMaybe . toString $ a)
       _ -> 0
     -- format is special for certain folders
@@ -555,16 +557,10 @@ getR lns dr = r
       3 -> ["rated.", "rated.***"]
       4 -> ["rated.", "rated.****", "rated.like"]
       _ -> ["rated.", "rated.*****", "rated.like"]
-    tagsPlays :: Int -> [Text]
-    tagsPlays i = case i of
-      0 -> one "played.never"
-      1 -> ["played.", "played.once"]
-      2 -> ["played.", "played.twice"]
-      _ -> ["played.", "played.often"]
     tagsProvider = ["provider.discogs"] <> maybe [] (const ["provider.applemusic"]) amid <> maybe [] (const ["provider.tidal"]) tidalid <> maybe [] (const ["provider.qobuz"]) qobuzid <> maybe [] (const ["provider.jellyfin"]) jellyfinid <> maybe [] (const ["provider.cdbox"]) cdboxid <> maybe [] (const ["provider.local"]) (if loc == Just "" then Nothing else loc)
 
     tagsList :: [Text]
-    tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres gs <> map T.toCaseFold styles <> tagsPlays plays <> tagsRated rating <> tagsFolder folder_id
+    tagsList = sortNub $ tagsProvider <> tagsFormats fs <> tags <> tagsGenres gs <> map T.toCaseFold styles <> tagsRated rating <> tagsFolder folder_id
     r =
       Release
         { daid = did,

@@ -546,16 +546,13 @@ updateAlbumsPlayed a = do
   pure ()
 
 -- Discogs-side bookkeeping for a play of a Discogs release:
--- increment the collection field 7 "Plays"; the Want list stamp is
+-- mark the collection field 7 "Play Count"; the Want list stamp is
 -- replaced by the play log and only written with CLUTTER_DISCOGS_WANTS=1
 updateDiscogsPlayed :: Text -> Text -> Int -> Album -> AppM ()
 updateDiscogsPlayed ttok tu rid a = do
   now <- liftIO getZonedTime
   let taid = show rid :: Text
   let tinst = show $ albumInst a
-  let tpls = case albumPlays a of
-        6 -> "" -- ????LATB should be a configuration parameter
-        _ -> show $ 1 + albumPlays a :: Text
   let auth = "Authorization: Discogs token=" <> unpack ttok
       wantsURL = "https://api.discogs.com/users/" <> unpack tu <> "/wants/" <> unpack taid
 
@@ -609,10 +606,14 @@ updateDiscogsPlayed ttok tu rid a = do
       putTextLn $
         "ERROR adding date to Discogs Want List: failed with exit code: " <> show exitCode3
   --
-  -- increment played count, if the release is in the collection
-  let tfield = "7" -- ????LATB should be a configuration parameter
+  -- mark the physical copy as played: field 7 "Play Count" (a dropdown 1..6, Many) is set
+  -- to 1 when empty and otherwise left alone -- clutter's play log does the counting
+  let tfield = "7"
+      tpls = "1" :: Text
   if albumInst a == 0
-    then putTextLn "-----not in the Discogs collection, Plays field not updated"
+    then putTextLn "-----not in the Discogs collection, Play Count not marked"
+    else if albumPlays a > 0
+    then putTextLn "-----Play Count already marked on Discogs"
     else do
       exitCode4 <-
         liftIO $
@@ -630,7 +631,7 @@ updateDiscogsPlayed ttok tu rid a = do
             ]
       unless (exitCode4 == ExitSuccess) $
         putTextLn $
-          "ERROR incrementing Discogs Plays field: failed with exit code: " <> show exitCode4
+          "ERROR marking Discogs Play Count: failed with exit code: " <> show exitCode4
  where
   jsonBody = TL.unpack . TLE.decodeUtf8 . encode . object
 
