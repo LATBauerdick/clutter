@@ -64,12 +64,14 @@ RELEASE_ALIASES = {
 }
 
 # Discogs releases that stood in for a stream they did not match; their plays are plays of
-# the Tidal album (LATB 2026-11-01: 6715388 removed from the collection)
+# the Tidal album (LATB 2026-11-01: removed from the collection)
 STAND_INS = {
     6715388: {"tidal": 283130328, "apple": 1556465220, "artist": "Maria Yudina",
               "title": "Schubert, Honegger & Bartók: Works",
               "note": "first logged against Discogs 6715388 (Legacy of Maria Yudina Vol. 6), "
                       "an ill-matched stand-in removed on 2026-11-01"},
+    28759924: {"tidal": 315583200, "apple": 1694557348, "artist": "Igor Levit", "title": "Fantasia",
+               "note": "first logged against Discogs 28759924, a Streaming-folder stand-in removed on 2026-11-01"},
 }
 
 FIELD_ORDER = ["ts", "src", "discogs", "inst", "tidal", "apple", "applelib",
