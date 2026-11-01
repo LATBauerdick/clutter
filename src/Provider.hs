@@ -19,11 +19,13 @@ module Provider (
   readFolderAids,
   updateTidalFolderAids,
   updateAMusicFolderAids,
+  linkTidalTags,
 )
 where
 
 -- import Data.Text.Encoding ( decodeUtf8 )
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -37,7 +39,8 @@ import qualified FromDiscogs as FD (
   readDiscogsReleases,
   readDiscogsReleasesCache,
  )
-import qualified FromTidal as FT (readTidalReleases, readTidalReleasesCache)
+import qualified FromTidal as FT (readTidalReleases, readTidalReleasesCache, readTidalStore, tidalStorePath)
+import System.Directory (doesFileExist)
 import Relude
 import Types (
   AMusic (..),
@@ -142,36 +145,35 @@ readDiscogsFolders :: Discogs -> IO (Map Text Int)
 readDiscogsFolders (DiscogsFile fn) = FD.readDiscogsFoldersCache fn
 readDiscogsFolders di = FD.readDiscogsFolders di
 
--- populate the aids for folders from the folder+id in each Album
--- special treatment for Tidal, Discogs, and All folders
+-- the Tidal list: every Discogs release with a Tidal location (T<id>), and every Tidal album
+-- clutter holds (ever a favourite, or played) that no Discogs release stands for
 updateTidalFolderAids :: Map AlbumKey Album -> Map Text (Int, Vector AlbumKey) -> Map Text (Int, Vector AlbumKey)
 updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
  where
-  -- for Tidal folder, replace anything that's also on Discogs
-  tidalToDiscogs :: Map AlbumKey AlbumKey
-  tidalToDiscogs =
-    M.fromList
-      . mapMaybe
-        ( \a ->
-            case readMaybe . toString =<< albumTidal a of
-              Just i -> if T i == albumID a then Nothing else Just (T i, albumID a)
-              Nothing -> Nothing
-        )
-      . M.elems
-      $ am
-  allTidal =
-    V.map (\i -> fromMaybe i (i `M.lookup` tidalToDiscogs))
-      . sAdded
-      . V.map fst
-      . V.filter (\(_, f) -> f == fromEnum TTidal)
-      . V.map (\a -> (albumID a, albumFolder a))
-      . V.fromList
-      $ M.elems am
+  linkedD = [k | (k@(D _), a) <- M.toList am, isJust (tidalId a)]
+  linkedT = S.fromList [T t | (D _, a) <- M.toList am, Just t <- [tidalId a]]
+  tidalOnly = [k | k@(T _) <- M.keys am, not (k `S.member` linkedT)]
+  allTidal = sAdded (V.fromList (linkedD <> tidalOnly))
   sAdded :: Vector AlbumKey -> Vector AlbumKey
   sAdded aids = V.fromList (fst <$> sortBy (\(_, a) (_, b) -> comparing (fmap albumAdded) b a) asi)
    where
     asi :: [(AlbumKey, Maybe Album)]
     asi = map (\aid -> (aid, M.lookup aid am)) $ V.toList aids
+
+tidalId :: Album -> Maybe Int
+tidalId a = readMaybe . toString =<< albumTidal a
+
+-- a Discogs release whose Tidal album is a favourite is tagged tidal.favorite too,
+-- so #tidal.favorite filters the whole Tidal list
+linkTidalTags :: Map AlbumKey Album -> Map AlbumKey Album
+linkTidalTags am = M.map link am
+ where
+  favs = S.fromList [k | (k@(T _), a) <- M.toList am, "tidal.favorite" `elem` albumTags a]
+  link a = case albumID a of
+    D _ ->
+      let others = filter (/= "tidal.favorite") (albumTags a)
+       in a{albumTags = others <> ["tidal.favorite" | Just t <- [tidalId a], T t `S.member` favs]}
+    _ -> a
 
 -- populate the aids for folders from the folder+id in each Album
 updateAMusicFolderAids :: Map AlbumKey Album -> Map Text (Int, Vector AlbumKey) -> Map Text (Int, Vector AlbumKey)
@@ -293,7 +295,12 @@ readTidalAlbums p = do
         0
         0
         [] -- albumListenedDates, from the play log
+  -- clutter's Tidal album store holds every album that was ever a favourite or was played;
+  -- without it, the favourites dump as before
+  store <- FT.tidalStorePath
+  haveStore <- doesFileExist store
   ds <- case getTidal p of
+    TidalFile _ | haveStore -> FT.readTidalStore store
     TidalFile fn -> FT.readTidalReleasesCache fn
     _ -> FT.readTidalReleases (getTidal p)
   let as = toAlbum <$> ds

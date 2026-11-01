@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
@@ -8,6 +9,8 @@
 module FromTidal (
   readTidalReleases,
   readTidalReleasesCache,
+  tidalStorePath,
+  readTidalStore,
 ) where
 
 import Relude
@@ -18,6 +21,8 @@ import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 
 import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.!=), (.:), (.:?))
+import qualified Data.Map.Strict as M
+import System.FilePath ((</>))
 
 -- import GHC.Generics
 
@@ -83,7 +88,7 @@ instance FromJSON WTIItem where
   parseJSON = withObject "wtiitem" $ \o -> do
     id_ <- o .: "id"
     title_ <- o .: "title"
-    releaseDate_ <- o .: "releaseDate"
+    releaseDate_ <- o .:? "releaseDate" .!= ""
     url_ <- o .: "url"
     cover_ <- o .:? "cover" .!= ""
     artists_ <- o .: "artists"
@@ -232,6 +237,70 @@ getReleases t = getRelease <$> tis
         , dlocIdx = Nothing
         , dlocation = Nothing
         , dtags = ["provider.tidal"]
+        , drating = 0
+        , dplays = 0
+        }
+
+--
+-- clutter's Tidal album store (scripts/update-tidal-albums.py): every album that was ever
+-- a favourite or was played, with favourite since/until and genre classical or popular
+--
+data TStore = TStore {storeAlbums :: Map Text TStoreEntry}
+instance FromJSON TStore where
+  parseJSON = withObject "tidal store" $ \o -> TStore <$> o .: "albums"
+
+data TStoreEntry = TStoreEntry
+  { seAlbum :: Maybe WTIItem
+  , seFavorite :: Maybe TFavorite
+  , seGenre :: Maybe Text
+  }
+instance FromJSON TStoreEntry where
+  parseJSON = withObject "tidal store entry" $ \o ->
+    TStoreEntry <$> o .:? "album" <*> o .:? "favorite" <*> o .:? "genre"
+
+data TFavorite = TFavorite {favSince :: Text, favUntil :: Maybe Text}
+instance FromJSON TFavorite where
+  parseJSON = withObject "favorite" $ \o -> TFavorite <$> o .: "since" <*> o .:? "until"
+
+-- CLUTTER_TIDAL_ALBUMS, else ~/Sync/clutter/tidal-albums.json
+tidalStorePath :: IO FilePath
+tidalStorePath =
+  lookupEnv "CLUTTER_TIDAL_ALBUMS" >>= \case
+    Just f | not (null f) -> pure f
+    _ -> do
+      home <- fromMaybe "." <$> lookupEnv "HOME"
+      pure $ home </> "Sync" </> "clutter" </> "tidal-albums.json"
+
+readTidalStore :: FilePath -> IO [Release]
+readTidalStore fn = do
+  putTextLn $ "-----------------Getting Tidal Albums from the store " <> toText fn <> "-----"
+  res <- eitherDecode <$> readFileLBS fn
+  case res of
+    Left err -> putTextLn ("Error: " <> toText err) >> pure []
+    Right st -> pure . mapMaybe toRelease . M.elems $ storeAlbums st
+ where
+  toRelease e = do
+    WTIItem{id = tid, title = ttitle, releaseDate = treleased, cover = tcover, artists = tartists} <- seAlbum e
+    let fav = seFavorite e
+        isFav = maybe False (isNothing . favUntil) fav
+    pure
+      Release
+        { daid = tid
+        , dinst = 0
+        , dtitle = ttitle
+        , dartists = (\WTArtist{name = n} -> n) <$> tartists
+        , dreleased = treleased
+        , dadded = maybe "" favSince fav
+        , dcover = tcover
+        , dfolder = fromEnum TTidal
+        , dformat = "Streaming"
+        , dtidalid = Just (show tid)
+        , damid = Nothing
+        , dqobuzid = Nothing
+        , djellyfinid = Nothing
+        , dlocIdx = Nothing
+        , dlocation = Nothing
+        , dtags = ["provider.tidal"] <> ["tidal.favorite" | isFav] <> maybe [] (\g -> ["genre." <> g]) (seGenre e)
         , drating = 0
         , dplays = 0
         }

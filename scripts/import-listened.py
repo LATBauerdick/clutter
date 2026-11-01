@@ -63,6 +63,14 @@ RELEASE_ALIASES = {
     10991645: 4676923,  # Electric Ladyland: the owned LP (10991645 has no master)
 }
 
+# Tidal albums that Tidal re-issued under a new id (the old one answers 404), 2026-11-01
+TIDAL_ALIASES = {
+    161031708: 202762106,  # Shame – Drunk Tank Pink (now the deluxe edition)
+    60579714: 504260373,  # Booka Shade – Movements 10
+    182676075: 256079948,  # Bachelor – Doomin' Sun
+    179752112: 252603948,  # Little Simz – Sometimes I Might Be Introvert
+}
+
 # Discogs releases that stood in for a stream they did not match; their plays are plays of
 # the Tidal album (LATB 2026-11-01: removed from the collection)
 STAND_INS = {
@@ -211,6 +219,8 @@ def read_notes(notes_dir, report):
         if did and int(did.group(1)) in RELEASE_ALIASES:
             report["aliased"].append((os.path.basename(fn), int(did.group(1)), RELEASE_ALIASES[int(did.group(1))]))
             did = re.match(r"(\d+)", str(RELEASE_ALIASES[int(did.group(1))]))
+        if tid and int(tid.group(1)) in TIDAL_ALIASES:
+            tid = re.match(r"(\d+)", str(TIDAL_ALIASES[int(tid.group(1))]))
         notes.append({
             "file": os.path.basename(fn),
             "when": when,

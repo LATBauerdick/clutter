@@ -42,6 +42,7 @@ import Provider (
   readFolderAids,
   readFolders,
   readTidalAlbums,
+  linkTidalTags,
   updateAMusicFolderAids,
   updateTidalFolderAids,
  )
@@ -320,7 +321,7 @@ envInit c = do
   ldir <- listenedDir
   plays' <- readPlays ldir
   hPutStrLn stderr $ "read " <> show (length plays') <> " plays from " <> ldir
-  let albums' = attachPlays plays' albums''
+  let albums' = linkTidalTags (attachPlays plays' albums'')
 
   -- create the Tags index
   putTextLn "----------------------envInit: Updating Tags index"
@@ -527,7 +528,7 @@ envUpdateSort msb mso = do
 withPlays :: Map AlbumKey Album -> AppM (Map AlbumKey Album)
 withPlays am = do
   es <- asks playsR >>= readIORef
-  pure (attachPlays es am)
+  pure (linkTidalTags (attachPlays es am))
 
 -- re-attach the play dates to all albums, after a play was logged
 envRefreshPlays :: AppM ()

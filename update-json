@@ -46,6 +46,9 @@ curl "https://api.discogs.com/users/$USR/wants?page=1&per_page=500" -H "Authoriz
 
 # Tidal
 curl -H "Authorization: Bearer $TDT"  "https://api.tidalhifi.com/v1/users/$TID/favorites/albums/?countryCode=$TCC&limit=9999"  > traw.json
+# clutter's Tidal album store (~/Sync/clutter/tidal-albums.json): keeps every album that was ever
+# a favourite, so favourites can be deleted in the Tidal app; fetches played non-favourites
+python3 ../scripts/update-tidal-albums.py
 
 ## Apple Music
 ####for i in {0..44}; do limit=100 ; ((off = $i*$limit)) ; curl -v -H "Authorization: Bearer $AMT" "https://api.music.apple.com/v1/me/library/albums?include=catalog&limit=$limit&offset=$off&sort=dateAdded" > am$i.json; done
