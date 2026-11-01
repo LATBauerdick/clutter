@@ -96,13 +96,13 @@ Use a standalone script (`scripts/import-listened.py`, stdlib only, reading `tok
 
 | # | what | done when |
 |---|---|---|
-| 0 | Snapshot all sources into `cache/listened-import/` (lists, wants, AlbumsPlayed listing) | raw copies exist and counts match the table above |
-| 1 | `Listened.hs`: types, `AlbumKey`, read/append JSONL, tests in `test/` | round-trip test passes; a torn last line is skipped with a warning |
-| 2 | Write path: append on play; skip Discogs for non-Discogs albums; Discogs writes behind a flag | a Tidal-only "Album Played" writes one log line and **no** Discogs call (watch the stderr log) |
-| 3 | Backfill importer + reconciliation report | LATB has reviewed the report |
-| 4 | Read path: Listened list(s), plays from the log, `albumListenedDates` in the API | `/api/albumsq/Listened` matches the log; Plays hover matches |
-| 5 | Frontend Listened view (the old TODO: newest first, all dates per album, per-year) | visible in `/app` |
-| 6 | Retirement steps above | after LATB's OK |
+| 0 ✅ | Snapshot all sources into `cache/listened-import/` (lists, wants, AlbumsPlayed listing) | raw copies exist and counts match the table above |
+| 1 ✅ | `Listened.hs`: types, `AlbumKey`, read/append JSONL, tests in `test/` | round-trip test passes; a torn last line is skipped with a warning |
+| 2 ✅ | Write path: append on play; skip Discogs for non-Discogs albums; Discogs writes behind a flag | a Tidal-only "Album Played" writes one log line and **no** Discogs call (watch the stderr log) |
+| 3 ✅ | Backfill importer + reconciliation report | LATB has reviewed the report |
+| 4 ✅ | Read path: Listened list(s), plays from the log, `albumListenedDates` in the API | `/api/albumsq/Listened` matches the log; Plays hover matches |
+| 5 | Frontend Listened view (now step E below) (the old TODO: newest first, all dates per album, per-year) | visible in `/app` |
+| 6 | Retirement steps above (partly done: the Want pseudo-list and its readers are gone) | after LATB's OK |
 
 Phase 2 alone fixes the immediate pain (Tidal plays get recorded) and can ship first.
 
@@ -152,3 +152,78 @@ Phase 2 alone fixes the immediate pain (Tidal plays get recorded) and can ship f
 - `RELEASE_ALIASES`: notes linking a pressing LATB does not own → his copy (Brahms–Liszt → CD 24619814, Electric Ladyland → LP 4676923).
 - The importer ignores `import:*` events in the live log (a re-import replaces them).
 - Result: 2,050 events.
+
+## Next steps (written 2026-11-01, for LATB's review)
+
+Phases 0–4 are done. The log lives at `~/Sync/clutter/listened/` (2,052 plays). Today's discussion added these decisions and a new order of work.
+
+### More decisions (LATB, 2026-11-01)
+
+7. **Listened is per release, whatever the medium.** A play of a Discogs release counts whether it was streamed or played from the physical copy. The log does not record the medium.
+8. **Typed album ids with a prefix:** `D` Discogs, `T` Tidal, `A` Apple Music, `J` Jellyfin (later `Q` Qobuz), as in the Location field (`T12571482 A206349046`).
+9. **The Tidal list is a union:** Discogs releases with a Tidal location, Tidal favourites, and Tidal albums that were played. It can be filtered for favourites or played albums. The same for Apple Music later.
+10. **Tidal album metadata is kept**, also for albums that are no longer favourites. It is filled whenever a Tidal album enters clutter.
+11. **Played status:** clutter's play count comes from the log. Discogs keeps marking a physical copy as played, but need not keep the count (❓ see open questions).
+12. **Later, not now:** retire the Discogs folder "Streaming" (3292597), whose releases exist only to anchor a stream.
+13. **Field 7 is only a "played" mark** (overrides decision 2): on a play of a collection release, set it to `1` if it is empty, otherwise leave it. No more counting on Discogs.
+14. **Classical vs. popular is decided by a rule on text clutter already has**, not by thousands of API calls. No composer/conductor tags.
+15. **The Tidal store keeps every album that was ever a favourite.** LATB wants to delete favourites in the Tidal app once clutter has them, because the list has become unwieldy on the phone. A snapshot of all 2,772 favourites (full album records) was saved on 2026-11-01 to `~/Sync/clutter/tidal-favorites/traw-2026-11-01.json`, so deleting can start now.
+
+### Step A — typed album keys
+
+- Haskell: `data AlbumKey = D Int | T Int | A Int | J Int` (`Listened.AlbumKey` today has `KDiscogs | KTidal | KApple`; rename and extend it). It replaces `albumID :: Int` as the identity: the album map (`Map AlbumKey Album`), lists (`Vector AlbumKey`), the tags index, locations, the focus filter (`Set AlbumKey` instead of `IntSet`).
+- Wire format: text with the prefix, `"D6715388"`, `"T283130328"`, in the JSON, in URLs (`/album/T283130328`, `/api/albumq/…`, `/api/albump/…`) and in the frontend (`albumID :: String`). A bare number in a URL keeps meaning a Discogs release, so old links keep working.
+- `Album` keeps `albumTidal`/`albumAMusic` as the links between catalogues. A Discogs release and its Tidal album can now both exist as albums, linked, instead of one taking over the other's number (`updateTidalFolderAids` maps ids today).
+- The play log needs no change: each event names its catalogue and ids separately. `playAlbumId` returns an `AlbumKey`.
+- Wide but mechanical: App, Env, Types, Provider, the `From*` modules, the renderers, the frontend. It gets its own build and test-server check (lists, album view, focus, Album Played, `listenedq`).
+- Today no Tidal id collides with a collection release id (checked on 3,521 Tidal ids). That is luck, and this step makes it impossible.
+
+### Step B — played status
+
+- The count: the number of plays in the log (`albumListenedDates`), as the hover already shows.
+- Played or not: a play in the log, **or** Discogs field 7 set. 235 releases have a field-7 count higher than the log, mostly plays before the log began (2019). Those must not show as unplayed.
+- Tags: `played.never` (nothing in the log, field 7 empty; NPV keeps working), `played.once`/`.twice`/`.often` from the log, `played.early` for plays only in field 7.
+- Hover: "Played 3 times (also before 2019)" when field 7 is higher than the log.
+- Discogs write on a play (field 7 is a dropdown "Play Count": `1`–`6`, `Many`):
+  - **Bug:** the current code writes `""` on the 7th play, which empties the field. A much-played record then counts as never played. It is fixed in any case (`6 -> "Many"`, or not touched).
+  - Decision 13: only mark. Set `1` when the field is empty, otherwise leave it; mostly no API call at all.
+
+### Step C — the Tidal library
+
+- **Store:** `~/Sync/clutter/tidal-albums.json`, keyed by Tidal id. It lives in `~/Sync` and not in `cache/`, because an album that left the favourites or went dark on Tidal may not be fetchable again. Per album:
+  - the raw Tidal album record (`GET /v1/albums/{id}`): release date, type, artists, UPC, copyright, tracks, duration, audio quality, cover id
+  - enrichment: Apple Music genre via the UPC (`itunes.apple.com/lookup?upc=`, no login); Discogs genres and styles if a release carries the barcode; perhaps classical credits (composer, conductor, orchestra) from the track credits, to be checked
+  - LATB's relationship to it: favourite since/until (from `traw.json` `created`, and when it drops out), linked Discogs release(s), first and last play
+  - when it was fetched
+- **Filling:** a step in `update-json`, after `tidalauth`. The server only reads the store, so it starts quickly and offline, and the 4-hour token does not matter to it.
+  - **Favourites cost no extra calls:** `traw.json` already holds the full album record of each favourite. Every `update-json` run also keeps a dated copy in `~/Sync/clutter/tidal-favorites/`, and the store is seeded from all of them, so an album deleted from the favourites keeps its record (decision 15), with `favorite` off and the date it left.
+  - **Other albums:** only Tidal albums that were played but never favourites need `GET /v1/albums/{id}`, about a dozen today and a few per month after. Albums linked to a Discogs release take their metadata from the release.
+- **The Tidal list** = the union (decision 9): 2,772 favourites + 737 linked releases that are not favourites + 12 played albums in neither = 3,521 on 2026-11-01. A Tidal album linked to a Discogs release appears once, as the Discogs release (today's rule).
+- **Tags**, so the Focus menu does the filtering: `tidal.favorite`, `tidal.listened`, `tidal.discogs` (linked). Year in the album view.
+- **Classical vs. popular (decision 14)**, without API calls: a score over the artists, title and copyright line in the Tidal record. Composer names (+2), work words such as Symphony, Concerto, Sonata, Op., BWV, K. (+1), ensemble words such as Orchestra, Philharmonic, Quartet, Chor (+1), classical labels such as Deutsche Grammophon, ECM New Series, Harmonia Mundi, Naxos (+2); classical at 2 or more. Tested on the collection's own Discogs genres (2,044 releases, 1,284 classical): 94.7% right, 98.8% precision, 92.6% recall. The misses are mostly albums named after a performer (*The Horowitz Concerts*, Callas in *La Vestale*); the rule can learn performers from the artists of LATB's classical Discogs releases. It gives `genre.classical`, as Discogs (`genre.classical`, `genre.rock`, …) and Apple albums already have, or `genre.popular`. Linked releases keep their Discogs genres.
+- The 8 played Tidal albums that are neither favourites nor linked show up as real albums with covers.
+
+### Step D — Discogs releases outside the collection
+
+- After the page-5 fix and the pressing merge, only a few played releases are not in the collection.
+- Same pattern as C: `~/Sync/clutter/discogs-releases.json`, from `GET /releases/{id}`. Read through the existing release parsing, so they look like collection albums without LATB's own fields (location, rating). Tagged `discogs.notowned`. They appear in the Listened lists and nowhere else.
+
+### Step E — frontend Listened view (old Phase 5)
+
+- Uses `/api/listenedq/:year`: one row per play, with the date in the row, newest first, per year.
+- Should come after A (the ids change in the frontend) and B (the played display).
+
+### Step F — later
+
+- `update-json`: loop over all collection pages instead of a fixed 5 (and the same in `FromDiscogs`).
+- Apple Music as in C.
+- Retire the "Streaming" folder (decision 12).
+- The retirement steps of Phase 6 that are left: `wants1.json` in `update-json`, the wantlist client binding, `extractListenedDates` and `readDiscogsListAidsWithComments` in `FromDiscogs.hs`.
+
+### Order
+
+A → B → C → D → E. A first, because C and D add albums whose ids would otherwise collide, and because the frontend changes once. B is small and fixes the field-7 bug. Each step ends with a build, a test-server check, LATB's look, and a commit.
+
+### Open questions for LATB
+
+All three answered on 2026-11-01: decisions 13–15.
