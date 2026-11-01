@@ -124,3 +124,13 @@ Phase 2 alone fixes the immediate pain (Tidal plays get recorded) and can ship f
 - `serveAlbump` no longer passes Tidal/Apple albums through `envUpdateAlbum`, which re-read Discogs folders and lists on every call.
 - Stderr shows `listened: <key> -> <file>`, and for non-Discogs albums `... is not a Discogs release, no Discogs calls`. Startup logs `logging plays to <dir>`.
 - Verified on a test server (port 8081, fake `curl`/`dayone`, scratch log dir): Tidal 2209151 wrote one line and only the cover download; Discogs 28759924 wrote one line and only the field-7 POST.
+
+## Implementation notes (Phase 3, 2026-11-01)
+
+- `scripts/import-listened.py` (stdlib, local files only, no network, no `tok.json`): reads `cache/l<id>-raw.json` for 2020–2025, `cache/listened-import/2026-want-to-listened.json` for 2026, the collection `cache/draw*.json` (inst, Tidal/Apple ids from field 4, field 7), `~/Sync/AlbumsPlayed/*.md` and the live log. Writes `cache/listened-import/out/YYYY.jsonl` + `report.md` + TSVs. Rerunnable; never writes the live log.
+- Matching: a list date takes the time of an unused AlbumsPlayed note for the same release (or its Tidal id via field 4) on the same local day, else the same UTC day, else ±1 day; 2026 stamps ±30 min. Notes are UTC up to 2021-07-01T03:02 and local after. Unclaimed notes without a Discogs link are recovered as `import:albumsplayed`; unclaimed notes with one are only reported.
+- Edge cases handled and reported: `2025-05-17, 2025-05-14` on one line (both imported, so 2025 has 429 dates against the plan's 428), `2923-03-08` → list year, 2 master items in `2022 Listened` (skipped), duplicate notes in the same minute.
+- The `tidal`/`apple`/`inst` of imported Discogs events are today's values from the collection, not necessarily those at play time.
+- LATB 2026-11-01: the AlbumsPlayed-only plays are imported (`import:albumsplayed`); the 11 notes without a link are identified in `NOTE_IDS` (10 Discogs releases, Genesis = Tidal 35095630). Note file names are NFD on macOS and are normalised before lookup.
+- Result: 2,064 events 2019–2026, every list date, Want stamp and note accounted for; 272 stay date-only (196 in 2020, 12 in 2019, before AlbumsPlayed began).
+- `--merge` (server stopped) backs up the live log to `cache/listened-import/live-backup-<time>/`, then rewrites each live year file as its non-`import:` events plus the staged ones, sorted, deduped on (album, minute). Idempotent: a second run leaves the files byte-identical.
