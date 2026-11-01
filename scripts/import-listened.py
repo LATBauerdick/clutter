@@ -19,6 +19,7 @@
 import argparse
 import collections
 import datetime as dt
+import difflib
 import glob
 import json
 import os
@@ -54,6 +55,12 @@ NOTE_IDS = {
     "210101-Mozart – Horn Concertos_ Rondeau K. 371.md": ("discogs", 6285819),
     "210414-Bruch_ Violinkonzert G-Moll Op. 26 _ Men.md": ("discogs", 3966429),
     "210215-Genesis - Selling England by the Pound; .md": ("tidal", 35095630),
+}
+
+# AlbumsPlayed notes that link a pressing LATB does not own; the play was of his copy (2026-11-01)
+RELEASE_ALIASES = {
+    12213707: 24619814,  # Richter, Brahms – Liszt: the owned CD
+    10991645: 4676923,  # Electric Ladyland: the owned LP (10991645 has no master)
 }
 
 FIELD_ORDER = ["ts", "src", "discogs", "inst", "tidal", "apple", "applelib",
@@ -190,6 +197,9 @@ def read_notes(notes_dir, report):
             else:
                 tid = re.match(r"(\d+)", str(known[1]))
             report["identified"].append((os.path.basename(fn), *known))
+        if did and int(did.group(1)) in RELEASE_ALIASES:
+            report["aliased"].append((os.path.basename(fn), int(did.group(1)), RELEASE_ALIASES[int(did.group(1))]))
+            did = re.match(r"(\d+)", str(RELEASE_ALIASES[int(did.group(1))]))
         notes.append({
             "file": os.path.basename(fn),
             "when": when,
@@ -204,13 +214,16 @@ def read_notes(notes_dir, report):
 
 
 def read_live(live_dir):
+    """the live log's own plays (clutter, manual): a previous import is replaced by --merge"""
     evs = []
     for fn in sorted(glob.glob(os.path.join(live_dir, "*.jsonl"))):
         for line in open(fn, encoding="utf-8"):
             try:
-                evs.append(json.loads(line))
+                e = json.loads(line)
             except json.JSONDecodeError:
-                pass
+                continue
+            if not e.get("via", "").startswith("import:"):
+                evs.append(e)
     return evs
 
 
@@ -241,6 +254,20 @@ def best_note(cands, st):
     return ok[0][1] if ok else None
 
 
+def words(s):
+    return {w for w in re.findall(r"\w+", s.lower()) if len(w) > 3}
+
+
+def same_album(t1, t2):
+    """two titles name the same album: at least two shared words, or half the words of the
+    shorter one; words match loosely ("Ballettmusik" = "Balletmusik")"""
+    a, b = words(t1), words(t2)
+    if not a or not b:
+        return False
+    shared = sum(1 for x in a if any(difflib.SequenceMatcher(None, x, y).ratio() >= 0.85 for y in b))
+    return shared >= 2 or shared >= (min(len(a), len(b)) + 1) // 2
+
+
 def main():
     ap = argparse.ArgumentParser()
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -260,14 +287,18 @@ def main():
     raw = list_events(a.cache, coll, report)
     notes = read_notes(a.notes, report)
     live = read_live(a.live)
-    seen = {}
-    for n in notes:
-        k = (n["discogs"], n["tidal"], n["apple"], n["when"].replace(second=0))
-        if k in seen:
-            n["used"] = True
-            report["dup_notes"].append((seen[k], n["file"]))
-        else:
-            seen[k] = n["file"]
+    # one play noted twice: same minute, same album (possibly two pressings; keep an owned one)
+    by_minute = collections.defaultdict(list)
+    for n in sorted(notes, key=lambda n: n["discogs"] not in coll):
+        by_minute[n["when"].replace(second=0)].append(n)
+    for ns in by_minute.values():
+        for i, n in enumerate(ns):
+            first = next((m for m in ns[:i] if not m["used"] and (
+                (m["discogs"], m["tidal"], m["apple"]) == (n["discogs"], n["tidal"], n["apple"])
+                or same_album(split_title(m["title"])[1], split_title(n["title"])[1]))), None)
+            if first:
+                n["used"] = True
+                report["dup_notes"].append((first["file"], n["file"]))
 
     by_release = collections.defaultdict(list)
     for n in notes:
@@ -288,11 +319,31 @@ def main():
     # list events, oldest first so that repeated same-day plays take notes in order
     raw.sort(key=lambda x: (x[2] if isinstance(x[2], dt.datetime) else
                             dt.datetime.combine(x[2], dt.time(), LOCAL)))
+    matched = []
     for via, rid, st, disp in raw:
-        c = coll.get(rid, {})
         n = best_note([n for n in by_release.get(rid, []) if not n["used"]], st)
         if n:
             n["used"] = True
+        matched.append([via, rid, st, disp, n])
+
+    # second pass: the same play, recorded in the list under one pressing and in the
+    # AlbumsPlayed note under another. Only a list play without a note of its own
+    # takes such a note, so two owned pressings played the same day stay two plays.
+    for m in matched:
+        via, rid, st, disp, n = m
+        if n:
+            continue
+        ltitle = coll.get(rid, {}).get("title") or split_title(disp, (" - ",))[1]
+        cands = [x for x in notes if not x["used"] and x["discogs"] and x["discogs"] != rid
+                 and same_album(ltitle, x["title"])]
+        x = best_note(cands, st)
+        if x:
+            x["used"] = True
+            m[4] = x
+            report["other_pressing"].append((str(st), rid, ltitle, x["discogs"], x["file"]))
+
+    for via, rid, st, disp, n in matched:
+        c = coll.get(rid, {})
         if isinstance(st, dt.datetime):
             ts = iso(st)
             report["timed_from_list"].append(rid)
@@ -454,6 +505,17 @@ def write_report(a, report, by_year, notes, live, coll, final):
         w(f"\n## Notes with no album link at all ({len(report['note_no_id'])}) — NOT imported\n")
         for n in report["note_no_id"]:
             w(f"- {iso(n['when'])[:16]} {n['file']}")
+    if report["other_pressing"]:
+        w(f"\n## Same play, other pressing ({len(report['other_pressing'])}) — merged into the list play\n")
+        w("The list recorded the play under one release, the AlbumsPlayed note under another pressing of the same "
+          "album. The list's release is kept, with the note's time.\n")
+        w("| day | list release | title | note's release | note |\n|---|---|---|---|---|")
+        for d, rid, t, nid, f in report["other_pressing"]:
+            w(f"| {d} | {rid} | {t} | {nid} | {f} |")
+    if report["aliased"]:
+        w(f"\n## Notes re-pointed to the owned pressing ({len(report['aliased'])})\n")
+        for f, old, new in report["aliased"]:
+            w(f"- {f}: {old} → {new}")
     if report["identified"]:
         w(f"\n## Unlinked notes identified by LATB ({len(report['identified'])})\n")
         for f, src, i in report["identified"]:

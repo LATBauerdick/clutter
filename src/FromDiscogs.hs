@@ -42,6 +42,7 @@ import GHC.Generics ()
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Relude
+import System.Directory (doesFileExist)
 -- import Data.Proxy
 import Servant
 -- import Servant.API
@@ -608,7 +609,10 @@ releasesFromDiscogsApi di nreleases = do
             let rs2 = getWr r2
             r3 <- discogsGetReleases un 0 Nothing Nothing (Just 4) (Just 500) (Just tok) userAgent
             let rs3 = getWr r3
-            pure $ rs0 <> rs1 <> rs2 <> rs3
+            -- page 5: the collection passed 2,000 releases; a loop over all pages is still to do
+            r4 <- discogsGetReleases un 0 Nothing Nothing (Just 5) (Just 500) (Just tok) userAgent
+            let rs4 = getWr r4
+            pure $ rs0 <> rs1 <> rs2 <> rs3 <> rs4
           else do
             -- only read nreleases, newest first
             r0 <- discogsGetReleases un 0 (Just "added") (Just "desc") (Just 1) (Just nreleases) (Just tok) userAgent
@@ -627,7 +631,13 @@ releasesFromCacheFile fn = do
   res1 <- (eitherDecode <$> readFileLBS (fn <> "draw2.json")) :: IO (Either String WReleases)
   res2 <- (eitherDecode <$> readFileLBS (fn <> "draw3.json")) :: IO (Either String WReleases)
   res3 <- (eitherDecode <$> readFileLBS (fn <> "draw4.json")) :: IO (Either String WReleases)
-  pure . Right . concatMap getWr . rights $ [res0, res1, res2, res3]
+  -- page 5 since the collection passed 2,000 releases; absent in a cache from before that
+  has5 <- doesFileExist (fn <> "draw5.json")
+  res4 <-
+    if has5
+      then (eitherDecode <$> readFileLBS (fn <> "draw5.json")) :: IO (Either String WReleases)
+      else pure (Left "no draw5.json")
+  pure . Right . concatMap getWr . rights $ [res0, res1, res2, res3, res4]
 
 readDiscogsReleasesCache :: FilePath -> Map Text Int -> IO [Release]
 readDiscogsReleasesCache fn lns = do

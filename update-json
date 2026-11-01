@@ -31,6 +31,8 @@ curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=1&pe
 curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=2&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw2.json
 curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=3&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw3.json
 curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=4&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw4.json
+# page 5: the collection passed 2,000 releases (2,044 on 2026-11-01); a loop over all pages is still to do
+curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=5&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw5.json
 
 
 curl "https://api.discogs.com/users/$USR/collection/folders" -H "Authorization: Discogs token=$TOK" > folders-raw.json

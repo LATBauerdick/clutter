@@ -143,3 +143,12 @@ Phase 2 alone fixes the immediate pain (Tidal plays get recorded) and can ship f
 - Lists: `getList` serves `Listened` and `Listened YYYY` from the log, one entry per play, newest first, so the existing list views, sorts and focus filters work unchanged (an album played twice is listed twice). They head the List menu. The `"Want"` pseudo-list, `readWantListAids`, `sortByMultipleDates` and `readWWItems*` are gone (the Discogs wantlist client binding and `wants1.json` in `update-json` remain, for Phase 6).
 - `GET /api/listenedq/:year` (`all` or `YYYY`, `sortOrder=Asc` for oldest first, `focus=` as for albumsq): same JSON as `albumsq` (`listName`, `lalbums`) plus `lplayed`, the play time per row. Plays of albums clutter does not hold (released sold or never owned, Tidal albums no longer favourites: 81 of 2,066 on 2026-11-01) appear as an album made from the play (`albumID` 0, no cover); albumsq's lists leave them out.
 - Frontend: `albumListenedDates` in `Types.purs`, hover from the log, the Listened button shows `Listened`. Phase 5 still has to use `listenedq` to show the date per row.
+
+## Corrections after review (2026-11-01, evening)
+
+- **Collection page 5:** the collection passed 2,000 releases (2,044), but `update-json` and `FromDiscogs` (cache reader and API reader) took only 4 pages of 500. The last 44 releases by label were missing from clutter altogether. Both now take a 5th page. A loop over all pages is still to do.
+- **Same play, other pressing:** the importer's second pass gives a list play without a note of its own (date-only, or timed ±30 min) an unclaimed note for another pressing of the same album (loose title match). The list's release is kept. LATB owns some albums twice, so a list play that has its own note never takes a second one. 14 plays were counted twice before.
+- **Same minute, same album:** two notes in one minute for the same album title (artist excluded) are one play.
+- `RELEASE_ALIASES`: notes linking a pressing LATB does not own → his copy (Brahms–Liszt → CD 24619814, Electric Ladyland → LP 4676923).
+- The importer ignores `import:*` events in the live log (a re-import replaces them).
+- Result: 2,050 events.
