@@ -63,6 +63,15 @@ RELEASE_ALIASES = {
     10991645: 4676923,  # Electric Ladyland: the owned LP (10991645 has no master)
 }
 
+# Discogs releases that stood in for a stream they did not match; their plays are plays of
+# the Tidal album (LATB 2026-11-01: 6715388 removed from the collection)
+STAND_INS = {
+    6715388: {"tidal": 283130328, "apple": 1556465220, "artist": "Maria Yudina",
+              "title": "Schubert, Honegger & Bartók: Works",
+              "note": "first logged against Discogs 6715388 (Legacy of Maria Yudina Vol. 6), "
+                      "an ill-matched stand-in removed on 2026-11-01"},
+}
+
 FIELD_ORDER = ["ts", "src", "discogs", "inst", "tidal", "apple", "applelib",
                "artist", "title", "via", "note"]
 
@@ -378,6 +387,14 @@ def main():
                              artist=artist, title=title, via="import:albumsplayed"))
             report["note_only"].append(n)
 
+    # plays of a stand-in release become plays of the stream it stood in for
+    for i, e in enumerate(out):
+        si = STAND_INS.get(e.get("discogs"))
+        if si:
+            out[i] = event(ts=e["ts"], src="tidal", tidal=si["tidal"], apple=si["apple"], artist=si["artist"],
+                           title=si["title"], via=e["via"], note=si["note"])
+            report["stand_ins"].append((e["ts"], e["discogs"], si["tidal"]))
+
     # dedupe on (album key, minute) for timed events; date-only repeats are kept (two plays a day)
     seen, final = set(), []
     for e in sorted(out, key=lambda e: e["ts"]):
@@ -512,6 +529,10 @@ def write_report(a, report, by_year, notes, live, coll, final):
         w("| day | list release | title | note's release | note |\n|---|---|---|---|---|")
         for d, rid, t, nid, f in report["other_pressing"]:
             w(f"| {d} | {rid} | {t} | {nid} | {f} |")
+    if report["stand_ins"]:
+        w(f"\n## Plays of stand-in releases, logged as the Tidal album ({len(report['stand_ins'])})\n")
+        for ts, d, t in report["stand_ins"]:
+            w(f"- {ts}: Discogs {d} → Tidal {t}")
     if report["aliased"]:
         w(f"\n## Notes re-pointed to the owned pressing ({len(report['aliased'])})\n")
         for f, old, new in report["aliased"]:
