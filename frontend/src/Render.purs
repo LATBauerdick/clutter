@@ -10,7 +10,7 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip)
+import Data.Array (range, length, replicate, zip, head)
 import Halogen as H
 import Halogen.HTML as HH
 -- import Halogen.HTML.CSS as HC
@@ -473,10 +473,12 @@ render state = do
     _ -> HH.div_ []
 
   rbPlays :: forall m. Album -> H.ComponentHTML Action () m
-  rbPlays a = 
-    if a.albumPlays > 0 then
+  rbPlays a =
+    -- plays from clutter's play log (albumPlays is the Discogs field 7 counter)
+    let np = length a.albumListenedDates in
+    if np > 0 then
       HH.div [ HP.class_ $ HH.ClassName "plays"]
-      [ case a.albumPlays of
+      [ case np of
       cnt | cnt == 1 -> HH.span_
             [ HH.i [ HP.class_ $ HH.ClassName "far fa-check-circle" ] [] ]
           | cnt == 2 -> HH.span_
@@ -490,7 +492,7 @@ render state = do
               [ HP.class_ $ HH.ClassName "fa fa-thermometer-4" , HP.style "color:red" ] [] ]
       _ ->  HH.div_ []
       , HH.span [ HP.class_ $ HH.ClassName "hovtext" ]
-          [ HH.text $ "Played " <> show a.albumPlays <> " times" ]
+          [ HH.text $ "Played " <> show np <> " times, last " <> S.take 10 (fromMaybe "" (head a.albumListenedDates)) ]
       ]
     else HH.div_ []
 

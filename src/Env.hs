@@ -11,6 +11,7 @@ module Env (
   envGetTag,
   envUpdateSort,
   envUpdateMenuParams,
+  envRefreshPlays,
 )
 where
 
@@ -21,7 +22,6 @@ import qualified Data.List as L (
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Text as T (find)
-import Data.Time (Day)
 import Data.Vector (Vector)
 import qualified Data.Vector as V (
   empty,
@@ -46,7 +46,9 @@ import Provider (
   updateTidalFolderAids,
  )
 
+import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
+import System.IO (hPutStrLn)
 import Types (
   -- Discogs (..),
 
@@ -134,7 +136,7 @@ envTidalConnect _nalbums = do
   newFolders <- readFolders
   let tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
   let aMusicAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vma
-  let allAlbums = oldAlbums <> tidalAlbums <> aMusicAlbums
+  allAlbums <- withPlays $ oldAlbums <> tidalAlbums <> aMusicAlbums
   _ <- liftIO $ writeIORef (albumsR env) allAlbums
 
   -- create the Tags index
@@ -175,8 +177,9 @@ envUpdateMenuParams = do
           <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
 
       sli =
-        -- sorted lists
-        filter (not . pLocList) $ M.keys (listNames envr)
+        -- the play log's lists first, then the sorted lists
+        ("Listened" : map ("Listened " <>) (listenedYears (plays envr)))
+          <> filter (not . pLocList) (M.keys (listNames envr))
 
       slo =
         -- sorted locations
@@ -225,7 +228,7 @@ envUpdate _tok _un nreleases = do
   newAlbums <-
     M.fromList . map (\a -> (albumID a, a)) . V.toList
       <$> readAlbums nreleases
-  let allAlbums = newAlbums <> oldAlbums <> tidalAlbums
+  allAlbums <- withPlays $ newAlbums <> oldAlbums <> tidalAlbums
   _ <- writeIORef (albumsR env) allAlbums
 
   -- create the Tags index
@@ -330,14 +333,15 @@ envInit c = do
   putTextLn "----------------------envInit: first 10 locs: "
   print . take 10 . M.toList $ lcs'
 
-  -- extract listened dates map
-  let listenedDatesMap :: Map Int [Day] -- lookup listened dates by albumID
-      listenedDatesMap = M.empty -- M.map albumListenedDates albums'
+  -- clutter's play log
+  ldir <- listenedDir
+  plays' <- readPlays ldir
+  hPutStrLn stderr $ "read " <> show (length plays') <> " plays from " <> ldir
   dr <- newIORef dc
-  ar <- newIORef albums'
+  ar <- newIORef (attachPlays plays' albums')
   lr <- newIORef lists'
   lcs <- newIORef lcs'
-  lds <- newIORef listenedDatesMap
+  lds <- newIORef plays'
   lnr <- newIORef listNames'
   sr <- newIORef "Default"
   so <- newIORef Asc
@@ -384,7 +388,7 @@ envInit c = do
       , albumsR = ar
       , listsR = lr
       , locsR = lcs
-      , listenedDatesR = lds
+      , playsR = lds
       , listNamesR = lnr
       , tagsR = tr
       , focusR = fr
@@ -401,7 +405,17 @@ envInit c = do
 -- that will evaluate the list of Album IDs for List name
 --  if list in Env is empty, try to get from provider
 getList' :: Text -> AppM (Vector Int)
-getList' ln = do
+getList' ln = case listenedName ln of
+  -- one entry per play, newest first: an album played twice is listed twice
+  Just my -> do
+    env <- ask
+    es <- readIORef (playsR env)
+    am <- readIORef (albumsR env)
+    pure . V.fromList . mapMaybe (fmap albumID . snd) $ listenedRows my es am
+  Nothing -> getDiscogsList ln
+
+getDiscogsList :: Text -> AppM (Vector Int)
+getDiscogsList ln = do
   env <- ask
   ls' <- readIORef (listsR env)
   let (lid, aids') = fromMaybe (0, V.empty) (M.lookup ln ls')
@@ -443,7 +457,7 @@ envUpdateAlbum aid = do
   _ <- case ma of
     Just a -> do
       -- insert updated album and put in album map
-      let am = M.insert aid a am'
+      am <- withPlays $ M.insert aid a am'
       liftIO $ writeIORef (albumsR env) am
       -- insert aid into its folder
       -- let folder = albumFolder a
@@ -470,10 +484,13 @@ envUpdateAlbum aid = do
       _ <- writeIORef (listNamesR env) $ M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList allLists
       pure ()
     Nothing -> pure ()
-  -- let mAlbum = M.lookup aid am
+  -- the stored album, which carries its play dates
+  ma'' <- case ma of
+    Just a -> Just . fromMaybe a . M.lookup aid <$> readIORef (albumsR env)
+    Nothing -> pure Nothing
   putTextLn "----------------envUpdateAlbum-----------------------------"
-  print ma
-  pure ma
+  print ma''
+  pure ma''
 
 envGetTag :: Text -> AppM [Int]
 envGetTag t = do
@@ -503,5 +520,17 @@ envUpdateSort msb mso = do
             _ -> Asc
       _ <- writeIORef (sortOrderR env) so
       pure so
-  lds <- readIORef (listenedDatesR env)
+  lds <- readIORef (playsR env)
   pure $ EnvR am lm lcs lds lns sn so dc tm fs
+
+-- albumListenedDates for an album map, from the play log in Env
+withPlays :: Map Int Album -> AppM (Map Int Album)
+withPlays am = do
+  es <- asks playsR >>= readIORef
+  pure (attachPlays es am)
+
+-- re-attach the play dates to all albums, after a play was logged
+envRefreshPlays :: AppM ()
+envRefreshPlays = do
+  ar <- asks albumsR
+  readIORef ar >>= withPlays >>= writeIORef ar

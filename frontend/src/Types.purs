@@ -56,6 +56,7 @@ type Album =      { albumID :: Int
                   , albumTags :: Array String
                   , albumFolder :: Int
                   , albumPlays :: Int
+                  , albumListenedDates :: Array String
                   , albumRating :: Int
                   , albumReleased :: String
                   , albumShelf :: Maybe (Tuple String Int)

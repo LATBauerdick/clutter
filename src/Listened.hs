@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 
 --
@@ -16,20 +15,26 @@ module Listened (
   appendPlay,
   readPlayFile,
   readPlays,
+  playAlbumId,
+  attachPlays,
+  listenedName,
+  listenedYears,
+  listenedRows,
+  playAlbum,
 ) where
 
-import Data.Aeson (FromJSON (..), Options (..), ToJSON (..), defaultOptions, eitherDecodeStrict, encode, genericParseJSON, genericToEncoding, genericToJSON)
+import Data.Aeson (eitherDecodeStrict, encode)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BL
-import Data.Char (toLower)
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Data.Time (ZonedTime, defaultTimeLocale, formatTime)
 import Relude
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (takeExtension, (</>))
 import System.IO (SeekMode (..), hFileSize, hPutStrLn, hSeek)
-import Types (Album (..), TagFolder (..))
+import Types (Album (..), PlayEvent (..), TagFolder (..))
 
 -- album identity, typed by catalogue: the same Int means different
 -- releases in Discogs, Tidal and Apple Music
@@ -50,33 +55,6 @@ keySource k = case k of
   KDiscogs _ -> "discogs"
   KTidal _ -> "tidal"
   KApple _ -> "apple"
-
-data PlayEvent = PlayEvent
-  { peTs :: Text -- local time with UTC offset, or a bare date for imported date-only plays
-  , peSrc :: Text -- discogs|tidal|apple|qobuz|jellyfin
-  , peDiscogs :: Maybe Int
-  , peInst :: Maybe Int
-  , peTidal :: Maybe Int
-  , peApple :: Maybe Int
-  , peApplelib :: Maybe Text -- Apple Music library id, for albums without a catalog id
-  , peArtist :: Text
-  , peTitle :: Text
-  , peVia :: Text -- clutter | import:discogs-list | import:want | import:albumsplayed | manual
-  , peNote :: Maybe Text
-  }
-  deriving (Eq, Show, Generic)
-
-peOptions :: Options
-peOptions =
-  defaultOptions
-    { fieldLabelModifier = map toLower . drop 2
-    , omitNothingFields = True
-    }
-instance ToJSON PlayEvent where
-  toJSON = genericToJSON peOptions
-  toEncoding = genericToEncoding peOptions
-instance FromJSON PlayEvent where
-  parseJSON = genericParseJSON peOptions
 
 -- the event for pressing "Album Played" now, with every id clutter knows
 playEvent :: ZonedTime -> Album -> PlayEvent
@@ -157,3 +135,95 @@ readPlays dir = do
     else do
       fns <- sort . filter ((== ".jsonl") . takeExtension) <$> listDirectory dir
       concat <$> mapM (readPlayFile . (dir </>)) fns
+
+--
+-- read side: which displayed album a play belongs to
+--
+
+-- the clutter album id a play is shown on, if clutter knows the album:
+-- the Discogs release; else the Discogs release carrying its Tidal (Apple)
+-- id in its Location field; else the Tidal (Apple) album itself.
+-- Build once per album map: `playAlbumId am` holds the lookup tables.
+playAlbumId :: Map Int Album -> PlayEvent -> Maybe Int
+playAlbumId am = resolve
+ where
+  folder f a = albumFolder a == fromEnum f
+  discogs = M.filter (\a -> not (folder TTidal a || folder TAMusic a)) am
+  viaField f = M.fromList [(i, albumID a) | a <- M.elems discogs, Just i <- [readMaybe . toString =<< f a]]
+  tidalToDiscogs = viaField albumTidal
+  appleToDiscogs = viaField albumAMusic
+  known f i = case M.lookup i am of
+    Just a | folder f a -> Just i
+    _ -> Nothing
+  resolve e =
+    asum
+      [ peDiscogs e >>= \d -> d <$ M.lookup d discogs
+      , peTidal e >>= \t -> M.lookup t tidalToDiscogs <|> known TTidal t
+      , peApple e >>= \i -> M.lookup i appleToDiscogs <|> known TAMusic i
+      ]
+
+-- set albumListenedDates (newest first) on every album from the play log
+attachPlays :: [PlayEvent] -> Map Int Album -> Map Int Album
+attachPlays es am = M.mapWithKey (\i a -> a{albumListenedDates = M.findWithDefault [] i dates}) am
+ where
+  resolve = playAlbumId am
+  dates = M.fromListWith (<>) [(i, [peTs e]) | e <- sortOn peTs es, Just i <- [resolve e]]
+
+-- "Listened" -> Just Nothing (every play), "Listened 2026" -> Just (Just "2026")
+listenedName :: Text -> Maybe (Maybe Text)
+listenedName ln = case words ln of
+  ["Listened"] -> Just Nothing
+  ["Listened", y] | T.length y == 4 && T.all (`elem` ['0' .. '9']) y -> Just (Just y)
+  _ -> Nothing
+
+-- the years that have plays, newest first
+listenedYears :: [PlayEvent] -> [Text]
+listenedYears = sortOn Down . ordNub . map (T.take 4 . peTs)
+
+-- one row per play of the year (or all years), newest first, with the album it is
+-- shown on: the album clutter knows, or one made up from the play itself
+-- (a release no longer in the collection, a Tidal album no longer a favourite)
+listenedRows :: Maybe Text -> [PlayEvent] -> Map Int Album -> [(PlayEvent, Maybe Album)]
+listenedRows my es am =
+  [ (e, (`M.lookup` am) =<< resolve e)
+  | e <- sortOn (Down . peTs) es
+  , maybe True (`T.isPrefixOf` peTs e) my
+  ]
+ where
+  resolve = playAlbumId am
+
+-- an album made up from a play, for plays of albums clutter does not hold
+-- (yet, or any more); albumID 0 keeps it from being taken for another album
+playAlbum :: PlayEvent -> Album
+playAlbum e =
+  Album
+    { albumID = 0
+    , albumInst = 0
+    , albumTitle = peTitle e
+    , albumArtist = peArtist e
+    , albumReleased = ""
+    , albumCover = ""
+    , albumAdded = ""
+    , albumFolder = case peSrc e of
+        "tidal" -> fromEnum TTidal
+        "apple" -> fromEnum TAMusic
+        _ -> fromEnum TDiscogs
+    , albumURL = case (peDiscogs e, peTidal e) of
+        (Just d, _) -> "https://www.discogs.com/release/" <> show d
+        (_, Just t) -> "https://listen.tidal.com/album/" <> show t
+        _ -> ""
+    , albumFormat = case peSrc e of
+        "tidal" -> "Tidal"
+        "apple" -> "AppleMusic"
+        _ -> ""
+    , albumTidal = show <$> peTidal e
+    , albumAMusic = show <$> peApple e
+    , albumQobuz = Nothing
+    , albumJellyfin = Nothing
+    , albumLocIdx = Nothing
+    , albumLocation = Nothing
+    , albumTags = []
+    , albumRating = 0
+    , albumPlays = 0
+    , albumListenedDates = [peTs e]
+    }

@@ -727,12 +727,10 @@ readDiscogsLists di = do
   --         -- lists are returend empty unless cached...
   --         (\WList{id = i, name = n} -> (n, (i, V.empty))) <$> ls
 
-  -- ...except the Wantlist and Box CDs
-  -- wl <- readWantListAids di
-
+  -- ...except Box CDs
   wl' <- readBoxListAids di
 
-  pure . M.fromList $ lm <> one ("Want", (7, V.empty)) <> one ("Box CDs", (1627102, wl'))
+  pure . M.fromList $ lm <> one ("Box CDs", (1627102, wl'))
 
 listsFromCacheFile :: FilePath -> IO (Either String WLists)
 listsFromCacheFile fn = eitherDecode <$> readFileLBS (fn <> "lists-raw.json") :: IO (Either String WLists)
@@ -809,7 +807,6 @@ readDiscogsListAids :: Discogs -> Int -> IO (Vector Int)
 readDiscogsListAids di i = do
   case i of
     1627102 -> readBoxListAids di
-    7 -> readWantListAids di
     _ -> do
       res <- case di of
         DiscogsFile fn -> do
@@ -867,59 +864,6 @@ readBoxListAids di = do
   -- print $ zip aids cs
   -- print $ sortByNums aids cs
   pure . V.fromList $ sortByNums aids cs
-
-sortByMultipleDates :: [] Int -> [Maybe Text] -> [] Int
-sortByMultipleDates aids dates = fst <$> sortBy (comparing (Down . snd)) pairs
-  where
-    pairs =
-      concatMap
-        ( \(aid, maybeDatesText) ->
-            case maybeDatesText of
-              Just datesText
-                | not (T.null datesText) ->
-                    let individualDates = T.lines datesText
-                     in map (\d -> (aid, d)) individualDates
-              _ -> [] -- Nothing or empty text -> exclude this ID
-        )
-        (zip aids dates)
-
-readWantListAids :: Discogs -> IO (Vector Int)
-readWantListAids di = do
-  res <- case di of
-    DiscogsFile fn -> do
-      putTextLn "-----------------Getting Want List from Discogs Cache-----"
-      let fn' = fn <> "wants1.json"
-      readWWItemsCache fn'
-    DiscogsSession tok un -> do
-      putTextLn "-----------------Getting Want List from Discogs-----"
-      readWWItems tok un
-  case res of
-    Left err -> putTextLn $ "Reading Wantlist: " <> show err
-    Right _ -> pure ()
-  let wls :: [WWItem]
-      wls = case res of
-        Left _ -> []
-        Right wl -> wants wl
-  let aids = wwaid <$> wls
-  let notess = wwnotes <$> wls
-  let dates = wwdate_added <$> wls
-  -- print $ zip3 aids dates notess
-  -- print $ sortByMultipleDates aids notess
-  pure . V.fromList $ sortByMultipleDates aids notess
-
-readWWItemsCache :: FilePath -> IO (Either String WWList)
-readWWItemsCache fn = (eitherDecode <$> readFileLBS fn) :: IO (Either String WWList)
-
-readWWItems :: Text -> Text -> IO (Either String WWList)
-readWWItems tok un = do
-  m <- newManager tlsManagerSettings
-  let dc = mkClientEnv m discogsBaseUrl
-  let query :: ClientM WWList
-      query = discogsGetWantList un (Just 1) (Just 500) (Just tok) userAgent
-  res <- liftIO $ runClientM query dc
-  pure $ case res of
-    Left err -> Left ("Error: " <> show err)
-    Right x -> Right x
 
 -- Read list items with comments (for "Listened" lists)
 readDiscogsListAidsWithComments :: Discogs -> Int -> IO (Vector (Int, Maybe Text))

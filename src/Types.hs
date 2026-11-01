@@ -12,6 +12,7 @@ module Types (
   AMusicInfo (..),
   Release (..),
   Album (..),
+  PlayEvent (..),
   SortOrder (..),
   MenuParams (..),
   AppM,
@@ -22,14 +23,14 @@ module Types (
   envGetListName,
 ) where
 
+import Data.Char (toLower)
 import qualified Data.Map.Strict as M
-import Data.Time (Day)
 import Data.Vector (Vector)
 import Relude
 import Servant (Handler)
 import qualified Text.Show
 
-import Data.Aeson (ToJSON (..))
+import Data.Aeson (FromJSON (..), Options (..), ToJSON (..), defaultOptions, genericParseJSON, genericToEncoding, genericToJSON)
 
 data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
   deriving (Show)
@@ -80,7 +81,7 @@ data Env = Env
   , listNamesR :: IORef (Map Text Int)
   , listsR :: IORef (Map Text (Int, Vector Int))
   , locsR :: IORef (Map Int (Text, Int)) -- lookup (location, pos) by from albumID
-  , listenedDatesR :: IORef (Map Int [Day]) -- lookup listened dates by albumID
+  , playsR :: IORef [PlayEvent] -- the play log, oldest first
   , sortNameR :: IORef Text
   , sortOrderR :: IORef SortOrder
   , discogsR :: IORef Discogs
@@ -110,7 +111,7 @@ envGetEnvr = do
   am <- readIORef (albumsR env)
   lm <- readIORef (listsR env)
   lcs <- readIORef (locsR env)
-  lds <- readIORef (listenedDatesR env)
+  lds <- readIORef (playsR env)
   lns <- readIORef (listNamesR env)
   sn <- readIORef (sortNameR env)
   so <- readIORef (sortOrderR env)
@@ -123,7 +124,7 @@ data EnvR = EnvR
   { albums :: Map Int Album
   , lists :: Map Text (Int, Vector Int)
   , locs :: Map Int (Text, Int) -- lookup (location, pos) by from albumID
-  , listenedDates :: Map Int [Day] -- lookup listened dates by albumID
+  , plays :: [PlayEvent] -- the play log, oldest first
   , listNames :: Map Text Int
   , sortName :: Text
   , sortOrder :: SortOrder
@@ -173,10 +174,38 @@ data Album = Album
   , albumLocation :: Maybe Text
   , albumTags :: [Text]
   , albumRating :: Int
-  , albumPlays :: Int
-  -- , albumListenedDates :: [Day] -- Dates when album was listened (from "Listened" lists)
+  , albumPlays :: Int -- Discogs collection field 7 "Plays"
+  , albumListenedDates :: [Text] -- play times from clutter's play log, newest first
   }
   deriving (Show, Generic)
 instance Eq Album where
   (==) a b = albumID a == albumID b
 instance ToJSON Album
+
+-- one line of clutter's play log, listened/YYYY.jsonl (see Listened.hs)
+data PlayEvent = PlayEvent
+  { peTs :: Text -- local time with UTC offset, or a bare date for imported date-only plays
+  , peSrc :: Text -- discogs|tidal|apple|qobuz|jellyfin
+  , peDiscogs :: Maybe Int
+  , peInst :: Maybe Int
+  , peTidal :: Maybe Int
+  , peApple :: Maybe Int
+  , peApplelib :: Maybe Text -- Apple Music library id, for albums without a catalog id
+  , peArtist :: Text
+  , peTitle :: Text
+  , peVia :: Text -- clutter | import:discogs-list | import:want | import:albumsplayed | manual
+  , peNote :: Maybe Text
+  }
+  deriving (Eq, Show, Generic)
+
+peOptions :: Options
+peOptions =
+  defaultOptions
+    { fieldLabelModifier = map toLower . drop 2
+    , omitNothingFields = True
+    }
+instance ToJSON PlayEvent where
+  toJSON = genericToJSON peOptions
+  toEncoding = genericToEncoding peOptions
+instance FromJSON PlayEvent where
+  parseJSON = genericParseJSON peOptions

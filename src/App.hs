@@ -15,7 +15,7 @@ module App (
 where
 
 import qualified Data.ByteString.Lazy as BL
-import Data.Time (defaultTimeLocale, formatTime, getZonedTime, localDay, zonedTimeToLocalTime)
+import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 
 import Control.Exception (try)
 import Control.Monad (foldM)
@@ -29,13 +29,14 @@ import qualified Data.Vector as V
 import Env (
   envGetTag,
   envInit,
+  envRefreshPlays,
   envTidalConnect,
   envUpdate,
   envUpdateAlbum,
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Listened (AlbumKey (..), albumKey, appendPlay, listenedDir, playEvent)
+import Listened (AlbumKey (..), albumKey, appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
@@ -55,6 +56,7 @@ import Types (
   Env (..),
   EnvR (..),
   MenuParams (..),
+  PlayEvent (..),
   envGetDiscogs,
   envGetEnvr,
  )
@@ -144,6 +146,15 @@ type API9 =
   "app"
     :> Get '[HTML] RawHtml
 
+-- the play log, one row per play: "all" or a year
+type API10 =
+  "api"
+    :> "listenedq"
+    :> Capture "year" Text
+    :> QueryParam "sortOrder" Text
+    :> QueryParams "focus" Text
+    :> Get '[JSON] ListenedJ
+
 data AlbumJ = AlbumJ
   { aid :: Int
   , album :: Maybe Album
@@ -158,6 +169,16 @@ data AlbumsJ = AlbumsJ
   }
   deriving (Eq, Show, Generic)
 instance ToJSON AlbumsJ
+
+-- AlbumsJ plus, row by row, the time of that play (same JSON keys as AlbumsJ)
+data ListenedJ = ListenedJ
+  { ljName :: Text
+  , ljAlbums :: [(Album, Maybe (Text, Int))]
+  , ljPlayed :: [Text]
+  }
+  deriving (Eq, Show, Generic)
+instance ToJSON ListenedJ where
+  toJSON l = object ["listName" .= ljName l, "lalbums" .= ljAlbums l, "lplayed" .= ljPlayed l]
 
 data ParamsJ = ParamsJ
   { timeStamp :: Text
@@ -185,6 +206,7 @@ type ClutterAPI =
     :<|> API7
     :<|> API8
     :<|> API9
+    :<|> API10
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -250,6 +272,7 @@ clutterServer sd =
     :<|> serveReq
     :<|> serveAlbump
     :<|> serveApp
+    :<|> serveListenedq
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector Int)
@@ -262,34 +285,63 @@ clutterServer sd =
     aids' <- case T.stripPrefix "#" ln of
       Just tag -> envGetTag tag
       Nothing -> V.toList <$> getList env ln
-    let aidset' = Set.fromList aids'
     ---------------------------------------------------------------------------------
     -- filter with focus if any
-    aidset <-
-      foldM
-        ( \s (t, p) ->
-            ( if p
-                then Set.intersection s
-                else Set.difference s
-            )
-              . Set.fromList
-              <$> envGetTag t
-        )
-        aidset'
-        . map
-          ( \t ->
-              ( fromMaybe t (T.stripPrefix "-" t)
-              , isNothing (T.stripPrefix "-" t)
-              )
-          )
-        . mapMaybe (T.stripPrefix "#")
-        $ fs
+    aidset <- focusFilter fs (Set.fromList aids')
     let aids = V.mapMaybe (\i -> if i `Set.member` aidset then Just i else Nothing) . V.fromList $ aids'
     ---------------------------------------------------------------------------------
     envr <- envUpdateSort msb mso
     let EnvR am _ _ _ _ sn so _ _ _ = envr
     let doSort = getSort env am sn
     pure . doSort so $ aids
+
+  -- narrow a set of album ids by focus items: #tag keeps, -#tag drops
+  focusFilter :: [Text] -> Set.IntSet -> AppM Set.IntSet
+  focusFilter fs aidset' =
+    foldM
+      ( \s (t, p) ->
+          ( if p
+              then Set.intersection s
+              else Set.difference s
+          )
+            . Set.fromList
+            <$> envGetTag t
+      )
+      aidset'
+      . map
+        ( \t ->
+            ( fromMaybe t (T.stripPrefix "-" t)
+            , isNothing (T.stripPrefix "-" t)
+            )
+        )
+      . mapMaybe (T.stripPrefix "#")
+      $ fs
+
+  -- every play of a year ("all": of every year), newest first (sortOrder=Asc: oldest first);
+  -- a play of an album clutter does not hold gets one made up from the play (albumID 0),
+  -- and is dropped by any focus filter
+  serveListenedq :: Text -> Maybe Text -> [Text] -> AppM ListenedJ
+  serveListenedq y mso fs = do
+    liftIO . putTextLn $ "-------serveListenedq " <> y
+    env <- ask
+    es <- readIORef (playsR env)
+    envr <- envGetEnvr
+    let my = if y == "all" then Nothing else Just y
+        rows = listenedRows my es (albums envr)
+        shown = [(e, a) | (e, Just a) <- rows]
+    keep <- focusFilter fs (Set.fromList (albumID . snd <$> shown))
+    let rows' =
+          [ (e, fromMaybe (playAlbum e) ma)
+          | (e, ma) <- rows
+          , null fs || maybe False ((`Set.member` keep) . albumID) ma
+          ]
+        ordered = if mso == Just "Asc" then reverse rows' else rows'
+    pure
+      ListenedJ
+        { ljName = if y == "all" then "Listened" else "Listened " <> y
+        , ljAlbums = [(a, albumID a `M.lookup` locs envr) | (_, a) <- ordered]
+        , ljPlayed = peTs . fst <$> ordered
+        }
 
   serveAlbumsq ::
     Text ->
@@ -366,7 +418,11 @@ clutterServer sd =
       Just a | not (isDiscogs (albumKey a)) -> pure (Just a)
       _ -> envUpdateAlbum i
     maybe (print ("no Album" :: Text)) updateAlbumsPlayed ma
-    let aj = case ma of
+    -- the album again, now with this play in its dates
+    ma' <- case ma of
+      Just a -> Just . fromMaybe a . M.lookup i <$> (asks albumsR >>= readIORef)
+      Nothing -> pure Nothing
+    let aj = case ma' of
           Just a -> AlbumJ{aid = i, album = Just a}
           _ -> AlbumJ{aid = 0, album = Nothing}
     pure aj
@@ -429,13 +485,15 @@ updateAlbumsPlayed a = do
   --
   -- clutter's own play log comes first, for every kind of album
   ldir <- liftIO listenedDir
-  logged <- liftIO . try $ appendPlay ldir (playEvent now a)
+  let pe = playEvent now a
+  logged <- liftIO . try $ appendPlay ldir pe
   liftIO . hPutStrLn stderr $ case logged of
     Right fn -> "listened: " <> show key <> " -> " <> fn
     Left (err :: SomeException) -> "ERROR listened: could not log " <> show key <> " in " <> ldir <> ": " <> show err
-  -- and show up in the in-memory map without a restart
-  lds <- asks listenedDatesR
-  modifyIORef' lds (M.insertWith (<>) (albumID a) [localDay (zonedTimeToLocalTime now)])
+  -- and show up in the Listened lists and play counts without a restart
+  when (isRight logged) $ do
+    asks playsR >>= \r -> modifyIORef' r (<> [pe])
+    envRefreshPlays
   --
   -- add a Note in Obsidian
   -- assumes that the Obsidian Vault is linked to `./AlbumsPlayed`

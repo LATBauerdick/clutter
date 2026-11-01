@@ -30,6 +30,7 @@ album =
     , albumTags = []
     , albumRating = 0
     , albumPlays = 2
+    , albumListenedDates = []
     }
 
 tidalAlbum :: Album

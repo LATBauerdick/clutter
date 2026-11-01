@@ -81,8 +81,8 @@ dToAlbum r =
     (dtags r)
     (drating r)
     (dplays r)
+    [] -- albumListenedDates, from the play log (Listened.attachPlays)
  where
-  -- [] -- albumListenedDates - will be populated from "Listened" lists
 
   makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
 
@@ -290,7 +290,7 @@ readTidalAlbums p = do
         (dtags r)
         0
         0
-  -- [] -- albumListenedDates
+        [] -- albumListenedDates, from the play log
   ds <- case getTidal p of
     TidalFile fn -> FT.readTidalReleasesCache fn
     _ -> FT.readTidalReleases (getTidal p)
@@ -325,7 +325,7 @@ readAMusicAlbums p = do
         (dtags r)
         0
         0
-  -- [] -- albumListenedDates
+        [] -- albumListenedDates, from the play log
   ds <- FA.readAMusicReleases (getAMusic p)
   let as = toAlbum <$> ds
   -- print as

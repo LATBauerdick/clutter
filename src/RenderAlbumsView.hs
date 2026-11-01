@@ -207,7 +207,8 @@ rbRating a = do
     _ -> ""
 rbPlays :: Album -> L.Html ()
 rbPlays a = do
-  let np = albumPlays a
+  -- plays from clutter's play log (albumPlays is the Discogs field 7 counter)
+  let np = length (albumListenedDates a)
   if np > 0
     then L.div_ [L.class_ "plays"] $ do
       case np of
@@ -228,7 +229,7 @@ rbPlays a = do
               L.span_
                 $ L.i_ [L.class_ "fa fa-thermometer-4", L.style_ "color:red"] ""
         _ -> ""
-      L.span_ [L.class_ "hovtext"] ("Played " <> show (albumPlays a) <> " times")
+      L.span_ [L.class_ "hovtext"] (L.toHtml $ "Played " <> show np <> " times, last " <> T.take 10 (fromMaybe "" (viaNonEmpty head (albumListenedDates a))))
     else ""
 
 scriptqq :: Text

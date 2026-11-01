@@ -175,6 +175,8 @@ Known defects: Tidal-only albums have a Tidal id in `albumID`, so their plays go
 
 **State on 2026-11-01:** LATB's decisions are recorded in the plan. All 2026 plays so far (86 releases, 119 stamps) were moved from the Want list into the Discogs list `2026 Listened` (1656131), and the Want list was emptied. Phase 2 is implemented, but not yet deployed: once rebuilt, plays go to `~/Sync/clutter/listened/YYYY.jsonl` (`src/Listened.hs`), and the Want list is no longer written (`CLUTTER_DISCOGS_WANTS=1` turns it back on). The running server still writes the Want list until it is restarted. Snapshots are in `cache/listened-import/`.
 
+**State on 2026-11-01, evening (Phases 1–4 built):** plays go to clutter's own log `~/Sync/clutter/listened/YYYY.jsonl` (2,066 events 2019–2026 after the backfill). The menu lists `Listened` and `Listened YYYY` and `GET /api/listenedq/:year` read it, and the plays hover counts it. The Want list is no longer written, and its pseudo-list is gone. The description of the old mechanism above is history.
+
 **Plan:** `docs/listened-plan.md` replaces this with a per-year JSON Lines play log owned by clutter. It covers storage, typed album keys, the write and read paths, backfill from the Discogs lists + Want notes + `AlbumsPlayed` + Day One, the retirement of the Discogs writes, and the open questions for LATB. Read it before touching any play-tracking code.
 
 ## Running it on lmini (operations)
