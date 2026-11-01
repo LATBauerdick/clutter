@@ -12,6 +12,9 @@ module Types (
   AMusicInfo (..),
   Release (..),
   Album (..),
+  AlbumKey (..),
+  keyText,
+  parseKey,
   PlayEvent (..),
   SortOrder (..),
   MenuParams (..),
@@ -30,7 +33,42 @@ import Relude
 import Servant (Handler)
 import qualified Text.Show
 
-import Data.Aeson (FromJSON (..), Options (..), ToJSON (..), defaultOptions, genericParseJSON, genericToEncoding, genericToJSON)
+import Data.Aeson (FromJSON (..), Options (..), ToJSON (..), Value (String), defaultOptions, genericParseJSON, genericToEncoding, genericToJSON, withText)
+import qualified Data.Text as T
+import Servant (FromHttpApiData (..))
+
+-- album identity, typed by catalogue: the same number means different albums in
+-- Discogs, Tidal, Apple Music and Jellyfin. Written with a prefix, as in the Discogs
+-- Location field ("T12571482 A206349046"): D6715388, T283130328, A1556465220, J…
+data AlbumKey = D Int | T Int | A Int | J Int
+  deriving (Eq, Ord, Generic)
+
+keyText :: AlbumKey -> Text
+keyText k = case k of
+  D i -> "D" <> show i
+  T i -> "T" <> show i
+  A i -> "A" <> show i
+  J i -> "J" <> show i
+
+-- "D123", "T123", "A123", "J123"; a bare number is a Discogs release (old links)
+parseKey :: Text -> Maybe AlbumKey
+parseKey t = case T.uncons t of
+  Just ('D', n) -> D <$> num n
+  Just ('T', n) -> T <$> num n
+  Just ('A', n) -> A <$> num n
+  Just ('J', n) -> J <$> num n
+  _ -> D <$> num t
+ where
+  num = readMaybe . toString
+
+instance Show AlbumKey where
+  show = toString . keyText
+instance ToJSON AlbumKey where
+  toJSON = String . keyText
+instance FromJSON AlbumKey where
+  parseJSON = withText "AlbumKey" $ maybe (fail "not an album key") pure . parseKey
+instance FromHttpApiData AlbumKey where
+  parseUrlPiece t = maybe (Left ("not an album key: " <> t)) Right (parseKey t)
 
 data TidalInfo = TidalFile FilePath | TidalSession Int Text Text Text
   deriving (Show)
@@ -77,20 +115,20 @@ newtype AMusic = AMusic {getAMusic :: AMusicInfo}
 
 type AppM = ReaderT Env Handler
 data Env = Env
-  { albumsR :: IORef (Map Int Album)
+  { albumsR :: IORef (Map AlbumKey Album)
   , listNamesR :: IORef (Map Text Int)
-  , listsR :: IORef (Map Text (Int, Vector Int))
-  , locsR :: IORef (Map Int (Text, Int)) -- lookup (location, pos) by from albumID
+  , listsR :: IORef (Map Text (Int, Vector AlbumKey))
+  , locsR :: IORef (Map AlbumKey (Text, Int)) -- lookup (location, pos) by from albumID
   , playsR :: IORef [PlayEvent] -- the play log, oldest first
   , sortNameR :: IORef Text
   , sortOrderR :: IORef SortOrder
   , discogsR :: IORef Discogs
-  , tagsR :: IORef (Map Text [Int])
+  , tagsR :: IORef (Map Text [AlbumKey])
   , focusR :: IORef [Text]
   , sorts :: Vector Text
   , url :: Text
-  , getList :: Text -> AppM (Vector Int)
-  , getSort :: Map Int Album -> Text -> (SortOrder -> Vector Int -> Vector Int)
+  , getList :: Text -> AppM (Vector AlbumKey)
+  , getSort :: Map AlbumKey Album -> Text -> (SortOrder -> Vector AlbumKey -> Vector AlbumKey)
   }
 instance Show Env where
   show :: Env -> String
@@ -121,15 +159,15 @@ envGetEnvr = do
   pure $ EnvR am lm lcs lds lns sn so di tm fs
 
 data EnvR = EnvR
-  { albums :: Map Int Album
-  , lists :: Map Text (Int, Vector Int)
-  , locs :: Map Int (Text, Int) -- lookup (location, pos) by from albumID
+  { albums :: Map AlbumKey Album
+  , lists :: Map Text (Int, Vector AlbumKey)
+  , locs :: Map AlbumKey (Text, Int) -- lookup (location, pos) by from albumID
   , plays :: [PlayEvent] -- the play log, oldest first
   , listNames :: Map Text Int
   , sortName :: Text
   , sortOrder :: SortOrder
   , discogs :: Discogs
-  , tags :: Map Text [Int]
+  , tags :: Map Text [AlbumKey]
   , focus :: [Text]
   }
 
@@ -156,7 +194,7 @@ data Release = Release
   deriving (Show)
 
 data Album = Album
-  { albumID :: Int
+  { albumID :: AlbumKey
   , albumInst :: Int
   , albumTitle :: Text
   , albumArtist :: Text

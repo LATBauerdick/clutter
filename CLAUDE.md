@@ -109,6 +109,8 @@ Frontend communicates with backend through JSON APIs under `/api/` routes.
 
 ### API Endpoints
 
+Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, `A…` Apple Music, `J…` Jellyfin (`Types.AlbumKey`). A bare number means a Discogs release.
+
 **HTML Endpoints** (for direct browser access):
 - `/album/:id` - Single album view
 - `/albums/:list?sortBy=&sortOrder=&focus=` - Album list view with filtering

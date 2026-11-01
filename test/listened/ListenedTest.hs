@@ -6,12 +6,13 @@ import Listened
 import Relude
 import System.Directory (doesDirectoryExist, getTemporaryDirectory, removeDirectoryRecursive)
 import System.FilePath ((</>))
-import Types (Album (..), TagFolder (..))
+import Data.Aeson (encode)
+import Types (Album (..), AlbumKey (..), TagFolder (..), keyText, parseKey)
 
 album :: Album
 album =
   Album
-    { albumID = 6715388
+    { albumID = D 6715388
     , albumInst = 2200131655
     , albumTitle = "The Legacy Of Maria Yudina - Volume 6"
     , albumArtist = "Maria Yudina, \"Franz\" Schubert \\ Schumann"
@@ -36,7 +37,7 @@ album =
 tidalAlbum :: Album
 tidalAlbum =
   album
-    { albumID = 187293380
+    { albumID = T 187293380
     , albumInst = 0
     , albumFolder = fromEnum TTidal
     , albumFormat = "Tidal"
@@ -75,13 +76,18 @@ main = do
     sequence
       [ check "file is listened/2026.jsonl" (fn == dir </> "2026.jsonl")
       , check "ts carries the UTC offset" (peTs e1 == "2026-11-01T10:58:00-06:00")
-      , check "discogs key and ids" (albumKey album == KDiscogs 6715388 && peDiscogs e1 == Just 6715388 && peInst e1 == Just 2200131655 && peTidal e1 == Just 283130328 && peApple e1 == Just 1556465220)
-      , check "tidal key, no discogs id" (albumKey tidalAlbum == KTidal 187293380 && peSrc e2 == "tidal" && isNothing (peDiscogs e2) && isNothing (peInst e2))
+      , check "discogs key and ids" (eventKey e1 == Just (D 6715388) && peDiscogs e1 == Just 6715388 && peInst e1 == Just 2200131655 && peTidal e1 == Just 283130328 && peApple e1 == Just 1556465220)
+      , check "tidal key, no discogs id" (eventKey e2 == Just (T 187293380) && peSrc e2 == "tidal" && isNothing (peDiscogs e2) && isNothing (peInst e2))
       , check "round trip" (r1 == [e1, e2])
       , check "torn last line skipped" (r2 == [e1, e2])
       , check "append after torn line survives" (r3 == [e1, e2, e2])
       , check "one event per line" (length (BS.split 10 raw) == 5)
       , check "Nothing fields omitted" (not ("\"note\"" `BS.isInfixOf` raw))
+      , check "keys parse with prefix" (map parseKey ["D1", "T283130328", "A2", "J3"] == [Just (D 1), Just (T 283130328), Just (A 2), Just (J 3)])
+      , check "a bare number is a Discogs release" (parseKey "6715388" == Just (D 6715388))
+      , check "bad keys are rejected" (all (isNothing . parseKey) ["", "X12", "T", "Tabc"])
+      , check "key text round trip" (parseKey (keyText (T 187293380)) == Just (T 187293380))
+      , check "key as JSON" (encode (T 187293380) == "\"T187293380\"")
       ]
   removeDirectoryRecursive dir
   if and oks then exitSuccess else exitFailure

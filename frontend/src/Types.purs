@@ -41,7 +41,7 @@ pLocList (AlbumList xx) = maybe false xxx xx where
   Just "Lost&Found" -> true
   _ -> false
 
-type Album =      { albumID :: Int
+type Album =      { albumID :: String
                   , albumAMusic :: Maybe String
                   , albumTidal :: Maybe String
                   , albumJellyfin :: Maybe String
@@ -61,7 +61,7 @@ type Album =      { albumID :: Int
                   , albumReleased :: String
                   , albumShelf :: Maybe (Tuple String Int)
                   }
-type AlbumJ =     { aid :: Int
+type AlbumJ =     { aid :: String
                   , album :: Album
                   }
 

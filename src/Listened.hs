@@ -5,10 +5,9 @@
 -- (see docs/listened-plan.md)
 --
 module Listened (
-  AlbumKey (..),
   PlayEvent (..),
-  albumKey,
   keySource,
+  eventKey,
   playEvent,
   listenedDir,
   playFile,
@@ -34,27 +33,22 @@ import Relude
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (takeExtension, (</>))
 import System.IO (SeekMode (..), hFileSize, hPutStrLn, hSeek)
-import Types (Album (..), PlayEvent (..), TagFolder (..))
-
--- album identity, typed by catalogue: the same Int means different
--- releases in Discogs, Tidal and Apple Music
-data AlbumKey = KDiscogs Int | KTidal Int | KApple Int
-  deriving (Eq, Ord, Show)
-
--- Album.albumID holds the Tidal (Apple) id for Tidal (Apple Music) albums,
--- which are marked by their pseudo-folder; everything else is a Discogs release.
--- An Apple album without a catalog id has a hash of its library id as albumID.
-albumKey :: Album -> AlbumKey
-albumKey a
-  | albumFolder a == fromEnum TTidal = KTidal (albumID a)
-  | albumFolder a == fromEnum TAMusic = KApple (albumID a)
-  | otherwise = KDiscogs (albumID a)
+import Types (Album (..), AlbumKey (..), PlayEvent (..), TagFolder (..))
 
 keySource :: AlbumKey -> Text
 keySource k = case k of
-  KDiscogs _ -> "discogs"
-  KTidal _ -> "tidal"
-  KApple _ -> "apple"
+  D _ -> "discogs"
+  T _ -> "tidal"
+  A _ -> "apple"
+  J _ -> "jellyfin"
+
+-- the album a play was logged against, in its own catalogue
+eventKey :: PlayEvent -> Maybe AlbumKey
+eventKey e = case peSrc e of
+  "discogs" -> D <$> peDiscogs e
+  "tidal" -> T <$> peTidal e
+  "apple" -> A <$> peApple e
+  _ -> Nothing
 
 -- the event for pressing "Album Played" now, with every id clutter knows
 playEvent :: ZonedTime -> Album -> PlayEvent
@@ -62,18 +56,18 @@ playEvent now a =
   PlayEvent
     { peTs = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%S%Ez" now
     , peSrc = keySource k
-    , peDiscogs = case k of KDiscogs i -> Just i; _ -> Nothing
-    , peInst = case k of KDiscogs _ | albumInst a /= 0 -> Just (albumInst a); _ -> Nothing
+    , peDiscogs = case k of D i -> Just i; _ -> Nothing
+    , peInst = case k of D _ | albumInst a /= 0 -> Just (albumInst a); _ -> Nothing
     , peTidal = readId =<< albumTidal a
     , peApple = readId =<< albumAMusic a
-    , peApplelib = case k of KApple _ | isNothing (readId =<< albumAMusic a) -> albumLocation a; _ -> Nothing
+    , peApplelib = case k of A _ | isNothing (readId =<< albumAMusic a) -> albumLocation a; _ -> Nothing
     , peArtist = albumArtist a
     , peTitle = albumTitle a
     , peVia = "clutter"
     , peNote = Nothing
     }
  where
-  k = albumKey a
+  k = albumID a
   readId :: Text -> Maybe Int
   readId = readMaybe . toString
 
@@ -144,26 +138,22 @@ readPlays dir = do
 -- the Discogs release; else the Discogs release carrying its Tidal (Apple)
 -- id in its Location field; else the Tidal (Apple) album itself.
 -- Build once per album map: `playAlbumId am` holds the lookup tables.
-playAlbumId :: Map Int Album -> PlayEvent -> Maybe Int
+playAlbumId :: Map AlbumKey Album -> PlayEvent -> Maybe AlbumKey
 playAlbumId am = resolve
  where
-  folder f a = albumFolder a == fromEnum f
-  discogs = M.filter (\a -> not (folder TTidal a || folder TAMusic a)) am
-  viaField f = M.fromList [(i, albumID a) | a <- M.elems discogs, Just i <- [readMaybe . toString =<< f a]]
+  viaField f = M.fromList [(i, k) | (k@(D _), a) <- M.toList am, Just i <- [readMaybe . toString =<< f a]]
   tidalToDiscogs = viaField albumTidal
   appleToDiscogs = viaField albumAMusic
-  known f i = case M.lookup i am of
-    Just a | folder f a -> Just i
-    _ -> Nothing
+  known k = k <$ M.lookup k am
   resolve e =
     asum
-      [ peDiscogs e >>= \d -> d <$ M.lookup d discogs
-      , peTidal e >>= \t -> M.lookup t tidalToDiscogs <|> known TTidal t
-      , peApple e >>= \i -> M.lookup i appleToDiscogs <|> known TAMusic i
+      [ known . D =<< peDiscogs e
+      , peTidal e >>= \t -> M.lookup t tidalToDiscogs <|> known (T t)
+      , peApple e >>= \i -> M.lookup i appleToDiscogs <|> known (A i)
       ]
 
 -- set albumListenedDates (newest first) on every album from the play log
-attachPlays :: [PlayEvent] -> Map Int Album -> Map Int Album
+attachPlays :: [PlayEvent] -> Map AlbumKey Album -> Map AlbumKey Album
 attachPlays es am = M.mapWithKey (\i a -> a{albumListenedDates = M.findWithDefault [] i dates}) am
  where
   resolve = playAlbumId am
@@ -183,7 +173,7 @@ listenedYears = sortOn Down . ordNub . map (T.take 4 . peTs)
 -- one row per play of the year (or all years), newest first, with the album it is
 -- shown on: the album clutter knows, or one made up from the play itself
 -- (a release no longer in the collection, a Tidal album no longer a favourite)
-listenedRows :: Maybe Text -> [PlayEvent] -> Map Int Album -> [(PlayEvent, Maybe Album)]
+listenedRows :: Maybe Text -> [PlayEvent] -> Map AlbumKey Album -> [(PlayEvent, Maybe Album)]
 listenedRows my es am =
   [ (e, (`M.lookup` am) =<< resolve e)
   | e <- sortOn (Down . peTs) es
@@ -193,11 +183,11 @@ listenedRows my es am =
   resolve = playAlbumId am
 
 -- an album made up from a play, for plays of albums clutter does not hold
--- (yet, or any more); albumID 0 keeps it from being taken for another album
+-- (yet, or any more), under the key it was logged with
 playAlbum :: PlayEvent -> Album
 playAlbum e =
   Album
-    { albumID = 0
+    { albumID = fromMaybe (D 0) (eventKey e)
     , albumInst = 0
     , albumTitle = peTitle e
     , albumArtist = peArtist e

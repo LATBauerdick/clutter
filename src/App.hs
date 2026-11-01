@@ -19,7 +19,7 @@ import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 
 import Control.Exception (try)
 import Control.Monad (foldM)
-import qualified Data.IntSet as Set
+import qualified Data.Set as Set
 import qualified Data.Map.Strict as M
 import Data.Text as T (isSuffixOf, stripPrefix, unlines, unpack)
 import Data.Text.IO as TIO (writeFile)
@@ -36,7 +36,7 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Listened (AlbumKey (..), albumKey, appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
+import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
@@ -51,6 +51,7 @@ import System.IO (hPutStrLn)
 import System.Process (rawSystem, readProcess)
 import Types (
   Album (..),
+  AlbumKey (..),
   AppM,
   Discogs (..),
   Env (..),
@@ -83,7 +84,7 @@ instance MimeRender HTML RawHtml where
 
 type API0 =
   "album"
-    :> Capture "aid" Int
+    :> Capture "aid" AlbumKey
     :> Get '[HTML] RawHtml
 
 type API1 =
@@ -112,7 +113,7 @@ type API3 =
 type API4 =
   "api"
     :> "albumq"
-    :> Capture "aid" Int
+    :> Capture "aid" AlbumKey
     :> Get '[JSON] AlbumJ
 
 type API5 =
@@ -139,7 +140,7 @@ type API7 =
 type API8 =
   "api"
     :> "albump"
-    :> Capture "aid" Int
+    :> Capture "aid" AlbumKey
     :> Get '[JSON] AlbumJ
 
 type API9 =
@@ -156,7 +157,7 @@ type API10 =
     :> Get '[JSON] ListenedJ
 
 data AlbumJ = AlbumJ
-  { aid :: Int
+  { aid :: AlbumKey
   , album :: Maybe Album
   }
   deriving (Eq, Show, Generic)
@@ -275,7 +276,7 @@ clutterServer sd =
     :<|> serveListenedq
     :<|> serveDirectoryFileServer sd
  where
-  decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector Int)
+  decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
   decodeListQuery ln msb mso fs = do
     -- listName sortBy sortOrder focusItems
     env <- ask
@@ -296,7 +297,7 @@ clutterServer sd =
     pure . doSort so $ aids
 
   -- narrow a set of album ids by focus items: #tag keeps, -#tag drops
-  focusFilter :: [Text] -> Set.IntSet -> AppM Set.IntSet
+  focusFilter :: [Text] -> Set.Set AlbumKey -> AppM (Set.Set AlbumKey)
   focusFilter fs aidset' =
     foldM
       ( \s (t, p) ->
@@ -369,13 +370,13 @@ clutterServer sd =
     let asj = AlbumsJ{listName = ln, lalbums = la}
     pure asj
 
-  serveAlbumq :: Int -> AppM AlbumJ
+  serveAlbumq :: AlbumKey -> AppM AlbumJ
   serveAlbumq i = do
     liftIO $ print ("-------serveAlbumq " :: Text, i)
     ma <- envUpdateAlbum i
     let aj = case ma of
           Just a -> AlbumJ{aid = i, album = Just a}
-          _ -> AlbumJ{aid = 0, album = Nothing}
+          _ -> AlbumJ{aid = i, album = Nothing}
     pure aj
 
   serveParamsq :: AppM ParamsJ
@@ -408,14 +409,14 @@ clutterServer sd =
       _ -> liftIO $ print r
     pure sj
 
-  serveAlbump :: Int -> AppM AlbumJ
+  serveAlbump :: AlbumKey -> AppM AlbumJ
   serveAlbump i = do
     liftIO $ print ("-------serveAlbump " :: Text, i)
     -- a Tidal or Apple album is played as it is: refreshing it through
     -- envUpdateAlbum would re-read Discogs folders and lists
     known <- asks albumsR >>= readIORef
     ma <- case M.lookup i known of
-      Just a | not (isDiscogs (albumKey a)) -> pure (Just a)
+      Just a | not (isDiscogs (albumID a)) -> pure (Just a)
       _ -> envUpdateAlbum i
     maybe (print ("no Album" :: Text)) updateAlbumsPlayed ma
     -- the album again, now with this play in its dates
@@ -424,7 +425,7 @@ clutterServer sd =
       Nothing -> pure Nothing
     let aj = case ma' of
           Just a -> AlbumJ{aid = i, album = Just a}
-          _ -> AlbumJ{aid = 0, album = Nothing}
+          _ -> AlbumJ{aid = i, album = Nothing}
     pure aj
 
   serveApp :: AppM RawHtml
@@ -434,7 +435,7 @@ clutterServer sd =
     html <- renderApp "Clutter Prototype"
     pure . RawHtml $ L.renderBS html
 
-  serveAlbum :: Int -> AppM RawHtml
+  serveAlbum :: AlbumKey -> AppM RawHtml
   serveAlbum a = do
     liftIO $ print ("-------serveAlbum " :: Text, a)
     now <- liftIO getZonedTime -- `debugId`
@@ -475,13 +476,13 @@ clutterServer sd =
 
 isDiscogs :: AlbumKey -> Bool
 isDiscogs k = case k of
-  KDiscogs _ -> True
+  D _ -> True
   _ -> False
 
 updateAlbumsPlayed :: Album -> AppM ()
 updateAlbumsPlayed a = do
   now <- liftIO getZonedTime
-  let key = albumKey a
+  let key = albumID a
   --
   -- clutter's own play log comes first, for every kind of album
   ldir <- liftIO listenedDir
@@ -528,8 +529,8 @@ updateAlbumsPlayed a = do
   -- /wants/ or /releases/ would 404, or hit an unrelated release
   dc <- envGetDiscogs
   case (key, dc) of
-    (KDiscogs _, DiscogsSession ttok tu) -> updateDiscogsPlayed ttok tu a
-    (KDiscogs _, _) -> putTextLn "-----no Discogs session, Discogs not updated"
+    (D rid, DiscogsSession ttok tu) -> updateDiscogsPlayed ttok tu rid a
+    (D _, _) -> putTextLn "-----no Discogs session, Discogs not updated"
     _ -> liftIO . hPutStrLn stderr $ "listened: " <> show key <> " is not a Discogs release, no Discogs calls"
 
   putTextLn ""
@@ -547,10 +548,10 @@ updateAlbumsPlayed a = do
 -- Discogs-side bookkeeping for a play of a Discogs release:
 -- increment the collection field 7 "Plays"; the Want list stamp is
 -- replaced by the play log and only written with CLUTTER_DISCOGS_WANTS=1
-updateDiscogsPlayed :: Text -> Text -> Album -> AppM ()
-updateDiscogsPlayed ttok tu a = do
+updateDiscogsPlayed :: Text -> Text -> Int -> Album -> AppM ()
+updateDiscogsPlayed ttok tu rid a = do
   now <- liftIO getZonedTime
-  let taid = show $ albumID a
+  let taid = show rid :: Text
   let tinst = show $ albumInst a
   let tpls = case albumPlays a of
         6 -> "" -- ????LATB should be a configuration parameter

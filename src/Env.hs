@@ -55,6 +55,7 @@ import Types (
   AMusic (..),
   AMusicInfo (..),
   Album (..),
+  AlbumKey (..),
   AppM,
   Discogs (..),
   Env (..),
@@ -141,7 +142,7 @@ envTidalConnect _nalbums = do
 
   -- create the Tags index
   putTextLn "----------------------envTidalConnect: Updating Tags index"
-  let tagsMap :: Map Text [Int]
+  let tagsMap :: Map Text [AlbumKey]
       tagsMap = foldr updateTags M.empty (M.elems allAlbums)
   putTextLn "----------------------envTidalConnect: list of Tags found: "
   print (M.keys tagsMap)
@@ -149,7 +150,7 @@ envTidalConnect _nalbums = do
   -- reread Discogs lists info
   lm <- liftIO $ readDiscogsLists dci
   -- reread folder album ids
-  let fm :: Map Text (Int, Vector Int)
+  let fm :: Map Text (Int, Vector AlbumKey)
       fm = readFolderAids newFolders allAlbums
   let allLists = lm <> fm
   _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) allLists
@@ -233,7 +234,7 @@ envUpdate _tok _un nreleases = do
 
   -- create the Tags index
   putTextLn "----------------------envUpdate: Updating Tags index"
-  let tagsMap :: Map Text [Int]
+  let tagsMap :: Map Text [AlbumKey]
       tagsMap = foldr updateTags M.empty (M.elems allAlbums)
   putTextLn "----------------------envUpdate: list of Tags found: "
   print (M.keys tagsMap)
@@ -242,7 +243,7 @@ envUpdate _tok _un nreleases = do
   dci <- envGetDiscogs
   lm <- liftIO $ readDiscogsLists dci
   -- reread folder album ids
-  let fm :: Map Text (Int, Vector Int)
+  let fm :: Map Text (Int, Vector AlbumKey)
       fm = readFolderAids newFolders allAlbums
   let allLists = lm <> fm
   _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) allLists
@@ -254,11 +255,11 @@ envUpdate _tok _un nreleases = do
   pure ()
 
 -- create list of [ <albumID>, (locList name, locList position) ]
-discogsLocList :: (Text, (Int, Vector Int)) -> [(Int, (Text, Int))]
+discogsLocList :: (Text, (Int, Vector AlbumKey)) -> [(AlbumKey, (Text, Int))]
 discogsLocList (ln, (1627102, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
 discogsLocList (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (V.toList aids)
 
-updateTags :: Album -> Map Text [Int] -> Map Text [Int]
+updateTags :: Album -> Map Text [AlbumKey] -> Map Text [AlbumKey]
 updateTags a m =
   foldr
     (\k mm -> M.insertWith L.union k (one (albumID a)) mm)
@@ -270,7 +271,7 @@ updateTags a m =
 -- get folder, list, release info from Discogs or cached JSON, depending on flag c
 -- we do not yet have the App Monad, so this is in the IO Monad instead
 --
-initInit :: Bool -> IO (Discogs, Map Int Album, Map Text Int, Map Text (Int, Vector Int))
+initInit :: Bool -> IO (Discogs, Map AlbumKey Album, Map Text Int, Map Text (Int, Vector AlbumKey))
 initInit cached = do
   (tidal, tidalCached, aMusic, dci, dci_) <- getProviders
 
@@ -289,7 +290,7 @@ initInit cached = do
   vma <- readAMusicAlbums aMusic
   vda <- liftIO $ readDiscogsAlbums dc fns
 
-  let albums' :: Map Int Album
+  let albums' :: Map AlbumKey Album
       albums' =
         M.fromList $
           (\a -> (albumID a, a)) <$> V.toList (vda <> vta <> vma)
@@ -310,19 +311,19 @@ envInit c = do
   -- at this point, we do not have the AppM monad yet, so are working in IO
   -- get initial database info from providers and/or cached JSON
   --  dc :: Discogs                     -- discogs credentials
-  --  albums' :: Map Int Album          -- map of Albums indexed with their IDs
+  --  albums' :: Map AlbumKey Album          -- map of Albums indexed with their IDs
   --  fns :: Map Text Int               -- map of folder names with their IDs
-  --  lm :: Map Text (Int, Vector Int)  -- map of list names with IDs and contents
+  --  lm :: Map Text (Int, Vector AlbumKey)  -- map of list names with IDs and contents
   (dc, albums', fns, lm) <- initInit c
 
   -- create the Tags index
   putTextLn "----------------------envInit: Updating Tags index"
-  let tagsMap :: Map Text [Int]
+  let tagsMap :: Map Text [AlbumKey]
       tagsMap = foldr updateTags M.empty (M.elems albums')
   putTextLn "----------------------envInit: list of Tags found: "
   print (M.keys tagsMap)
 
-  let fm :: Map Text (Int, Vector Int)
+  let fm :: Map Text (Int, Vector AlbumKey)
       fm = readFolderAids fns albums'
 
   let lists' = lm <> fm
@@ -348,33 +349,33 @@ envInit c = do
   tr <- newIORef tagsMap
   fr <- newIORef []
   -- define sort functions and map to names
-  let sDef :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
+  let sDef :: Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey
       sDef _ s l = case s of
         Asc -> l
         _ -> V.reverse l
-  let sortAsi :: Map Int Album -> Vector Int -> [(Int, Maybe Album)]
+  let sortAsi :: Map AlbumKey Album -> Vector AlbumKey -> [(AlbumKey, Maybe Album)]
       sortAsi am = map (\aid -> (aid, M.lookup aid am)) . V.toList
       compareAsc f (_, a) (_, b) = comparing f a b
       compareDesc f (_, a) (_, b) = comparing f b a
-  let sTitle :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
+  let sTitle :: Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey
       sTitle am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
        where
         comp o = case o of
           Asc -> compareAsc (fmap albumTitle)
           Desc -> compareDesc (fmap albumTitle)
-  let sArtist :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
+  let sArtist :: Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey
       sArtist am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
        where
         comp o = case o of
           Asc -> compareAsc (fmap albumArtist)
           Desc -> compareDesc (fmap albumArtist)
-  let sAdded :: Map Int Album -> SortOrder -> Vector Int -> Vector Int
+  let sAdded :: Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey
       sAdded am s aids = V.fromList (fst <$> sortBy (comp s) (sortAsi am aids))
        where
         comp o = case o of
           Asc -> compareDesc (fmap albumAdded)
           Desc -> compareAsc (fmap albumAdded)
-  let sfs :: Map Text (Map Int Album -> SortOrder -> Vector Int -> Vector Int) -- sort functions
+  let sfs :: Map Text (Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey) -- sort functions
       sfs =
         M.fromList
           [ ("Default", sDef)
@@ -404,7 +405,7 @@ envInit c = do
 -- define the function for (env getList) :: Text -> AppM ( Vector Int )
 -- that will evaluate the list of Album IDs for List name
 --  if list in Env is empty, try to get from provider
-getList' :: Text -> AppM (Vector Int)
+getList' :: Text -> AppM (Vector AlbumKey)
 getList' ln = case listenedName ln of
   -- one entry per play, newest first: an album played twice is listed twice
   Just my -> do
@@ -414,7 +415,7 @@ getList' ln = case listenedName ln of
     pure . V.fromList . mapMaybe (fmap albumID . snd) $ listenedRows my es am
   Nothing -> getDiscogsList ln
 
-getDiscogsList :: Text -> AppM (Vector Int)
+getDiscogsList :: Text -> AppM (Vector AlbumKey)
 getDiscogsList ln = do
   env <- ask
   ls' <- readIORef (listsR env)
@@ -437,7 +438,7 @@ getDiscogsList ln = do
       pure aids
     else pure aids'
 
-envUpdateAlbum :: Int -> AppM (Maybe Album)
+envUpdateAlbum :: AlbumKey -> AppM (Maybe Album)
 envUpdateAlbum aid = do
   env <- ask
   dc <- readIORef (discogsR env)
@@ -446,14 +447,11 @@ envUpdateAlbum aid = do
   -- check if this release id is already known / in the Map
   let ma' :: Maybe Album
       ma' = M.lookup aid am'
-  -- if it's not a Tidal or AppleMusic album, update album info from Discogs
-  ma <- case fmap albumFormat ma' of
-    Just "AppleMusic" -> pure ma'
-    Just "Tidal" -> pure ma'
-    -- Just _ -> pure ma' -- already known, nothing do add
-    _ -> case dc of
-      DiscogsSession _ _ -> readAlbum aid
-      _ -> liftIO (pure Nothing) -- we only have the caching files
+  -- a Discogs release is updated from Discogs; Tidal, Apple Music, Jellyfin albums are taken as held
+  ma <- case (aid, dc) of
+    (D i, DiscogsSession _ _) -> readAlbum i
+    (D _, _) -> pure Nothing -- we only have the caching files
+    _ -> pure ma'
   _ <- case ma of
     Just a -> do
       -- insert updated album and put in album map
@@ -475,7 +473,7 @@ envUpdateAlbum aid = do
       -- reread Discogs lists info
       lm <- liftIO $ readDiscogsLists dc
       -- reread folder album ids
-      let fm :: Map Text (Int, Vector Int)
+      let fm :: Map Text (Int, Vector AlbumKey)
           fm = readFolderAids newFolders am
       let allLists = lm <> fm
       -- _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) allLists
@@ -492,7 +490,7 @@ envUpdateAlbum aid = do
   print ma''
   pure ma''
 
-envGetTag :: Text -> AppM [Int]
+envGetTag :: Text -> AppM [AlbumKey]
 envGetTag t = do
   tm <- asks tagsR >>= readIORef
   pure $ fromMaybe [] (M.lookup t tm)
@@ -524,7 +522,7 @@ envUpdateSort msb mso = do
   pure $ EnvR am lm lcs lds lns sn so dc tm fs
 
 -- albumListenedDates for an album map, from the play log in Env
-withPlays :: Map Int Album -> AppM (Map Int Album)
+withPlays :: Map AlbumKey Album -> AppM (Map AlbumKey Album)
 withPlays am = do
   es <- asks playsR >>= readIORef
   pure (attachPlays es am)

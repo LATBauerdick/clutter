@@ -178,6 +178,8 @@ Phases 0–4 are done. The log lives at `~/Sync/clutter/listened/` (2,052 plays)
 - Wide but mechanical: App, Env, Types, Provider, the `From*` modules, the renderers, the frontend. It gets its own build and test-server check (lists, album view, focus, Album Played, `listenedq`).
 - Today no Tidal id collides with a collection release id (checked on 3,521 Tidal ids). That is luck, and this step makes it impossible.
 
+**Done 2026-11-01:** `Types.AlbumKey` (`D | T | A | J`, `keyText`, `parseKey`, JSON and URL instances; `Show` prints the prefix form). `albumID :: AlbumKey`; albums, lists, tags, locations and the focus filter are keyed by it; the frontend's `albumID` is a `String`. Discogs API calls take the bare release number (`updateDiscogsPlayed` gets it from `D rid`). `envUpdateAlbum` refreshes only `D` keys from Discogs. `Listened`'s own key type is gone (`eventKey` gives a play's key), and a made-up album carries the key it was logged with. Checked against the old server: every list (All 4,812, Discogs, Tidal, Listened, Box CDs, the Discogs lists, `#genre.classical`) has the same albums in the same order.
+
 ### Step B — played status
 
 - The count: the number of plays in the log (`albumListenedDates`), as the hover already shows.

@@ -42,6 +42,7 @@ import Relude
 import Types (
   AMusic (..),
   Album (..),
+  AlbumKey (..),
   AppM,
   Discogs (..),
   Env (..),
@@ -62,7 +63,7 @@ import Types (
 dToAlbum :: Release -> Album
 dToAlbum r =
   Album
-    (daid r)
+    (D (daid r))
     (dinst r)
     (dtitle r)
     (T.intercalate ", " $ dartists r)
@@ -86,8 +87,9 @@ dToAlbum r =
 
   makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
 
-readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector Int))
-readDiscogsLists = FD.readDiscogsLists
+-- Discogs lists hold Discogs releases
+readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector AlbumKey))
+readDiscogsLists = fmap (M.map (second (V.map D))) . FD.readDiscogsLists
 
 readAlbum :: Int -> AppM (Maybe Album)
 readAlbum aid = do
@@ -122,12 +124,12 @@ readDiscogsAlbums di lns = do
   putTextLn $ "Total # Discogs Albums read: " <> show (length as)
   pure $ V.fromList as
 
-readDiscogsListAids :: Int -> AppM (Vector Int)
+readDiscogsListAids :: Int -> AppM (Vector AlbumKey)
 readDiscogsListAids i = do
   di <- envGetDiscogs
   ln <- envGetListName i
   putTextLn $ "-----------------Getting List " <> show i <> " >>" <> fromMaybe "???" ln <> "<< from Discogs-----"
-  liftIO $ FD.readDiscogsListAids di i
+  liftIO $ V.map D <$> FD.readDiscogsListAids di i
 
 readFolders :: AppM (Map Text Int)
 readFolders = do
@@ -142,17 +144,17 @@ readDiscogsFolders di = FD.readDiscogsFolders di
 
 -- populate the aids for folders from the folder+id in each Album
 -- special treatment for Tidal, Discogs, and All folders
-updateTidalFolderAids :: Map Int Album -> Map Text (Int, Vector Int) -> Map Text (Int, Vector Int)
+updateTidalFolderAids :: Map AlbumKey Album -> Map Text (Int, Vector AlbumKey) -> Map Text (Int, Vector AlbumKey)
 updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
  where
   -- for Tidal folder, replace anything that's also on Discogs
-  tidalToDiscogs :: Map Int Int
+  tidalToDiscogs :: Map AlbumKey AlbumKey
   tidalToDiscogs =
     M.fromList
       . mapMaybe
         ( \a ->
             case readMaybe . toString =<< albumTidal a of
-              Just i -> if i == albumID a then Nothing else Just (i, albumID a)
+              Just i -> if T i == albumID a then Nothing else Just (T i, albumID a)
               Nothing -> Nothing
         )
       . M.elems
@@ -165,24 +167,24 @@ updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
       . V.map (\a -> (albumID a, albumFolder a))
       . V.fromList
       $ M.elems am
-  sAdded :: Vector Int -> Vector Int
+  sAdded :: Vector AlbumKey -> Vector AlbumKey
   sAdded aids = V.fromList (fst <$> sortBy (\(_, a) (_, b) -> comparing (fmap albumAdded) b a) asi)
    where
-    asi :: [(Int, Maybe Album)]
+    asi :: [(AlbumKey, Maybe Album)]
     asi = map (\aid -> (aid, M.lookup aid am)) $ V.toList aids
 
 -- populate the aids for folders from the folder+id in each Album
-updateAMusicFolderAids :: Map Int Album -> Map Text (Int, Vector Int) -> Map Text (Int, Vector Int)
+updateAMusicFolderAids :: Map AlbumKey Album -> Map Text (Int, Vector AlbumKey) -> Map Text (Int, Vector AlbumKey)
 updateAMusicFolderAids am = M.insert "Apple Music" (fromEnum TAMusic, allAMusic)
  where
   -- for "AppleMusic" folder, replace anything that's also on Discogs
-  aMusicToDiscogs :: Map Int Int
+  aMusicToDiscogs :: Map AlbumKey AlbumKey
   aMusicToDiscogs =
     M.fromList
       . mapMaybe
         ( \a ->
             case readMaybe . toString =<< albumAMusic a of
-              Just i -> if i == albumID a then Nothing else Just (i, albumID a)
+              Just i -> if A i == albumID a then Nothing else Just (A i, albumID a)
               Nothing -> Nothing
         )
       . M.elems
@@ -195,13 +197,13 @@ updateAMusicFolderAids am = M.insert "Apple Music" (fromEnum TAMusic, allAMusic)
       . V.map (\a -> (albumID a, albumFolder a))
       . V.fromList
       $ M.elems am
-  sAdded :: Vector Int -> Vector Int
+  sAdded :: Vector AlbumKey -> Vector AlbumKey
   sAdded aids = V.fromList (fst <$> sortBy (\(_, a) (_, b) -> comparing (fmap albumAdded) b a) asi)
    where
-    asi :: [(Int, Maybe Album)]
+    asi :: [(AlbumKey, Maybe Album)]
     asi = map (\aid -> (aid, M.lookup aid am)) $ V.toList aids
 
-readFolderAids :: Map Text Int -> Map Int Album -> Map Text (Int, Vector Int)
+readFolderAids :: Map Text Int -> Map AlbumKey Album -> Map Text (Int, Vector AlbumKey)
 readFolderAids fm am = fam
  where
   fam' = M.map getFolder fm
@@ -223,9 +225,9 @@ readFolderAids fm am = fam
       . V.map (\a -> (albumID a, albumFolder a))
       . V.fromList
       $ M.elems am
-  getFolder :: Int -> (Int, Vector Int)
+  getFolder :: Int -> (Int, Vector AlbumKey)
   getFolder i = (i, filtFolder i)
-  filtFolder :: Int -> Vector Int
+  filtFolder :: Int -> Vector AlbumKey
   filtFolder fid =
     sAdded
       . V.map fst
@@ -233,10 +235,10 @@ readFolderAids fm am = fam
       . V.map (\a -> (albumID a, albumFolder a))
       . V.fromList
       $ M.elems am
-  sAdded :: Vector Int -> Vector Int
+  sAdded :: Vector AlbumKey -> Vector AlbumKey
   sAdded aids = V.fromList (fst <$> sortBy (\(_, a) (_, b) -> comparing (fmap albumAdded) b a) asi)
    where
-    asi :: [(Int, Maybe Album)]
+    asi :: [(AlbumKey, Maybe Album)]
     asi = map (\aid -> (aid, M.lookup aid am)) $ V.toList aids
 
 -- items[].item.type
@@ -271,7 +273,7 @@ readTidalAlbums p = do
 
     toAlbum r =
       Album
-        (daid r)
+        (T (daid r))
         (dinst r)
         (dtitle r)
         (T.intercalate ", " $ dartists r)
@@ -306,7 +308,7 @@ readAMusicAlbums p = do
     makeAMusicURL cid = "https://beta.music.apple.com/library/albums/" <> cid
     toAlbum r =
       Album
-        (daid r)
+        (A (daid r))
         (dinst r)
         (dtitle r)
         (T.intercalate ", " $ dartists r)

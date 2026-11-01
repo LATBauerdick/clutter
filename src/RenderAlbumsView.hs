@@ -14,12 +14,12 @@ import qualified Data.Vector as V
 import qualified Lucid as L
 import Relude
 import Text.RawString.QQ
-import Types (Album (..), AppM, Env (..), EnvR (..), SortOrder (..), envGetEnvr)
+import Types (Album (..), AlbumKey, AppM, Env (..), EnvR (..), SortOrder (..), envGetEnvr)
 
 import RenderTopMenu (renderTopMenu)
 import RenderUtil (renderHead)
 
-renderAlbumsView :: Text -> [Text] -> Vector Int -> AppM (L.Html ())
+renderAlbumsView :: Text -> [Text] -> Vector AlbumKey -> AppM (L.Html ())
 renderAlbumsView ln fs aids = do
   envr <- envGetEnvr
   env <- ask

@@ -67,7 +67,7 @@ render state = do
   -- renderPlayedButton :: forall m. Album -> DateTime -> H.ComponentHTML Action () m
   -- renderPlayedButton a _ =
   --   HH.div [ HP.class_ $ HH.ClassName "album-view" ]
-  --          [ HH.button [ HE.onClick \_ -> AlbumPlayed (show a.albumID) ]
+  --          [ HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
   --                      [ HH.text " Album Played "]
   --          ]
 
@@ -89,7 +89,7 @@ render state = do
     HH.div [ HP.class_ $ HH.ClassName "album-thumb" ]
       [ HH.div [ HP.class_ $ HH.ClassName "cover-container" ] (
           [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ]
-              [ HH.button [ HE.onClick \_ -> ShowAlbum (show a.albumID) ]
+              [ HH.button [ HE.onClick \_ -> ShowAlbum (a.albumID) ]
                 [ HH.img [ HP.src a.albumCover
                           , HP.alt "cover image"
                           , HP.class_ $ HH.ClassName "cover-image"
@@ -154,7 +154,7 @@ render state = do
         , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
         , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]
         , HH.br_
-        , HH.button [ HE.onClick \_ -> AlbumPlayed (show a.albumID) ]
+        , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
                     [ HH.text " Album Played "]
         , HH.br_
         , quotableView
@@ -223,7 +223,7 @@ render state = do
 
     tidalView = let qry = S.replaceAll ( Pattern " " ) ( Replacement "+" ) $ a.albumArtist <> "+-+" <> a.albumTitle in
       HH.div [ HP.class_ $ HH.ClassName "album-view" ]
-        [ HH.p_ [HH.text ("Tidal Album <"  <> show a.albumID <> ">.")]
+        [ HH.p_ [HH.text ("Tidal Album <"  <> a.albumID <> ">.")]
         , HH.br_
         , HH.text ("Search \"" <> a.albumTitle <> "\" (" <> a.albumReleased <> ") by " <> a.albumArtist <> " on <")
         , HH.a [HP.href $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"]
@@ -236,7 +236,7 @@ render state = do
                              [ HH.text "<Update>"]
                  ]
         , HH.div [ HP.class_ $ HH.ClassName "album-view" ]
-           [ HH.button [ HE.onClick \_ -> AlbumPlayed (show a.albumID) ]
+           [ HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
                        [ HH.text " Album Played "]
            ]
         , HH.iframe
