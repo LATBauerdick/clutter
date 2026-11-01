@@ -68,6 +68,13 @@ executables:
     dependencies:
     - clutter
 
+tests:
+  listened-test:
+    main:                ListenedTest.hs
+    source-dirs:         test/listened
+    dependencies:
+    - clutter
+
 # tests:
 #   clutter-test:
 #     main:                Spec.hs

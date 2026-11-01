@@ -4,6 +4,7 @@
 -- {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 
 module App (
@@ -14,12 +15,13 @@ module App (
 where
 
 import qualified Data.ByteString.Lazy as BL
-import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
+import Data.Time (defaultTimeLocale, formatTime, getZonedTime, localDay, zonedTimeToLocalTime)
 
+import Control.Exception (try)
 import Control.Monad (foldM)
 import qualified Data.IntSet as Set
 import qualified Data.Map.Strict as M
-import Data.Text as T (isSuffixOf, replace, stripPrefix, unlines, unpack)
+import Data.Text as T (isSuffixOf, stripPrefix, unlines, unpack)
 import Data.Text.IO as TIO (writeFile)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -33,6 +35,7 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
+import Listened (AlbumKey (..), albumKey, appendPlay, listenedDir, playEvent)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
@@ -56,7 +59,7 @@ import Types (
   envGetEnvr,
  )
 
-import Data.Aeson (FromJSON (..), ToJSON (..), eitherDecode, withObject, (.!=), (.:?))
+import Data.Aeson (FromJSON (..), ToJSON (..), eitherDecode, encode, object, withObject, (.!=), (.:?), (.=))
 
 newtype WantsJ = WantsJ {wnotes :: Text} deriving (Show, Generic)
 instance FromJSON WantsJ where
@@ -356,7 +359,12 @@ clutterServer sd =
   serveAlbump :: Int -> AppM AlbumJ
   serveAlbump i = do
     liftIO $ print ("-------serveAlbump " :: Text, i)
-    ma <- envUpdateAlbum i
+    -- a Tidal or Apple album is played as it is: refreshing it through
+    -- envUpdateAlbum would re-read Discogs folders and lists
+    known <- asks albumsR >>= readIORef
+    ma <- case M.lookup i known of
+      Just a | not (isDiscogs (albumKey a)) -> pure (Just a)
+      _ -> envUpdateAlbum i
     maybe (print ("no Album" :: Text)) updateAlbumsPlayed ma
     let aj = case ma of
           Just a -> AlbumJ{aid = i, album = Just a}
@@ -409,12 +417,28 @@ clutterServer sd =
     html <- renderAlbumsView ln [] aids
     pure . RawHtml $ L.renderBS html
 
+isDiscogs :: AlbumKey -> Bool
+isDiscogs k = case k of
+  KDiscogs _ -> True
+  _ -> False
+
 updateAlbumsPlayed :: Album -> AppM ()
 updateAlbumsPlayed a = do
+  now <- liftIO getZonedTime
+  let key = albumKey a
+  --
+  -- clutter's own play log comes first, for every kind of album
+  ldir <- liftIO listenedDir
+  logged <- liftIO . try $ appendPlay ldir (playEvent now a)
+  liftIO . hPutStrLn stderr $ case logged of
+    Right fn -> "listened: " <> show key <> " -> " <> fn
+    Left (err :: SomeException) -> "ERROR listened: could not log " <> show key <> " in " <> ldir <> ": " <> show err
+  -- and show up in the in-memory map without a restart
+  lds <- asks listenedDatesR
+  modifyIORef' lds (M.insertWith (<>) (albumID a) [localDay (zonedTimeToLocalTime now)])
   --
   -- add a Note in Obsidian
   -- assumes that the Obsidian Vault is linked to `./AlbumsPlayed`
-  now <- liftIO getZonedTime
   let ts = renderAlbumText a now
 
   let fn = fromMaybe "!!error!!" $ viaNonEmpty head ts
@@ -427,7 +451,7 @@ updateAlbumsPlayed a = do
   -- make sure Journal named "Albums Played" does already exist
   --  let ns = renderAlbumDayOne a
   let js = map T.unpack $ renderAlbumJournal a now
-  putTextLn "-----add entry into Day One Journal Albums Played, file in AlbumsPlayed, add to Discogs Want List"
+  putTextLn "-----add entry into Day One Journal Albums Played, file in AlbumsPlayed"
   print js
   let iurl = fromMaybe "!!error!!" $ viaNonEmpty head js
   -- The Day One CLI (symlinked from /usr/local/bin into the app bundle since
@@ -441,85 +465,14 @@ updateAlbumsPlayed a = do
   unless (exitCode == ExitSuccess) $
     putTextLn $
       "ERROR getting cover img: curl failed with exit code: " <> show exitCode
-
-  DiscogsSession ttok tu <- envGetDiscogs
-
-  let taid = show $ albumID a
-  let tinst = show $ albumInst a
-  let tpls = case albumPlays a of
-        6 -> "" -- ????LATB should be a configuration parameter
-        _ -> show $ 1 + albumPlays a
-
-  -- see if this release is on Want list, and get current notes
-  res <-
-    ( eitherDecode . TLE.encodeUtf8 . TL.pack
-        <$> liftIO
-          ( readProcess
-              "curl"
-              [ "-X"
-              , "PUT"
-              , "-H"
-              , "Authorization: Discogs token=" <> unpack ttok
-              , "-H"
-              , "Content-Type: application/json; charset=utf-8"
-              , "https://api.discogs.com/users/" <> unpack tu <> "/wants/" <> unpack taid
-              ]
-              ""
-          )
-    ) ::
-      AppM (Either String WantsJ)
-  case res of
-    Left err -> putTextLn $ "Error decoding Want List: " <> show err
-    Right wants -> print wants -- pure ()
-  let tno = case res of
-        Left _ -> ""
-        Right wants -> wnotes wants
-
-  -- let td = toText $ formatTime defaultTimeLocale "%Y%m%d" now
-  let td = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
-      escapeNewlines :: Text -> Text
-      escapeNewlines = T.replace "\n" "\\n"
-
-      tn = case tno of
-        "" -> td
-        _ -> escapeNewlines $ td <> "\n" <> tno -- need to URL-ify tno
-  exitCode3 <-
-    liftIO $
-      rawSystem
-        "curl"
-        [ "-X"
-        , "POST"
-        , "-H"
-        , "Authorization: Discogs token=" <> unpack ttok
-        , "-H"
-        , "Content-Type: application/json; charset=utf-8"
-        , "--data"
-        , "{\"notes\": \"" <> unpack tn <> "\"}"
-        , "https://api.discogs.com/users/" <> unpack tu <> "/wants/" <> unpack taid
-        ]
-  unless (exitCode3 == ExitSuccess) $
-    putTextLn $
-      "ERROR adding date to Discogs Want List: failed with exit code: " <> show exitCode
   --
-  -- increment played count
-  let tfield = "7" -- ????LATB should be a configuration parameter
-  exitCode4 <-
-    liftIO $
-      rawSystem
-        "curl"
-        [ "-X"
-        , "POST"
-        , "-H"
-        , "Authorization: Discogs token=" <> unpack ttok
-        , "-H"
-        , "Content-Type: application/json; charset=utf-8"
-        , "--data"
-        , "{\"value\": \"" <> unpack tpls <> "\"}"
-        , "https://api.discogs.com/users/" <> unpack tu <> "/collection/folders/0/releases/" <> unpack taid <> "/instances/" <> unpack tinst <> "/fields/" <> unpack tfield
-        ]
-  unless (exitCode4 == ExitSuccess) $
-    putTextLn $
-      "ERROR adding date to Discogs Want List: failed with exit code: " <> show exitCode
+  -- only a Discogs release has a Discogs id: a Tidal or Apple id sent to
+  -- /wants/ or /releases/ would 404, or hit an unrelated release
+  dc <- envGetDiscogs
+  case (key, dc) of
+    (KDiscogs _, DiscogsSession ttok tu) -> updateDiscogsPlayed ttok tu a
+    (KDiscogs _, _) -> putTextLn "-----no Discogs session, Discogs not updated"
+    _ -> liftIO . hPutStrLn stderr $ "listened: " <> show key <> " is not a Discogs release, no Discogs calls"
 
   putTextLn ""
   -- only attach the cover if the download actually succeeded
@@ -528,15 +481,106 @@ updateAlbumsPlayed a = do
   exitCode' <- liftIO $ rawSystem "dayone" args
   unless (exitCode' == ExitSuccess) $
     putTextLn $
-      "ERROR adding to DayOne.app: failed with exit code: " <> show exitCode
+      "ERROR adding to DayOne.app: failed with exit code: " <> show exitCode'
   print args
 
   pure ()
+
+-- Discogs-side bookkeeping for a play of a Discogs release:
+-- increment the collection field 7 "Plays"; the Want list stamp is
+-- replaced by the play log and only written with CLUTTER_DISCOGS_WANTS=1
+updateDiscogsPlayed :: Text -> Text -> Album -> AppM ()
+updateDiscogsPlayed ttok tu a = do
+  now <- liftIO getZonedTime
+  let taid = show $ albumID a
+  let tinst = show $ albumInst a
+  let tpls = case albumPlays a of
+        6 -> "" -- ????LATB should be a configuration parameter
+        _ -> show $ 1 + albumPlays a :: Text
+  let auth = "Authorization: Discogs token=" <> unpack ttok
+      wantsURL = "https://api.discogs.com/users/" <> unpack tu <> "/wants/" <> unpack taid
+
+  wantsFlag <- lookupEnv "CLUTTER_DISCOGS_WANTS"
+  when (wantsFlag == Just "1") $ do
+    putTextLn "-----add to Discogs Want List (CLUTTER_DISCOGS_WANTS=1)"
+    -- see if this release is on Want list, and get current notes
+    res <-
+      ( eitherDecode . TLE.encodeUtf8 . TL.pack
+          <$> liftIO
+            ( readProcess
+                "curl"
+                [ "-X"
+                , "PUT"
+                , "-H"
+                , auth
+                , "-H"
+                , "Content-Type: application/json; charset=utf-8"
+                , wantsURL
+                ]
+                ""
+            )
+      ) ::
+        AppM (Either String WantsJ)
+    case res of
+      Left err -> putTextLn $ "Error decoding Want List: " <> show err
+      Right wants -> print wants -- pure ()
+    let tno = case res of
+          Left _ -> ""
+          Right wants -> wnotes wants
+
+    let td = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        tn = case tno of
+          "" -> td
+          _ -> td <> "\n" <> tno
+    exitCode3 <-
+      liftIO $
+        rawSystem
+          "curl"
+          [ "-X"
+          , "POST"
+          , "-H"
+          , auth
+          , "-H"
+          , "Content-Type: application/json; charset=utf-8"
+          , "--data"
+          , jsonBody ["notes" .= tn]
+          , wantsURL
+          ]
+    unless (exitCode3 == ExitSuccess) $
+      putTextLn $
+        "ERROR adding date to Discogs Want List: failed with exit code: " <> show exitCode3
+  --
+  -- increment played count, if the release is in the collection
+  let tfield = "7" -- ????LATB should be a configuration parameter
+  if albumInst a == 0
+    then putTextLn "-----not in the Discogs collection, Plays field not updated"
+    else do
+      exitCode4 <-
+        liftIO $
+          rawSystem
+            "curl"
+            [ "-X"
+            , "POST"
+            , "-H"
+            , auth
+            , "-H"
+            , "Content-Type: application/json; charset=utf-8"
+            , "--data"
+            , jsonBody ["value" .= tpls]
+            , "https://api.discogs.com/users/" <> unpack tu <> "/collection/folders/0/releases/" <> unpack taid <> "/instances/" <> unpack tinst <> "/fields/" <> unpack tfield
+            ]
+      unless (exitCode4 == ExitSuccess) $
+        putTextLn $
+          "ERROR incrementing Discogs Plays field: failed with exit code: " <> show exitCode4
+ where
+  jsonBody = TL.unpack . TLE.decodeUtf8 . encode . object
 
 -- init env from files (AppM not yet available) and run app
 startApp :: Int -> Bool -> IO ()
 startApp p c = do
   sd <- resolveStaticDir
+  ldir <- listenedDir
+  hPutStrLn stderr $ "logging plays to " <> ldir
   env <- envInit c
   run p (appWith sd env)
 

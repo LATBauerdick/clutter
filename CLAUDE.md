@@ -93,7 +93,7 @@ Providers (Discogs, Tidal, Apple Music) can operate in two modes:
 
 All provider data is normalized to the `Release` type, then converted to `Album` for display.
 
-Authentication tokens are read from `tok.dat` file (not in version control).
+Authentication tokens are read from `tok.json` (git-ignored; `tok.dat` is obsolete). Keys: `amt aky tok usr jky tid tsi tcc tdt` — Discogs token `tok`, user `usr` (= `LATB`), Tidal fields last. **Never print, echo or `cat` it** (`update-json` echoes tokens — redirect its output to a file); read values inside a script.
 
 ### Frontend Structure
 
@@ -160,29 +160,57 @@ These integrations are triggered via the `/api/albump/:id` endpoint.
 - **HTML rendering**: Uses Lucid library for type-safe HTML generation
 - **JSON**: Aeson for JSON serialization with Generic deriving
 
-## Recent Changes and Next Steps
+## Listened / play tracking — current state and planned change
 
-### Listened Dates Feature (Completed)
-The backend now extracts listened dates from Discogs "Listened" lists (lists with names ending in "Listened"). The implementation:
-- Parses list item comments to extract dates (format: "YYYY-MM-DD")
-- Stores dates in the `Album` type as `albumListenedDates :: [Text]`
-- Automatically loads this data during app initialization from cache or API
-- Available via all JSON API endpoints that return album data
+**Current mechanism (a kludge, to be replaced):** pressing *Album Played* (`/api/albump/:id` → `App.updateAlbumsPlayed`) does five things:
+1. writes an Obsidian note `AlbumsPlayed/<YYMMDD>-<artist> – <title>.md`
+2. `PUT`s the release onto the Discogs **Want list**
+3. prepends `YYYY-MM-DDTHH:MM` to the want's notes
+4. increments the Discogs collection custom field **7** ("Plays", wraps at 6)
+5. creates a Day One entry in the journal "Albums Played", with the cover staged in the Day One group container
 
-Key files modified:
-- `Types.hs`: Added `albumListenedDates` field to Album, added `listenedDatesR` to Env
-- `FromDiscogs.hs`: Updated `WAid` to include comment field, added functions to read list items with comments
-- `Env.hs`: Added `extractListenedDates` function to parse "Listened" lists
-- `Provider.hs`: Updated all Album constructors to include empty listened dates initially
+The "Listened" menu shows the pseudo-list `"Want"` (id 7), sorted by those note dates. Earlier years live in the Discogs lists `2020 Listened` … `2025 Listened`, with dates in the item comments. The `albumListenedDates` field and `extractListenedDates` exist but are **disabled** (`listenedDatesMap = M.empty` in `Env.hs`; field commented out in `Types.hs`).
 
-### TODO: Frontend View for Listened Dates
-**Next task**: Create a frontend view that displays albums sorted by their listened dates.
+Known defects: Tidal-only albums have a Tidal id in `albumID`, so their plays go to `/wants/<tidal id>` and are lost, or land on an unrelated release. The Want list is read only up to 500 entries. The notes JSON is hand-built and escapes only newlines.
 
-Implementation considerations:
-- Backend already provides `albumListenedDates: [Text]` in Album JSON
-- Available through `/api/albumsq/:list` endpoint
-- Consider creating a new route (e.g., `/listened` or `/history`)
-- Sort albums chronologically by most recent listen date
-- May want to show all listen dates for each album (albums can have multiple dates)
-- Could create a timeline view or a simple sorted list
-- Frontend files to modify: `Main.purs`, `Types.purs`, `Render.purs`, possibly new component file
+**State on 2026-11-01:** LATB's decisions are recorded in the plan. All 2026 plays so far (86 releases, 119 stamps) were moved from the Want list into the Discogs list `2026 Listened` (1656131), and the Want list was emptied. Phase 2 is implemented, but not yet deployed: once rebuilt, plays go to `~/Sync/clutter/listened/YYYY.jsonl` (`src/Listened.hs`), and the Want list is no longer written (`CLUTTER_DISCOGS_WANTS=1` turns it back on). The running server still writes the Want list until it is restarted. Snapshots are in `cache/listened-import/`.
+
+**Plan:** `docs/listened-plan.md` replaces this with a per-year JSON Lines play log owned by clutter. It covers storage, typed album keys, the write and read paths, backfill from the Discogs lists + Want notes + `AlbumsPlayed` + Day One, the retirement of the Discogs writes, and the open questions for LATB. Read it before touching any play-tracking code.
+
+## Running it on lmini (operations)
+
+- **Start:** from a **local Ghostty window**, `cd ~/clutter && abduco -n clutter ./result/bin/clutter` (attach `abduco -a clutter`, detach `Ctrl-\`). After every reboot, start it again the same way. The Day One cover write needs the "access data from other apps" permission of a GUI-started process. Started over SSH, or inside a herdr server that was started by a remote client, curl exits 56 and entries get no art. lmini's herdr server now runs as the launchd agent `local.herdr.server`, so herdr panes are fine.
+- **Before starting:** run `./tidalauth`. It is plain Python since 2026-10-31: it refreshes silently from `tidal-session.json` (git-ignored, mode 600), and `--login` forces a new device link. Tidal access tokens live **4 h** (`expires_in: 14400`). The server reads `tok.json` only at startup, so its Tidal calls die 4 h after launch. Making it re-read or refresh the token is an open thread (`Env.hs`).
+- **Refresh data:** `./update-json` fills `cache/` (Discogs collection pages `draw1..4.json`, folders, lists `l<id>-raw.json`, `wants1.json`, Tidal favourites `traw.json`). A stale `traw.json` fails with *key "limit" not found*. For **new Discogs additions** while the server runs, `curl 'localhost:8080/api/req?event=update'` (or the <Update> button on a Tidal album view) pulls the last 20 releases, with no restart.
+- **Build:** backend `nix build` → `result/bin/clutter`. The frontend builds in its **own** flake: `cd frontend && nix develop --command bash -c 'npm install && npm run bundle'`. The root dev shell has no `spago`. `frontend/spago.yaml` needs the `now` dependency.
+- **Paths:** `tok.json`, `cache/` and `static/` resolve relative to the working directory, so start the server from `~/clutter`. `CLUTTER_STATIC` overrides `static/`. Startup diagnostics go to **stderr**, because stdout is block-buffered once redirected.
+- `AlbumsPlayed` → `/Users/latb/Sync/AlbumsPlayed` since 2026-11-01. It moved out of the Obsidian vault and was `~/Notes/AlbumsPlayed` before. On lmini, home is `/Users/latb`; `/home/latb` is only a compatibility symlink, so write `/Users/latb` paths.
+- **Backups:** the code is on GitHub (`LATBauerdick/clutter`). `tok.json` and `cache/` have **no backup**, so keep a copy of `tok.json` elsewhere. `cache/` can be regenerated.
+- Full install/recovery recipe: `~/Notes/HowTo/HowTo install and run clutter.md`. Its older section still contains a Discogs token in plain text.
+
+## Streaming IDs on Discogs releases
+
+A Discogs release links to its streaming versions through the collection **Location** field (field **4**), value `T<tidal album id> A<apple album id>`. clutter parses it (`albumTidal`/`albumAMusic`), and `updateTidalFolderAids` then shows the Discogs release instead of the Tidal favourite.
+- Write: `POST /users/LATB/collection/folders/{folder}/releases/{release}/instances/{instance}/fields/4` with body `{"value": "T… A…"}`.
+- Releases bought only to anchor a stream go in the folder **Streaming** (3292597). Add one with `POST /users/LATB/collection/folders/3292597/releases/{id}`, which returns the `instance_id`.
+- Matching: Tidal `GET https://api.tidal.com/v1/albums/{id}?countryCode=US` (Bearer `tdt`) gives title, UPC and tracks. Apple: `https://itunes.apple.com/lookup?upc=<UPC>&entity=album`, falling back to a text search. **Tidal's digital UPC usually differs from the physical barcode**, so match the Discogs release by cover + tracklist and use the barcode only as a cross-check. If the Tidal token has expired, Tidal search still works with the public web-client `x-tidal-token`. Now-playing can be read from the TIDAL window title via System Events. Album links for LATB: `tidal://album/<id>`.
+- Done so far: Nikolayeva MK 418013 (9791348 → `T12571482 A206349046`), Nikolayeva Relief CR 861006 (17105709 → `T366233911 A1822507817`), Richter Olympia OCD 336 (18907429 → `T60901746 A1116300345`), Levit Sonatas box (15079008, by LATB), Levit *Fantasia* (28759924 → `T315583200 A1694557348`), Yudina Legacy Vol. 6 (6715388 → `T283130328 A1556465220`, an approximate match: the Tidal album is the RCD Schubert/Honegger/Bartók disc, which Discogs does not have).
+- A UI for this lookup is a parked idea.
+
+## History and lessons (from the aiws workspace logs, 2026-09 → 2026-11)
+
+- **2026-09-14 AlbumsPlayed analysis**: 1,740 plays from 2020-12 on; report at `~/Notes/Claude/2026-09-albums-played-report.md`. ⚠️ Note timestamps (frontmatter `date:` and the file name prefix) are **UTC up to 2021-07-01 03:02** and local America/Chicago from 2021-07-01 22:42; 359 entries are affected. The **Day One "Albums Played" journal is the authoritative clock** (`DayOne.sqlite` in the group container, with `ZTIMEZONE`). Copy it before reading it.
+- **2026-09-20 Day One covers**: `install_cli.sh` replaced `/usr/local/bin/dayone` with a symlink to the App-Sandboxed in-bundle CLI, which cannot read `/tmp`. Covers are now staged at `~/Library/Group Containers/5U8NS4GX82.dayoneapp2/__ac.jpg`. `curl -fsSL` keeps Discogs rate-limit bodies from being attached as JPEGs, and `-a` is passed only after a successful download (`e276cd5`).
+- **2026-09-21 `/app` blank page**: the cause was the trailing slash plus relative asset URLs. They are now root-absolute, with `Cache-Control: no-cache` on js/css, a vendored bootstrap 4.4.1 and `CLUTTER_STATIC` (`51fe506`). `directory`/`filepath` had to be added to **both** `package.yaml` and `clutter.cabal` by hand, because the shell's hpack 0.38.3 differs from the 0.36.0 that generated the cabal file. This relude does not re-export `hPutStrLn`, so import `System.IO`.
+- **2026-10-07**: rebuilt on lmini after the 10-04 disk wipe; the repo had been in neither Time Machine nor Arq. **2026-10-08**: icon 404s fixed (`static/icons/`), streaming badge changed `far fa-wifi` → `fas`.
+- **2026-10-11/13**: cover failures came from a herdr server started over Tailscale SSH (TCC context). Fixed by the abduco-from-Ghostty start and later by the `local.herdr.server` launchd agent.
+- **2026-10-31**: `tidalauth` rewritten in plain Python and now keeps the refresh token (`9ce41d7`). The old version discarded it, which is why the token was always stale.
+- Stray checkouts: `~/Dev/clutter` copies are a stale 2022 checkout. lair's untracked `h.mcp/`, `neu.json` and `refac.md` were saved to `~/_from-lair-2026-10-11/`.
+
+## Working rules for Claude in this repo
+
+- **Do not `git commit` or push unless LATB says so.** LATB rebuilds, restarts the live server and commits. Say what needs a rebuild or restart.
+- Never print secrets (`tok.json`, `tidal-session.json`). Don't send messages or post anything on LATB's behalf.
+- Ask before writing to Discogs beyond what LATB requested: Want list clean-ups and list edits are his call. Reads are fine.
+- Validate by building (`cabal build` / `nix build`) and by hitting the endpoints of a test server on another port (`cabal run clutter -- -c 8081`). Don't restart the live one on 8080.
+- Facts that the other assistant (Hermes) or later aiws sessions need go into the aiws daily log (`~/aiws/memory/YYYY-MM-DD.md`), not only here.
