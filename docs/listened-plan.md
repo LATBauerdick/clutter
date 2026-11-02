@@ -248,6 +248,7 @@ Phases 0–4 are done. The log lives at `~/Sync/clutter/listened/` (2,052 plays)
 - `update-json`: loop over all collection pages instead of a fixed 5 (and the same in `FromDiscogs`).
 - Apple Music as in C.
 - Retire the "Streaming" folder (decision 12).
+- **Bring back the Discogs want list as a plain list** (LATB, 2026-11-01). Removing the `"Want"` pseudo-list in Phase 4 also removed clutter's only view of the real want list. `update-json` still fetches `cache/wants1.json`, whose entries carry `basic_information` (title, artists, cover, year), so the wanted releases can be shown as `D…` albums tagged e.g. `discogs.want`, without extra API calls. Read all pages, not only the first 500.
 - Show "Date Added" in the Discogs album view (LATB, 2026-11-01). clutter already reads the collection's `date_added` into `albumAdded` and sorts by it ("Added"); it is only not displayed.
 - The retirement steps of Phase 6 that are left: `wants1.json` in `update-json`, the wantlist client binding, `extractListenedDates` and `readDiscogsListAidsWithComments` in `FromDiscogs.hs`.
 

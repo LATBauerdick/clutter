@@ -82,7 +82,21 @@ STAND_INS = {
               "note": "first logged against Discogs 6715388 (Legacy of Maria Yudina Vol. 6), "
                       "an ill-matched stand-in removed on 2026-11-01"},
     28759924: {"tidal": 315583200, "apple": 1694557348, "artist": "Igor Levit", "title": "Fantasia",
-               "note": "first logged against Discogs 28759924, a Streaming-folder stand-in removed on 2026-11-01"},
+               "note": "first logged against Discogs 28759924, a Streaming-folder stand-in removed on 2026-11-01"},    18907429: {"tidal": 60901746, "apple": 1116300345, "artist": "Sviatoslav Richter",
+             "title": "Beethoven: Piano Sonatas Nos. 3, 4, 27",
+             "note": "first logged against Discogs 18907429, a Streaming-folder stand-in removed on 2026-11-01"},
+    15079008: {"tidal": 113297816, "apple": 1472274311, "artist": "Igor Levit",
+             "title": "Beethoven: The Complete Piano Sonatas",
+             "note": "first logged against Discogs 15079008, a Streaming-folder stand-in removed on 2026-11-01"},
+    2058580: {"tidal": 77622111, "apple": 1440833569, "artist": "The Allman Brothers Band",
+             "title": "At Fillmore East",
+             "note": "first logged against Discogs 2058580, a Streaming-folder stand-in removed on 2026-11-01"},
+    2538724: {"tidal": 306130500, "apple": 1697992319, "artist": "Marc-André Hamelin",
+             "title": "Rzewski: The People United Will Never Be Defeated!",
+             "note": "first logged against Discogs 2538724, a Streaming-folder stand-in removed on 2026-11-01"},
+    18168862: {"tidal": 39067731, "apple": null, "artist": "Gustavo Dudamel",
+             "title": "Wagner - Dudamel",
+             "note": "first logged against Discogs 18168862, a Streaming-folder stand-in removed on 2026-11-01"},
 }
 
 FIELD_ORDER = ["ts", "src", "discogs", "inst", "tidal", "apple", "applelib",
