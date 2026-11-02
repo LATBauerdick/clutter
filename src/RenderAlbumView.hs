@@ -4,14 +4,14 @@
 
 module RenderAlbumView (renderAlbumView, renderAlbumText, renderAlbumJournal) where
 
-import qualified Data.Text as T (replace, take)
+import qualified Data.Text as T (intercalate, replace, take)
 import Data.Time
 import qualified Lucid as L
 import Relude
 import RenderAlbumsView (renderBadges)
 import RenderTopMenu (renderTopMenu)
 import RenderUtil (renderHead)
-import Types (Album (..), AppM, envGetEnvr)
+import Types (Album (..), AlbumKey (..), AppM, envGetEnvr)
 
 renderAlbumView :: Maybe Album -> ZonedTime -> AppM (L.Html ())
 renderAlbumView mAlbum now = do
@@ -129,9 +129,18 @@ renderAlbumJournal a now = txts
   dt = toText $ formatTime defaultTimeLocale "%y%m%d" now
   dtl = formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
   fn = dt <> "-" <> ttl
+  -- the album where it is: Discogs (only for a Discogs release), Tidal, Apple Music
+  links =
+    [ "[Discogs](https://www.discogs.com/release/" <> show i <> ")" | D i <- [albumID a] ]
+      <> [ "[Tidal](https://listen.tidal.com/album/" <> t <> ")" | Just t <- [albumTidal a], t /= "" ]
+      <> [ "[Apple Music](" <> appleURL am <> ")" | Just am <- [albumAMusic a], am /= "" ]
+  appleURL am =
+    if T.take 2 am == "l."
+      then "https://music.apple.com/library/albums/" <> am
+      else "https://music.apple.com/us/album/" <> am
   txts =
     [ toText (albumCover a)
     , toText (albumArtist a <> " – " <> albumTitle a <> "<br>")
-    , toText (albumURL a)
+    , T.intercalate " · " links
     -- , toText dtl
     ]

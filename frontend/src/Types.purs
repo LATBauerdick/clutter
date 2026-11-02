@@ -1,6 +1,7 @@
 module Types  ( Album
               , AlbumJ
               , AlbumsJ
+              , ListenedJ
               , SortOrder (..)
               , State
               , MenuState
@@ -60,6 +61,7 @@ type Album =      { albumID :: String
                   , albumRating :: Int
                   , albumReleased :: String
                   , albumShelf :: Maybe (Tuple String Int)
+                  , albumPlayedAt :: Maybe String -- set in the Listened views: the time of this play
                   }
 type AlbumJ =     { aid :: String
                   , album :: Album
@@ -67,6 +69,12 @@ type AlbumJ =     { aid :: String
 
 type AlbumsJ =    { listName :: String
                   , lalbums :: Array (Tuple Album (Maybe (Tuple String Int)))
+                  }
+
+-- /api/listenedq: AlbumsJ, one row per play, plus the time of each play
+type ListenedJ =  { listName :: String
+                  , lalbums :: Array (Tuple Album (Maybe (Tuple String Int)))
+                  , lplayed :: Array String
                   }
 
 newtype AlbumList = AlbumList (Maybe  String)

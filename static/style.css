@@ -349,6 +349,15 @@ p.album-artist {
   text-align: left;
 }
 
+/* in the Listened views: when this play was */
+p.album-played {
+  font-family: helvetica;
+  font-size: 11px;
+  margin: 4px 0 0 0;
+  text-align: left;
+  color: gray;
+}
+
 .albums12perc {
   margin-left:12%;
   padding:1px 16px;

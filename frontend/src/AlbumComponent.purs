@@ -8,10 +8,10 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple(..), fst, snd)
 import Data.Either (Either(..))
 import Data.Map as M
-import Data.String (contains)
+import Data.String (contains, stripPrefix, length)
 import Data.String.Pattern (Pattern(..))
 import Effect.Class.Console as Console
-import Data.Array (foldMap)
+import Data.Array (foldMap, zipWith)
 import Halogen as H
 
 import Effect.Aff.Class (class MonadAff)
@@ -19,7 +19,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (Album, AlbumJ , AlbumsJ, State, AlbumList(..), Action(..), SortOrder(..))
+import Types  (AlbumJ , AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..))
 import GetStuff (getUrl, getNow, _encodeURIComponent )
 import Render (render)
 
@@ -146,18 +146,37 @@ handleAction = case _ of
       ffs <- H.gets _.menu.ffs
       api <- H.gets _.apiUrl
       let affs = map (\(Tuple a b) -> if b then a else "-" <> a) ffs
-      let url = api <> "albumsq/"
-              <>  _encodeURIComponent ln
-              <> (if contains ( Pattern "?" ) ln  then "" else "?")
-              <> "&sortOrder=" <> show so
+          query = "sortOrder=" <> show so
               <> "&sortBy=" <> sn
               <> foldMap (\f -> "&focus=%23" <> _encodeURIComponent f) affs
-      H.liftAff $ Console.log url
-      r <- H.liftAff $ getUrl url
-      let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
-      let lss = case lje of
-                        Right { lalbums: ls' } -> ls'
-                        Left _ -> []
-          ls :: Array Album
-          ls = map (\a -> (fst a) { albumShelf = (snd a) } ) lss
+      ls <- case listenedYear ln of
+        -- the play log: one row per play, with its time
+        Just y -> do
+          let url = api <> "listenedq/" <> y <> "?" <> query
+          H.liftAff $ Console.log url
+          r <- H.liftAff $ getUrl url
+          let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError ListenedJ
+          pure case lje of
+            Right { lalbums: ls', lplayed: ps } ->
+              zipWith (\a p -> (fst a) { albumShelf = snd a, albumPlayedAt = Just p }) ls' ps
+            Left _ -> []
+        Nothing -> do
+          let url = api <> "albumsq/"
+                  <>  _encodeURIComponent ln
+                  <> (if contains ( Pattern "?" ) ln  then "&" else "?")
+                  <> query
+          H.liftAff $ Console.log url
+          r <- H.liftAff $ getUrl url
+          let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
+          pure case lje of
+            Right { lalbums: ls' } -> map (\a -> (fst a) { albumShelf = (snd a) } ) ls'
+            Left _ -> []
       H.modify_ _ { loading = false, albumList = ls }
+
+    -- "Listened" -> all years, "Listened 2026" -> 2026
+    listenedYear :: String -> Maybe String
+    listenedYear ln
+      | ln == "Listened" = Just "all"
+      | otherwise = case stripPrefix (Pattern "Listened ") ln of
+          Just y | length y == 4 -> Just y
+          _ -> Nothing

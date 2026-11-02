@@ -152,6 +152,7 @@ type API10 =
   "api"
     :> "listenedq"
     :> Capture "year" Text
+    :> QueryParam "sortBy" Text
     :> QueryParam "sortOrder" Text
     :> QueryParams "focus" Text
     :> Get '[JSON] ListenedJ
@@ -318,11 +319,13 @@ clutterServer sd =
       . mapMaybe (T.stripPrefix "#")
       $ fs
 
-  -- every play of a year ("all": of every year), newest first (sortOrder=Asc: oldest first);
-  -- a play of an album clutter does not hold gets one made up from the play (albumID 0),
-  -- and is dropped by any focus filter
-  serveListenedq :: Text -> Maybe Text -> [Text] -> AppM ListenedJ
-  serveListenedq y mso fs = do
+  -- every play of a year ("all": of every year). Sorted like the other lists: Default is
+  -- the list's own order, newest play first; Artist, Title, Added sort the rows by their
+  -- album (stable, so plays of one album stay newest first); sortOrder=Desc reverses.
+  -- A play of an album clutter does not hold gets one made up from the play, and is
+  -- dropped by any focus filter
+  serveListenedq :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM ListenedJ
+  serveListenedq y msb mso fs = do
     liftIO . putTextLn $ "-------serveListenedq " <> y
     env <- ask
     es <- readIORef (playsR env)
@@ -336,7 +339,12 @@ clutterServer sd =
           | (e, ma) <- rows
           , null fs || maybe False ((`Set.member` keep) . albumID) ma
           ]
-        ordered = if mso == Just "Asc" then reverse rows' else rows'
+        sorted = case msb of
+          Just "Artist" -> sortOn (albumArtist . snd) rows'
+          Just "Title" -> sortOn (albumTitle . snd) rows'
+          Just "Added" -> sortOn (Down . albumAdded . snd) rows'
+          _ -> rows'
+        ordered = if mso == Just "Desc" then reverse sorted else sorted
     pure
       ListenedJ
         { ljName = if y == "all" then "Listened" else "Listened " <> y

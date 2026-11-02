@@ -233,6 +233,13 @@ Phases 0–4 are done. The log lives at `~/Sync/clutter/listened/` (2,052 plays)
 - Uses `/api/listenedq/:year`: one row per play, with the date in the row, newest first, per year.
 - Should come after A (the ids change in the frontend) and B (the played display).
 
+**Done 2026-11-01:**
+- The frontend reuses the regular album list for `Listened` and `Listened YYYY`: it fetches `/api/listenedq/{all|YYYY}` instead of `albumsq` (`AlbumComponent.listenedYear`) and shows each row's play time under artist and title (`albumPlayedAt`, `p.album-played`). Covers, badges, plays hover, sorting and focus work as in every list; a play of an album clutter does not hold shows `/icons/no-cover.png`.
+- `listenedq` takes `sortBy` like the other lists (Default = newest play first; Artist, Title, Added, stable), and `sortOrder=Desc` reverses, as for the other lists.
+- Day One entries link the album where it is: `[Discogs](…) · [Tidal](…) · [Apple Music](…)`; the Discogs link only for a Discogs release. The AlbumsPlayed note is unchanged.
+- Later: a link to the clutter album page in the Day One entry, once the server's address is configurable rather than hard-coded.
+- Still open from E: the new album view for Tidal/Apple albums without a Discogs release (design first).
+
 ### Step F — later
 
 - `update-json`: loop over all collection pages instead of a fixed 5 (and the same in `FromDiscogs`).

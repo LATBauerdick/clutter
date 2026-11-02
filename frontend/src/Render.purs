@@ -90,7 +90,7 @@ render state = do
       [ HH.div [ HP.class_ $ HH.ClassName "cover-container" ] (
           [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ]
               [ HH.button [ HE.onClick \_ -> ShowAlbum (a.albumID) ]
-                [ HH.img [ HP.src a.albumCover
+                [ HH.img [ HP.src (if a.albumCover == "" then "/icons/no-cover.png" else a.albumCover)
                           , HP.alt "cover image"
                           , HP.class_ $ HH.ClassName "cover-image"
                           ]
@@ -117,12 +117,16 @@ render state = do
 
   renderAlbumInfo :: forall m. Album -> H.ComponentHTML Action () m
   renderAlbumInfo a =
-    HH.div [ HP.class_ $ HH.ClassName "album-info" ]
+    HH.div [ HP.class_ $ HH.ClassName "album-info" ] $
            [ HH.p [ HP.class_ $ HH.ClassName "album-title"]
                   [ HH.text a.albumTitle ]
            , HH.p [ HP.class_ $ HH.ClassName "album-artist"]
                   [ HH.text a.albumArtist ]
-           ]
+           ] <> case a.albumPlayedAt of
+                  -- in the Listened views: when this play was, "2026-11-01 13:50"
+                  Just p -> [ HH.p [ HP.class_ $ HH.ClassName "album-played" ]
+                                   [ HH.text $ replaceAll (Pattern "T") (Replacement " ") (S.take 16 p) ] ]
+                  Nothing -> []
 
   renderAlbumView :: forall m. Album -> DateTime -> H.ComponentHTML Action () m
   renderAlbumView a now =
