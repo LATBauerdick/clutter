@@ -239,6 +239,7 @@ getReleases t = getRelease <$> tis
         , dtags = ["provider.tidal"]
         , drating = 0
         , dplays = 0
+        , dfavuntil = Nothing
         }
 
 --
@@ -303,7 +304,9 @@ readTidalStore fn = do
         , djellyfinid = Nothing
         , dlocIdx = Nothing
         , dlocation = Nothing
-        , dtags = ["provider.tidal"] <> ["provider.applemusic" | isJust (seApple e)] <> ["tidal.favorite" | isFav] <> maybe [] (\g -> ["genre." <> g]) (seGenre e)
+        , dtags = ["provider.tidal"] <> ["provider.applemusic" | isJust (seApple e)] <> ["tidal.collection" | isFav]
+            <> ["tidal.removed" | isJust (favUntil =<< fav)] <> maybe [] (\g -> ["genre." <> g]) (seGenre e)
         , drating = 0
         , dplays = 0
+        , dfavuntil = favUntil =<< fav
         }

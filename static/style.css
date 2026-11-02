@@ -349,6 +349,20 @@ p.album-artist {
   text-align: left;
 }
 
+/* the album view's list of plays: undo the global ul rule (a fixed sidebar) */
+.album-plays ul {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  background-color: transparent;
+  margin: 4px 0 8px 16px;
+}
+.album-plays li {
+  font-family: helvetica;
+  font-size: 13px;
+}
+
 /* in the Listened views: when this play was */
 p.album-played {
   font-family: helvetica;

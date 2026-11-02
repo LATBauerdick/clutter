@@ -190,6 +190,7 @@ data Release = Release
   , dtags :: [Text]
   , drating :: Int
   , dplays :: Int
+  , dfavuntil :: Maybe Text -- removed from the Tidal collection: when
   }
   deriving (Show)
 
@@ -214,6 +215,7 @@ data Album = Album
   , albumRating :: Int
   , albumPlays :: Int -- Discogs collection field 7 "Plays"
   , albumListenedDates :: [Text] -- play times from clutter's play log, newest first
+  , albumFavoriteUntil :: Maybe Text -- removed from the Tidal collection: when
   }
   deriving (Show, Generic)
 instance Eq Album where

@@ -60,6 +60,7 @@ type Album =      { albumID :: String
                   , albumListenedDates :: Array String
                   , albumRating :: Int
                   , albumReleased :: String
+                  , albumFavoriteUntil :: Maybe String -- removed from the Tidal collection: when
                   , albumShelf :: Maybe (Tuple String Int)
                   , albumPlayedAt :: Maybe String -- set in the Listened views: the time of this play
                   }

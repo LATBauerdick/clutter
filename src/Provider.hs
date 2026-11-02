@@ -86,6 +86,7 @@ dToAlbum r =
     (drating r)
     (dplays r)
     [] -- albumListenedDates, from the play log (Listened.attachPlays)
+    Nothing -- albumFavoriteUntil
  where
 
   makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
@@ -163,16 +164,16 @@ updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
 tidalId :: Album -> Maybe Int
 tidalId a = readMaybe . toString =<< albumTidal a
 
--- a Discogs release whose Tidal album is a favourite is tagged tidal.favorite too,
--- so #tidal.favorite filters the whole Tidal list
+-- a Discogs release whose Tidal album is in the Tidal collection is tagged tidal.collection
+-- too, so #tidal.collection filters the whole Tidal list
 linkTidalTags :: Map AlbumKey Album -> Map AlbumKey Album
 linkTidalTags am = M.map link am
  where
-  favs = S.fromList [k | (k@(T _), a) <- M.toList am, "tidal.favorite" `elem` albumTags a]
+  favs = S.fromList [k | (k@(T _), a) <- M.toList am, "tidal.collection" `elem` albumTags a]
   link a = case albumID a of
     D _ ->
-      let others = filter (/= "tidal.favorite") (albumTags a)
-       in a{albumTags = others <> ["tidal.favorite" | Just t <- [tidalId a], T t `S.member` favs]}
+      let others = filter (/= "tidal.collection") (albumTags a)
+       in a{albumTags = others <> ["tidal.collection" | Just t <- [tidalId a], T t `S.member` favs]}
     _ -> a
 
 -- populate the aids for folders from the folder+id in each Album
@@ -295,6 +296,7 @@ readTidalAlbums p = do
         0
         0
         [] -- albumListenedDates, from the play log
+        (dfavuntil r) -- albumFavoriteUntil
   -- clutter's Tidal album store holds every album that was ever a favourite or was played;
   -- without it, the favourites dump as before
   store <- FT.tidalStorePath
@@ -335,6 +337,7 @@ readAMusicAlbums p = do
         0
         0
         [] -- albumListenedDates, from the play log
+        (dfavuntil r) -- albumFavoriteUntil
   ds <- FA.readAMusicReleases (getAMusic p)
   let as = toAlbum <$> ds
   -- print as

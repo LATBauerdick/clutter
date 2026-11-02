@@ -32,6 +32,7 @@ album =
     , albumRating = 0
     , albumPlays = 2
     , albumListenedDates = []
+    , albumFavoriteUntil = Nothing
     }
 
 tidalAlbum :: Album

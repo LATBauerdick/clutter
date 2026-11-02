@@ -235,4 +235,5 @@ playAlbum e =
     , albumRating = 0
     , albumPlays = 0
     , albumListenedDates = [peTs e]
+    , albumFavoriteUntil = Nothing
     }

@@ -580,7 +580,8 @@ getR lns dr = r
           dlocation = if loc == Just "" then Nothing else loc,
           dtags = tagsList,
           drating = rating,
-          dplays = plays
+          dplays = plays,
+          dfavuntil = Nothing
         }
 
 getToken :: Discogs -> (Text, Text)

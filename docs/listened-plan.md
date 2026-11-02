@@ -240,11 +240,15 @@ Phases 0–4 are done. The log lives at `~/Sync/clutter/listened/` (2,052 plays)
 - Later: a link to the clutter album page in the Day One entry, once the server's address is configurable rather than hard-coded.
 - Still open from E: the new album view for Tidal/Apple albums without a Discogs release (design first).
 
+- **New album view for albums without a Discogs release** (Tidal, Apple Music), built 2026-11-01: cover with badges, title, artist, year, genre, Tidal collection status, links (Tidal app, Tidal web, Apple Music, find on Discogs), Album Played, every play date, and the quotable note text. The Discogs view also lists every play date. The old Tidal view (embedded Discogs search, `<Update>`) is gone. A scoped style keeps the play list from inheriting the global sidebar `ul` rule.
+- **"Favourite" is now "collection"** (LATB): Tidal's app calls it the Collection. Tags `tidal.collection` (was `tidal.favorite`) and `tidal.removed` (new: albums that left the collection, from the store's `favorite.until`, carried as `albumFavoriteUntil`). The view says "In Tidal collection since …", "In Tidal collection … – …", or "Not in Tidal collection". The store keeps Tidal's own field name `favorite`.
+
 ### Step F — later
 
 - `update-json`: loop over all collection pages instead of a fixed 5 (and the same in `FromDiscogs`).
 - Apple Music as in C.
 - Retire the "Streaming" folder (decision 12).
+- Show "Date Added" in the Discogs album view (LATB, 2026-11-01). clutter already reads the collection's `date_added` into `albumAdded` and sorts by it ("Added"); it is only not displayed.
 - The retirement steps of Phase 6 that are left: `wants1.json` in `update-json`, the wantlist client binding, `extractListenedDates` and `readDiscogsListAidsWithComments` in `FromDiscogs.hs`.
 
 ### Order

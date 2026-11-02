@@ -306,4 +306,5 @@ getReleases t = (mapMaybe getRelease ams, nxt, tot)
               , dtags = ["provider.applemusic"] <> map (("genre." <>) . T.toCaseFold) gns
               , drating = 0
               , dplays = 0
+              , dfavuntil = Nothing
               }

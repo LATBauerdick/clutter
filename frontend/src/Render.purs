@@ -10,7 +10,7 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip, head)
+import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, intercalate)
 import Halogen as H
 import Halogen.HTML as HH
 -- import Halogen.HTML.CSS as HC
@@ -19,7 +19,7 @@ import Halogen.HTML.Events as HE
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
-import Data.String (take, indexOf, replaceAll, contains) as S
+import Data.String (take, indexOf, replaceAll, contains, stripPrefix) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
@@ -130,10 +130,8 @@ render state = do
 
   renderAlbumView :: forall m. Album -> DateTime -> H.ComponentHTML Action () m
   renderAlbumView a now =
-    case a.albumFormat of
-              "AppleMusic" -> discogsView
-              "Tidal"      -> tidalView
-              _            -> discogsView
+    -- a Discogs release (D…), or a stream without one (T…, A…)
+    if S.take 1 a.albumID == "D" then discogsView else streamView
     where
     ttl = replaceAll (Pattern ":") (Replacement "_") <<< replaceAll (Pattern "/") (Replacement "·") $ a.albumArtist <> " - " <> a.albumTitle
     dt = fromRight "???????" <<< formatDateTime "YYMMDD" $ now -- "2022-10-19T20:01"
@@ -160,6 +158,66 @@ render state = do
         , HH.br_
         , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
                     [ HH.text " Album Played "]
+        , playsView
+        , HH.br_
+        , quotableView
+        ]
+    -- every play from the log, newest first
+    playsView =
+      HH.div [ HP.class_ $ HH.ClassName "album-plays" ] $
+        case a.albumListenedDates of
+          [] -> [ HH.p_ [ HH.text "Not played yet." ] ]
+          ds -> [ HH.p_ [ HH.text $ "Played " <> show (length ds) <> (if length ds == 1 then " time:" else " times:") ]
+                , HH.ul_ (map (\d -> HH.li_ [ HH.text $ replaceAll (Pattern "T") (Replacement " ") (S.take 16 d) ]) ds)
+                ]
+    tagValue :: String -> Maybe String
+    tagValue prefix = head (mapMaybe (S.stripPrefix (Pattern prefix)) a.albumTags)
+    -- a Tidal or Apple Music album without a Discogs release
+    streamView =
+      let qry = S.replaceAll ( Pattern " " ) ( Replacement "+" ) $ a.albumArtist <> "+-+" <> a.albumTitle
+          tidalWeb t = "https://listen.tidal.com/album/" <> t
+          appleWeb am = if S.take 2 am == "l."
+                          then "https://music.apple.com/library/albums/" <> am
+                          else "https://music.apple.com/us/album/" <> am
+          inColl = elem "tidal.collection" a.albumTags
+      in
+      HH.div [ HP.class_ $ HH.ClassName "album-view" ]
+        [ HH.div
+          [ HP.class_ $ HH.ClassName "cover-container" ]
+          [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ] $
+            [ HH.a
+              [ HP.href a.albumURL ]
+              [ HH.img [ HP.src (if a.albumCover == "" then "/icons/no-cover.png" else a.albumCover)
+                      , HP.alt "cover image"
+                      , HP.class_ $ HH.ClassName "cover-image"
+                      ]
+              ]
+            ]
+            <> renderBadges 0 a
+          ]
+        , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
+        , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
+        , HH.p_ [HH.text ("Year: "   <> S.take 4 a.albumReleased)]
+        , HH.p_ [HH.text ("Genre: "  <> fromMaybe "–" (tagValue "genre."))]
+        , HH.p_ [HH.text $ case a.albumTidal, a.albumFavoriteUntil of
+                    Nothing, _ -> "Not on Tidal"
+                    Just _, _ | inColl -> "In Tidal collection since " <> S.take 10 (fromMaybe "" a.albumAdded)
+                    Just _, Just u -> "In Tidal collection " <> S.take 10 (fromMaybe "" a.albumAdded) <> " – " <> S.take 10 u
+                    Just _, Nothing -> "Not in Tidal collection"]
+        , HH.p_ $ intercalate [ HH.text " · " ] $
+            (case a.albumTidal of
+              Just t -> [ [ HH.a [ HP.href ("tidal://album/" <> t) ] [ HH.text "Tidal app" ] ]
+                        , [ HH.a [ HP.href (tidalWeb t) ] [ HH.text "Tidal web" ] ] ]
+              Nothing -> [])
+            <> (case a.albumAMusic of
+              Just am | am /= "" -> [ [ HH.a [ HP.href (appleWeb am) ] [ HH.text "Apple Music" ] ] ]
+              _ -> [])
+            <> [ [ HH.a [ HP.href ("https://www.discogs.com/search/?q=" <> qry <> "&type=all") ]
+                        [ HH.text "find on Discogs" ] ] ]
+        , HH.br_
+        , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
+                    [ HH.text " Album Played "]
+        , playsView
         , HH.br_
         , quotableView
         ]
@@ -225,32 +283,6 @@ render state = do
 
           )
 
-    tidalView = let qry = S.replaceAll ( Pattern " " ) ( Replacement "+" ) $ a.albumArtist <> "+-+" <> a.albumTitle in
-      HH.div [ HP.class_ $ HH.ClassName "album-view" ]
-        [ HH.p_ [HH.text ("Tidal Album <"  <> a.albumID <> ">.")]
-        , HH.br_
-        , HH.text ("Search \"" <> a.albumTitle <> "\" (" <> a.albumReleased <> ") by " <> a.albumArtist <> " on <")
-        , HH.a [HP.href $ "https://www.discogs.com/search/?q=" <> qry <> "&type=all"]
-               [HH.text "DISCOGS"]
-        , HH.text (">")
-        , HH.br_
-        , HH.div [ HP.class_ $ HH.ClassName "cover-img" ]
-                 [ HH.text "After adding the new Album to Discogs, "
-                 , HH.button [ HE.onClick \_ -> UpdateDiscogs ]
-                             [ HH.text "<Update>"]
-                 ]
-        , HH.div [ HP.class_ $ HH.ClassName "album-view" ]
-           [ HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
-                       [ HH.text " Album Played "]
-           ]
-        , HH.iframe
-          [ HP.src ("https://www.discogs.com/search/?q=" <> qry <> "&type=all")
-          , HP.title "iframe_a"
-          , HP.style "height:600px;width:100%;"
-          -- , frameborder "0"
-          -- , allow "autoplay *; encrypted-media *; fullscreen *"
-          ]
-        ]
 --L.div_ [L.class_ "login-message"] $ do
 -- L.p_ $ "Tidal Album <" <> show (albumID a) <> ">."
 -- L.br_ []

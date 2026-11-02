@@ -262,7 +262,7 @@ discogsLocList (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (
 
 -- the tags index for all albums in one pass; inserting album by album with L.union costs
 -- n^2 per tag, deferred to the tag's first use, which made a focus on a big tag
--- (tidal.favorite, provider.applemusic) take a minute
+-- (tidal.collection, provider.applemusic) take a minute
 buildTags :: [Album] -> Map Text [AlbumKey]
 buildTags as = M.map (ordNub . reverse) $ M.fromListWith (<>) [(t, [albumID a]) | a <- as, t <- albumTags a]
 
