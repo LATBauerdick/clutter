@@ -527,8 +527,11 @@ updateAlbumsPlayed a = do
   home <- fromMaybe "/tmp" <$> lookupEnv "HOME"
   let itmp = home <> "/Library/Group Containers/5U8NS4GX82.dayoneapp2/__ac.jpg"
   -- -f: an HTTP error body (Discogs "You are making requests too quickly")
-  -- must not be left behind masquerading as a JPEG
-  exitCode <- liftIO $ rawSystem "curl" ["-fsSL", iurl, "-o", itmp]
+  -- must not be left behind masquerading as a JPEG.
+  -- --retry: opening an album fires a burst of Discogs API calls just before
+  -- this, and i.discogs.com then answers 429 (seen 2026-11-19); curl treats
+  -- 429 as transient, backs off (honouring Retry-After) and tries again.
+  exitCode <- liftIO $ rawSystem "curl" ["-fsSL", "--retry", "5", "--retry-max-time", "60", iurl, "-o", itmp]
   unless (exitCode == ExitSuccess) $
     putTextLn $
       "ERROR getting cover img: curl failed with exit code: " <> show exitCode
