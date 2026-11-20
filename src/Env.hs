@@ -21,7 +21,7 @@ import qualified Data.List as L (
  )
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
-import qualified Data.Text as T (find)
+import qualified Data.Text as T (all, find, length)
 import Data.Vector (Vector)
 import qualified Data.Vector as V (
   empty,
@@ -179,9 +179,16 @@ envUpdateMenuParams = do
           <> filter (isNothing . T.find ('.' ==)) (M.keys (tags envr))
 
       sli =
-        -- the play log's lists first, then the sorted lists
+        -- the play log's lists first, then the sorted lists. The Discogs
+        -- "YYYY Listened" lists stay loaded (reachable by URL) but are left out
+        -- of the menu: "Listened YYYY" from the play log covers them.
         ("Listened" : map ("Listened " <>) (listenedYears (plays envr)))
-          <> filter (not . pLocList) (M.keys (listNames envr))
+          <> filter (\n -> not (pLocList n || discogsListenedList n)) (M.keys (listNames envr))
+
+      discogsListenedList :: Text -> Bool
+      discogsListenedList n = case words n of
+        [y, "Listened"] -> T.length y == 4 && T.all (`elem` ['0' .. '9']) y
+        _ -> False
 
       slo =
         -- sorted locations
