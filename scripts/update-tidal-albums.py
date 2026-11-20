@@ -14,6 +14,11 @@
 #
 #   scripts/update-tidal-albums.py [--dry-run]
 #
+# --apple TID=AID (repeatable) only sets the Apple Music album of one Tidal album, by hand,
+# where the UPC lookup found none or the wrong one; ids or album links, as in
+#   --apple 'https://tidal.com/album/283130328=https://music.apple.com/us/album/x/1556465220'
+# The Apple genre comes along; the next regular run keeps the entry.
+#
 import argparse
 import datetime as dt
 import glob
@@ -208,11 +213,84 @@ def fetch_album(tid):
         return None
 
 
+def fetch_apple(aid):
+    try:
+        with urllib.request.urlopen(f"https://itunes.apple.com/lookup?id={aid}&entity=album", timeout=30) as r:
+            res = [x for x in json.load(r).get("results", []) if x.get("wrapperType") == "collection"]
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return None
+    return res[0] if res else {}
+
+
+def parse_pair(arg):
+    """TID=AID, each an id or an album link; None if either id is missing"""
+    t, _, a = arg.partition("=")
+    mt = re.search(r"(?:album/)?(\d+)\D*$", t.split("?")[0])
+    ma = re.search(r"album/(?:[^/?]+/)?(?:id)?(\d+)", a) or re.fullmatch(r"\s*(?:id)?(\d+)\s*", a)
+    return (mt.group(1), int(ma.group(1))) if mt and ma else None
+
+
+def write_store(store):
+    if os.path.exists(STORE):
+        os.replace(STORE, STORE + ".bak")
+    tmp = STORE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(store, f, ensure_ascii=False, indent=0, sort_keys=True)
+    os.replace(tmp, STORE)
+
+
+def set_apple(store, pairs, dry_run, today):
+    """--apple: the Apple album of each Tidal album, by hand; False if one failed"""
+    albums = store["albums"]
+    performers = classical_performers(read_collection())
+    ok = True
+    for arg in pairs:
+        p = parse_pair(arg)
+        if not p:
+            print(f"update-tidal-albums: --apple {arg}: want TID=AID (ids or album links)", file=sys.stderr)
+            ok = False
+            continue
+        tid, aid = p
+        e = albums.get(tid)
+        if not (e and e.get("album")):
+            r = fetch_album(tid)
+            if r is None or "_error" in r:
+                print(f"update-tidal-albums: Tidal {tid}: not found ({(r or {}).get('_error', 'no answer')})",
+                      file=sys.stderr)
+                ok = False
+                continue
+            e = albums.setdefault(tid, {"favorite": None})
+            e["album"], e["fetched"] = r, today
+        x = fetch_apple(aid)
+        if not x:
+            print(f"update-tidal-albums: Apple {aid}: {'not found' if x == {} else 'no answer'}", file=sys.stderr)
+            ok = False
+            continue
+        old = (e.get("apple") or {}).get("id")
+        if old and old != x.get("collectionId"):
+            print(f"Tidal {tid}: Apple {old} replaced")
+        e["apple"] = {"genre": x.get("primaryGenreName"), "id": x.get("collectionId"), "checked": today,
+                      "manual": True}
+        e["genre"] = genre_of(e, performers)
+        t = e["album"]
+        print(f"Tidal {tid}: {(t.get('artist') or {}).get('name')} – {t.get('title')}"
+              f" ({(t.get('releaseDate') or '')[:4]}, {t.get('numberOfTracks')} tracks)\n"
+              f"Apple {aid}: {x.get('artistName')} – {x.get('collectionName')}"
+              f" ({(x.get('releaseDate') or '')[:4]}, {x.get('trackCount')} tracks)\n"
+              f"  genre {x.get('primaryGenreName')} -> {e['genre']}")
+    if not dry_run:
+        store["updated"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+        write_store(store)
+    return ok
+
+
 # ---------------------------------------------------------------- main
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="report, write nothing")
+    ap.add_argument("--apple", action="append", metavar="TID=AID",
+                    help="only set the Apple Music album of a Tidal album (ids or album links)")
     a = ap.parse_args()
     today = dt.date.today().isoformat()
     log = []
@@ -220,6 +298,8 @@ def main():
     store = {"albums": {}}
     if os.path.exists(STORE):
         store = json.load(open(STORE, encoding="utf-8"))
+    if a.apple:
+        sys.exit(0 if set_apple(store, a.apple, a.dry_run, today) else 1)
     albums = store["albums"]
     before = len(albums)
 
@@ -298,12 +378,7 @@ def main():
     log.append(f"genre: Apple knows {napple} albums (asked {asked} new, found {found}); {ncls} classical; "
                f"classical agrees with Discogs on {agree} of {total} linked albums")
     if not a.dry_run:
-        if os.path.exists(STORE):
-            os.replace(STORE, STORE + ".bak")
-        tmp = STORE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(store, f, ensure_ascii=False, indent=0, sort_keys=True)
-        os.replace(tmp, STORE)
+        write_store(store)
     for line in log:
         print("update-tidal-albums: " + line, file=sys.stderr)
 
