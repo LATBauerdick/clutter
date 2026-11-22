@@ -93,6 +93,7 @@ type AlbumFacts = { afLength :: Maybe Int -- seconds
                   , afKind :: Maybe String -- "EP", "Single"
                   , afExplicit :: Boolean
                   , afStyles :: Array String
+                  , afGone :: Maybe String -- since when the album is known to be off Tidal
                   }
 type AlbumRef =   { rId :: String
                   , rTitle :: String
@@ -157,6 +158,7 @@ type State =      { apiUrl :: String
                   -- the frame: which click-open menu is open (focus | sort | more), the sidebar as a
                   -- drawer on a narrow screen, the search in the list on show, the filter of the tag picker
                   , menuOpen :: Maybe String
+                  , confirmDrop :: Boolean -- "Remove from clutter" was clicked: ask once more
                   , notice :: Maybe String -- the answer to the last update, shown in the top bar
                   , sideOpen :: Boolean
                   , listenedOpen :: Boolean -- the sidebar's Listened fold, while a Listened list is on show
@@ -217,6 +219,8 @@ data Action = ToggleSortOrder
             | NodeCtl String -- toggle | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
+            | AskDrop Boolean -- "Remove from clutter": ask (true), or never mind (false)
+            | DropAlbum String -- remove this stream album from clutter, then show the Tidal list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
             | ToggleAbout -- the review: all of it, or its first lines
             | TracksSource Boolean -- a Discogs release: its own tracks (false) or the Tidal version's (true)

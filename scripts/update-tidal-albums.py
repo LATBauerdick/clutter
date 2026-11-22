@@ -12,6 +12,14 @@
 # there enter the store as "later" since/until — clutter's inbox for albums not yet judged,
 # which are not favourites. The server runs update-json --tidal for "Update from Tidal".
 #
+# gone: since when an album is known to be off Tidal. Tidal keeps a vanished album in the
+# favourites, flagged not streamable (its album page answers 404); an album that leaves the
+# lists is asked for once. --check-gone asks for every album that is on no list.
+#
+# dropped: removed from clutter by hand (--drop TID, the album page's "Remove from clutter";
+# --undrop TID takes it back). The server leaves dropped albums out. Saving or favouriting
+# the album again on Tidal after the drop brings it back.
+#
 # Run by update-json after it fetched cache/traw.json; also seeds itself from the snapshots
 # in ~/Sync/clutter/tidal-favorites/. Only Tidal albums that were played but are neither a
 # favourite nor linked from a Discogs release are fetched from Tidal (a handful).
@@ -328,6 +336,12 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="report, write nothing")
     ap.add_argument("--apple", action="append", metavar="TID=AID",
                     help="only set the Apple Music album of a Tidal album (ids or album links)")
+    ap.add_argument("--drop", action="append", type=int, metavar="TID",
+                    help="only mark a Tidal album as removed from clutter")
+    ap.add_argument("--undrop", action="append", type=int, metavar="TID",
+                    help="only take a removed Tidal album back")
+    ap.add_argument("--check-gone", action="store_true",
+                    help="also ask Tidal for every album that is on no list")
     a = ap.parse_args()
     today = dt.date.today().isoformat()
     log = []
@@ -338,6 +352,23 @@ def main():
     if a.apple:
         sys.exit(0 if set_apple(store, a.apple, a.dry_run, today) else 1)
     albums = store["albums"]
+    if a.drop or a.undrop:
+        ok = True
+        now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for tid in a.drop or []:
+            e = albums.get(str(tid))
+            if e is None:
+                print(f"update-tidal-albums: no album {tid} in the store", file=sys.stderr)
+                ok = False
+            else:
+                e["dropped"] = now
+        for tid in a.undrop or []:
+            if albums.get(str(tid), {}).pop("dropped", None) is None:
+                print(f"update-tidal-albums: album {tid} is not removed", file=sys.stderr)
+                ok = False
+        if ok and not a.dry_run:
+            write_store(store)
+        sys.exit(0 if ok else 1)
     before = len(albums)
 
     coll = read_collection()
@@ -400,6 +431,42 @@ def main():
                 lt["until"] = today  # taken off the list
                 unlater += 1
 
+    def listed(e):
+        return any((e.get(k) or {}).get("since") and not (e.get(k) or {}).get("until") for k in ("favorite", "later"))
+
+    # removed from clutter, then saved or favourited again on Tidal: back
+    undropped = 0
+    for tid, e in albums.items():
+        d = e.get("dropped")
+        if d:
+            again = [(current or {}).get(int(tid), ("",))[0], (later or {}).get(int(tid), "")]
+            if any(c and c[:19] > d[:19] for c in again):
+                del e["dropped"]
+                undropped += 1
+
+    # gone from Tidal. An album that left the lists today, or every unlisted one with
+    # --check-gone, is asked for: 404 is gone, a record replaces the stored one. Then the
+    # record's own flags: Tidal keeps a vanished favourite, marked not streamable.
+    asked_gone = 0
+    for tid, e in albums.items():
+        if a.dry_run or not e.get("album") or listed(e):
+            continue
+        left_today = any((e.get(k) or {}).get("until") == today for k in ("favorite", "later"))
+        if left_today or a.check_gone:
+            r = fetch_album(tid)
+            asked_gone += 1
+            if r is not None and r.get("_error") == 404:
+                e.setdefault("gone", today)
+            elif r is not None and "_error" not in r:
+                e["album"] = r
+                e.pop("gone", None)
+    for e in albums.values():
+        al = e.get("album") or {}
+        if al.get("streamReady") is False or al.get("allowStreaming") is False:
+            e.setdefault("gone", today)
+        elif al and listed(e):
+            e.pop("gone", None)  # its record is from today's lists
+
     # played Tidal albums clutter has no record of, and no Discogs release stands for
     missing = sorted(t for t in played_tidal() if str(t) not in albums and t not in linked)
     fetched = failed = 0
@@ -445,6 +512,8 @@ def main():
     if later is not None:
         log.append(f"Save for later: {len(later)} albums, {new_later} new, {unlater} taken off"
                    + (f", {later_failed} not fetched" if later_failed else ""))
+    log.append(f"{sum(1 for e in albums.values() if e.get('gone'))} gone from Tidal (asked about {asked_gone}); "
+               f"{sum(1 for e in albums.values() if e.get('dropped'))} removed from clutter, {undropped} back")
     log.append(f"genre: Apple knows {napple} albums (asked {asked} new, found {found}); {ncls} classical; "
                f"classical agrees with Discogs on {agree} of {total} linked albums")
     if not a.dry_run:

@@ -14,6 +14,7 @@ module Provider (
   readDiscogsLists,
   readDiscogsFolders,
   readTidalAlbums,
+  readTidalDropped,
   readAMusicAlbums,
   -- Else
   readFolderAids,
@@ -40,7 +41,7 @@ import qualified FromDiscogs as FD (
   readDiscogsReleases,
   readDiscogsReleasesCache,
  )
-import qualified FromTidal as FT (readTidalReleases, readTidalReleasesCache, readTidalStore, tidalStorePath)
+import qualified FromTidal as FT (readTidalDropped, readTidalReleases, readTidalReleasesCache, readTidalStore, tidalStorePath)
 import System.Directory (doesFileExist)
 import qualified Wikidata as W (displayName)
 import Relude
@@ -187,16 +188,26 @@ tidalId :: Album -> Maybe Int
 tidalId a = readMaybe . toString =<< albumTidal a
 
 -- a Discogs release whose Tidal album is in the Tidal collection is tagged tidal.collection
--- too, so #tidal.collection filters the whole Tidal list
+-- too, so #tidal.collection filters the whole Tidal list; likewise tidal.gone, when its
+-- Tidal album is off Tidal
 linkTidalTags :: Map AlbumKey Album -> Map AlbumKey Album
 linkTidalTags am = M.map link am
  where
-  favs = S.fromList [k | (k@(T _), a) <- M.toList am, "tidal.collection" `elem` albumTags a]
+  linked = ["tidal.collection", "tidal.gone"]
+  having tag = S.fromList [k | (k@(T _), a) <- M.toList am, tag `elem` albumTags a]
+  sets = [(tag, having tag) | tag <- linked]
   link a = case albumID a of
     D _ ->
-      let others = filter (/= "tidal.collection") (albumTags a)
-       in a{albumTags = others <> ["tidal.collection" | Just t <- [tidalId a], T t `S.member` favs]}
+      let others = filter (`notElem` linked) (albumTags a)
+       in a{albumTags = others <> [tag | (tag, ks) <- sets, Just t <- [tidalId a], T t `S.member` ks]}
     _ -> a
+
+-- the Tidal albums that were removed from clutter by hand (the album store's "dropped")
+readTidalDropped :: IO [AlbumKey]
+readTidalDropped = do
+  store <- FT.tidalStorePath
+  haveStore <- doesFileExist store
+  if haveStore then map T <$> FT.readTidalDropped store else pure []
 
 -- populate the aids for folders from the folder+id in each Album
 updateAMusicFolderAids :: Map AlbumKey Album -> Map Text (Int, Vector AlbumKey) -> Map Text (Int, Vector AlbumKey)

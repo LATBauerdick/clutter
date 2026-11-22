@@ -41,6 +41,7 @@ data TFacts = TFacts
   , tfReleased :: Maybe Text
   , tfKind :: Maybe Text
   , tfExplicit :: Bool
+  , tfGone :: Maybe Text
   }
 
 data DetailStore = DetailStore
@@ -119,6 +120,7 @@ instance FromJSON TMeta where
 parseTidal :: Value -> Parser TFacts
 parseTidal = withObject "tidal entry" $ \e -> do
   a <- e .: "album"
+  gone <- e .:? "gone"
   withObject
     "tidal album"
     ( \o -> do
@@ -133,6 +135,7 @@ parseTidal = withObject "tidal entry" $ \e -> do
           <*> (mfilter (not . T.null) <$> o .:? "releaseDate")
           <*> pure (typ >>= kindText)
           <*> o .:? "explicit" .!= False
+          <*> pure gone
     )
     a
 
@@ -201,6 +204,7 @@ factsFor ds a =
     , afKind = tf >>= tfKind
     , afExplicit = maybe False tfExplicit tf
     , afStyles = maybe [] dfStyles df
+    , afGone = tf >>= tfGone
     }
  where
   tidalId = case albumID a of

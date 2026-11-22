@@ -159,7 +159,7 @@ render state =
       , chipsView
       , HH.div [ cls "av-body" ]
         [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> [ playsView ])
-        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView ]
+        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView, removeView ]
         ]
       , HH.div_ stripsView
       ]
@@ -167,6 +167,8 @@ render state =
     cls :: forall r i. String -> HP.IProp ( class :: String | r ) i
     cls = HP.class_ <<< HH.ClassName
     isDiscogs = S.take 1 a.albumID == "D"
+    -- the album, or the Tidal album of this release, is off Tidal
+    isGone = elem "tidal.gone" a.albumTags
     -- the details from /api/albumxq, once they are there and belong to this album
     detail = case state.albumX of
       Just x | x.xid == a.albumID -> Just x
@@ -208,6 +210,14 @@ render state =
     actionsView =
       HH.div [ cls "av-actions" ] $
         ( case a.albumTidal of
+            -- its Tidal album is off Tidal: nothing to play, but maybe another edition is there
+            Just t | t /= "" && isGone ->
+              [ HH.span [ cls "av-gone" ]
+                  [ HH.text ("No longer on Tidal" <> maybe "" (\d -> " (noticed " <> S.take 10 d <> ")") (facts >>= _.afGone) <> " · ")
+                  , HH.a [ HP.href ("https://listen.tidal.com/search?q=" <> enc (artistNames <> " " <> a.albumTitle)), HP.target "_blank" ]
+                         [ HH.text "look for another edition" ]
+                  ]
+              ]
             Just t | t /= "" ->
               [ HH.span [ cls "av-play" ]
                 [ HH.button [ cls "av-btn av-primary", HE.onClick \_ -> NodePlay t "replace"
@@ -277,6 +287,7 @@ render state =
                     <> (if early then " (also before the log)" else "")
     collectionText = case a.albumTidal, a.albumFavoriteUntil of
       Nothing, _ -> "not on Tidal"
+      Just _, _ | isGone -> "gone from Tidal" <> (if elem "tidal.collection" a.albumTags then ", still among the favourites" else "")
       Just _, _ | elem "tidal.later" a.albumTags && not (elem "tidal.collection" a.albumTags) ->
         "saved for later since " <> S.take 10 (fromMaybe "" a.albumAdded)
       Just _, _ | elem "tidal.collection" a.albumTags -> "in the collection since " <> S.take 10 (fromMaybe "" a.albumAdded)
@@ -317,6 +328,19 @@ render state =
         <<< replaceAll (Pattern "&") (Replacement "%26")
         <<< replaceAll (Pattern "+") (Replacement "%2B")
         <<< replaceAll (Pattern "%") (Replacement "%25")
+
+    -- a stream album can be removed from clutter: asked once more, then marked in the store
+    removeView =
+      if S.take 1 a.albumID /= "T" then HH.text "" else
+        HH.div [ cls "av-remove" ] $
+          if state.confirmDrop
+            then [ HH.span_ [ HH.text "Remove this album from clutter? Its plays stay in the log." ]
+                 , HH.button [ cls "av-tag av-danger", HE.onClick \_ -> DropAlbum a.albumID ] [ HH.text "Remove" ]
+                 , HH.button [ cls "av-tag", HE.onClick \_ -> AskDrop false ] [ HH.text "Keep" ]
+                 ]
+            else [ HH.button [ cls "av-remove-ask", HE.onClick \_ -> AskDrop true
+                             , HP.title "Take this stream album out of clutter; saving it again on Tidal brings it back" ]
+                             [ HH.text "Remove from clutter…" ] ]
 
     -- the album at Discogs and the streaming services
     openInView =

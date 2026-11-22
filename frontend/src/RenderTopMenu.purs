@@ -169,7 +169,9 @@ renderTop state =
                Just m -> [ HH.small [ cls "notice" ] [ HH.text m ] ]
                Nothing -> []
     | otherwise = case state.album of
-        Just a -> [ HH.text a.albumTitle ]
+        Just a -> [ HH.text a.albumTitle ] <> case state.notice of
+          Just m -> [ HH.small [ cls "notice" ] [ HH.text m ] ]
+          Nothing -> []
         Nothing -> []
 
 -- the list toolbar: the focus as chips, the tag picker, a saved focus, sort and order

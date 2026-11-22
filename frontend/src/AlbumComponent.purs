@@ -207,6 +207,22 @@ handleAction = case _ of
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
 
+  AskDrop ask -> H.modify_ _ { confirmDrop = ask }
+  -- the backend marks the album as removed in the Tidal album store and forgets it; its
+  -- plays stay in the log
+  DropAlbum aid -> do
+    H.modify_ _ { confirmDrop = false, loading = true, notice = Just "Removing…" }
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumdrop/" <> aid)
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: i, reqResult: 1 } -> do
+        let alist = AlbumList (Just "Tidal")
+        H.modify_ _ { notice = Just i, album = Nothing, albumX = Nothing, albumT = Nothing
+                    , listName = alist, menu { ln = "Tidal", ffs = [], sortName = "Added", sso = Asc } }
+        updateAlbumList
+      Right { reqInfo: i } -> H.modify_ _ { notice = Just i, loading = false }
+      Left _ -> H.modify_ _ { notice = Just "Removing: no answer", loading = false }
+
   -- the backend runs update-json --tidal and takes the album store in again (no restart);
   -- then the Tidal list, newest first, and the menu's tags and lists anew
   UpdateTidal -> do
@@ -236,7 +252,7 @@ handleAction = case _ of
     -- drop what was ahead of it, and open a new entry for what comes
     pushView :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
     pushView = do
-      H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "", notice = Nothing }
+      H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "", notice = Nothing, confirmDrop = false }
       st <- H.get
       case currentView st of
         Nothing -> pure unit

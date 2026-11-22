@@ -11,6 +11,7 @@ module FromTidal (
   readTidalReleasesCache,
   tidalStorePath,
   readTidalStore,
+  readTidalDropped,
 ) where
 
 import Relude
@@ -256,6 +257,8 @@ data TStoreEntry = TStoreEntry
   { seAlbum :: Maybe WTIItem
   , seFavorite :: Maybe TFavorite
   , seLater :: Maybe TFavorite -- on Tidal's "Save for later" list: since, until
+  , seGone :: Maybe Text -- since when the album is known to be off Tidal
+  , seDropped :: Maybe Text -- removed from clutter by hand: when
   , seGenre :: Maybe Text
   , seApple :: Maybe Int -- Apple Music album id, found by UPC
   }
@@ -263,7 +266,8 @@ instance FromJSON TStoreEntry where
   parseJSON = withObject "tidal store entry" $ \o -> do
     apple <- o .:? "apple"
     appleId <- maybe (pure Nothing) (withObject "apple" (.:? "id")) apple
-    TStoreEntry <$> o .:? "album" <*> o .:? "favorite" <*> o .:? "later" <*> o .:? "genre" <*> pure appleId
+    TStoreEntry <$> o .:? "album" <*> o .:? "favorite" <*> o .:? "later" <*> o .:? "gone" <*> o .:? "dropped"
+      <*> o .:? "genre" <*> pure appleId
 
 data TFavorite = TFavorite {favSince :: Text, favUntil :: Maybe Text}
 instance FromJSON TFavorite where
@@ -278,6 +282,13 @@ tidalStorePath =
       home <- fromMaybe "." <$> lookupEnv "HOME"
       pure $ home </> "Sync" </> "clutter" </> "tidal-albums.json"
 
+-- the Tidal album ids that were removed from clutter by hand
+readTidalDropped :: FilePath -> IO [Int]
+readTidalDropped fn =
+  eitherDecode <$> readFileLBS fn <&> \case
+    Left _ -> []
+    Right st -> [i | (k, e) <- M.toList (storeAlbums st), isJust (seDropped e), Just i <- [readMaybe (toString k)]]
+
 readTidalStore :: FilePath -> IO [Release]
 readTidalStore fn = do
   putTextLn $ "-----------------Getting Tidal Albums from the store " <> toText fn <> "-----"
@@ -287,6 +298,7 @@ readTidalStore fn = do
     Right st -> pure . mapMaybe toRelease . M.elems $ storeAlbums st
  where
   toRelease e = do
+    guard (isNothing (seDropped e)) -- removed from clutter: left out
     WTIItem{id = tid, title = ttitle, releaseDate = treleased, cover = tcover, artists = tartists} <- seAlbum e
     let fav = seFavorite e
         isFav = maybe False (isNothing . favUntil) fav
@@ -314,6 +326,7 @@ readTidalStore fn = do
         , dlocation = Nothing
         , dtags = ["provider.tidal"] <> ["provider.applemusic" | isJust (seApple e)] <> ["tidal.collection" | isFav]
             <> ["tidal.later" | isLater]
+            <> ["tidal.gone" | isJust (seGone e)]
             <> ["tidal.removed" | isJust (favUntil =<< fav)] <> maybe [] (\g -> ["genre." <> g]) (seGenre e)
         , drating = 0
         , dplays = 0

@@ -768,6 +768,15 @@ a:active {
 .av-year { flex: 0 0 26px; text-align: center; font-size: 10.5px; color: #6b6b70; }
 .av-year i { display: block; width: 70%; margin: 0 auto 2px auto; border-radius: 2px 2px 0 0; background: #5b5bd6; }
 .av-year i.z { background: #dcd8d0; }
+/* off Tidal; removing a stream album from clutter */
+.av-gone { color: #6b6b70; font-size: 14px; }
+.av-gone a:link, .av-gone a:visited { color: #5b5bd6; text-decoration: none; }
+.av-remove { margin-top: 28px; font-size: 13px; color: #55555a; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.av-remove span { flex-basis: 100%; }
+.av-remove-ask { border: 0; background: transparent; padding: 0; font-family: inherit; font-size: 13px; color: #8a8a90; cursor: pointer; }
+.av-remove-ask:hover { color: #b42318; }
+.av-tag.av-danger { background: #fde8e8; color: #b42318; }
+
 /* review, tracks and credits (phase 2) */
 .av-about { font-size: 16px; line-height: 1.6; margin-bottom: 34px; }
 .av-about-text { white-space: pre-line; } /* the review's paragraph breaks */

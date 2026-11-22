@@ -252,6 +252,7 @@ data AlbumFacts = AlbumFacts
   , afKind :: Maybe Text -- "EP", "Single"; Nothing for an album
   , afExplicit :: Bool
   , afStyles :: [Text] -- Discogs styles
+  , afGone :: Maybe Text -- since when the album is known to be off Tidal
   }
   deriving (Show, Generic)
 instance ToJSON AlbumFacts

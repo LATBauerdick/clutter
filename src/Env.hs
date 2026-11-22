@@ -43,6 +43,7 @@ import Provider (
   readFolderAids,
   readFolders,
   readTidalAlbums,
+  readTidalDropped,
   linkTidalTags,
   updateAMusicFolderAids,
   updateTidalFolderAids,
@@ -223,7 +224,9 @@ envTidalReload = do
   liftIO readDetailStore >>= writeIORef (albumFactsR env) . factsFor
   let tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
       new = M.size (tidalAlbums `M.difference` oldAlbums)
-  allAlbums <- withPlays (tidalAlbums <> oldAlbums)
+  -- an album removed from clutter is in the store, marked, and no longer among its albums
+  dropped <- liftIO readTidalDropped
+  allAlbums <- withPlays (tidalAlbums <> foldr M.delete oldAlbums dropped)
   writeIORef (albumsR env) allAlbums
   writeIORef (tagsR env) (buildTags (M.elems allAlbums))
   oldLists <- readIORef (listsR env)

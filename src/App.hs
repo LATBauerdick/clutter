@@ -220,6 +220,14 @@ data AlbumTJ = AlbumTJ
   deriving (Show, Generic)
 instance ToJSON AlbumTJ
 
+-- remove a stream album from clutter (docs/album-page-plan.md): marked "dropped" in the Tidal
+-- album store, by the script that owns the store, and left out from then on; its plays stay
+type API16 =
+  "api"
+    :> "albumdrop"
+    :> Capture "aid" AlbumKey
+    :> Get '[JSON] ReqJ
+
 data AlbumJ = AlbumJ
   { aid :: AlbumKey
   , album :: Maybe Album
@@ -277,6 +285,7 @@ type ClutterAPI =
     :<|> API13
     :<|> API14
     :<|> API15
+    :<|> API16
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -348,6 +357,7 @@ clutterServer sd =
     :<|> serveNodeinfo
     :<|> serveAlbumxq
     :<|> serveAlbumtq
+    :<|> serveAlbumdrop
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -468,7 +478,7 @@ clutterServer sd =
     pure $ case M.lookup i am of
       Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [], xrelated = noRelated, xloc = Nothing}
+      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do
@@ -480,6 +490,25 @@ clutterServer sd =
         pure $ case r of
           Right t -> AlbumTJ{tjId = i, tjTracks = Just t, tjError = ""}
           Left err -> AlbumTJ{tjId = i, tjTracks = Nothing, tjError = err}
+
+  serveAlbumdrop :: AlbumKey -> AppM ReqJ
+  serveAlbumdrop i = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        answer ok info = ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+    am <- asks albumsR >>= readIORef
+    case (i, M.lookup i am) of
+      (T n, Just a) -> do
+        ran <- liftIO . try $ readProcessWithExitCode "python3" ["scripts/update-tidal-albums.py", "--drop", show n] ""
+        case ran :: Either SomeException (ExitCode, String, String) of
+          Right (ExitSuccess, _, _) -> do
+            _ <- envTidalReload
+            liftIO $ hPutStrLn stderr ("removed from clutter: " <> show i)
+            pure $ answer True ("Removed “" <> albumTitle a <> "” from clutter")
+          _ -> pure $ answer False "Could not remove the album (the store was not changed)"
+      (T _, Nothing) -> pure $ answer False "Not in clutter"
+      -- a Discogs release leaves clutter when it leaves the Discogs collection
+      _ -> pure $ answer False "Only a stream album can be removed here"
 
   serveParamsq :: AppM ParamsJ
   serveParamsq = do
