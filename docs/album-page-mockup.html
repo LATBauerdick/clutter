@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>clutter album page — design mockup</title>
+<style>
+:root {
+  --bg: #f4f2ee; --panel: #ffffff; --ink: #1d1d1f; --dim: #6b6b70; --line: #dcd8d0;
+  --accent: #5b5bd6; --chip: #dfe3ee;
+  --now: #1a9c50; --disk: #c98a00; --fetch: #2f6fd0; --na: #9a9a9a;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #17171a; --panel: #212125; --ink: #ececf0; --dim: #a0a0a8; --line: #3a3a40;
+          --accent: #9a9af5; --chip: #33364a; --now: #45c37b; --disk: #e3ab2c; --fetch: #6ea3f2; --na: #77777d; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+a { color: var(--accent); text-decoration: none; }
+a.search { color: var(--dim); font-style: italic; }
+
+/* ---- mockup controls (not part of the design) ---- */
+.ctl { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--line);
+       padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; font-size: 13px; }
+.ctl b { font-weight: 600; margin-right: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--ink); padding: 5px 11px; font: inherit; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent); color: #fff; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--dim); }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+.dot.now { background: var(--now); } .dot.disk { background: var(--disk); }
+.dot.fetch { background: var(--fetch); } .dot.na { background: var(--na); }
+
+/* ---- tier markers ---- */
+.t { position: relative; }
+.marks .t { outline: 1.5px dashed transparent; outline-offset: 3px; border-radius: 4px; }
+.marks .t.now { outline-color: var(--now); } .marks .t.disk { outline-color: var(--disk); }
+.marks .t.fetch { outline-color: var(--fetch); } .marks .t.na { outline-color: var(--na); }
+.t > .tag { display: none; }
+.marks .t > .tag { display: block; position: absolute; top: -9px; right: 6px; font: 600 9.5px/1 var(--sans);
+  letter-spacing: .04em; text-transform: uppercase; color: #fff; padding: 2px 5px; border-radius: 3px; z-index: 2; }
+.t.now > .tag { background: var(--now); } .t.disk > .tag { background: var(--disk); }
+.t.fetch > .tag { background: var(--fetch); } .t.na > .tag { background: var(--na); }
+.t.na { opacity: .6; }
+.inl { display: inline-block; }
+
+/* ---- shared pieces ---- */
+.page { max-width: 1180px; margin: 0 auto; padding: 28px 24px 60px; }
+.cover { background: #888; aspect-ratio: 1; overflow: hidden; box-shadow: 0 6px 22px rgba(0,0,0,.18); }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.date { color: var(--dim); font-size: 16px; }
+h1.title { font: 600 46px/1.12 var(--serif); margin: 14px 0 8px; letter-spacing: -.01em; }
+.artist { font-size: 21px; }
+.artist small { font-size: 13px; color: var(--dim); margin-left: 8px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; align-items: center; }
+.btn { border: 1.5px solid var(--ink); background: transparent; color: var(--ink); border-radius: 22px;
+       padding: 8px 15px; font: 500 14px var(--sans); cursor: pointer; white-space: nowrap; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.split { display: inline-flex; }
+.split .btn:first-child { border-radius: 22px 0 0 22px; }
+.split .btn:last-child { border-radius: 0 22px 22px 0; border-left: 1px solid rgba(255,255,255,.5); padding: 8px 11px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { background: var(--chip); border-radius: 16px; padding: 5px 13px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+.about { font-size: 16.5px; line-height: 1.6; }
+.about .ph { color: var(--dim); font-style: italic; }
+.about .src { font-size: 12px; color: var(--dim); margin-top: 6px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 5px 22px; font-size: 14.5px; }
+.facts dt { font-weight: 600; } .facts dd { margin: 0; color: var(--dim); }
+.facts .t { display: contents; } /* rows mark themselves via the row class below */
+.frow { display: grid; grid-template-columns: 118px 1fr; gap: 0 14px; font-size: 14.5px; padding: 2px 0; }
+.frow span:first-child { font-weight: 600; } .frow span:last-child { color: var(--dim); }
+h3 { font: 600 19px var(--sans); margin: 0 0 8px; }
+.links a { display: block; padding: 1px 0; }
+.tabs { display: flex; gap: 34px; justify-content: center; border-bottom: 1px solid var(--line); margin: 34px 0 6px; }
+.tabs button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 8px 2px; font: 500 14px var(--sans);
+               letter-spacing: .06em; text-transform: uppercase; color: var(--dim); cursor: pointer; }
+.tabs button.on { color: var(--ink); border-bottom-color: #e5484d; }
+.trk { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; padding: 11px 6px; border-bottom: 1px solid var(--line); align-items: baseline; }
+.trk .n { color: var(--dim); text-align: right; } .trk .d { color: var(--dim); font-variant-numeric: tabular-nums; }
+.trk.work { font-weight: 600; border-bottom: 0; padding-bottom: 2px; } .trk.mov { padding-left: 34px; }
+.trk small { color: var(--dim); font-weight: 400; margin-left: 8px; }
+.sect { margin-top: 38px; }
+.sect > header { display: flex; gap: 26px; align-items: baseline; border-bottom: 1px solid var(--line); margin-bottom: 16px; padding-bottom: 6px; }
+.sect > header h2 { font: 600 21px var(--sans); margin: 0; }
+.sect > header span { font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); }
+.strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; }
+.card .cover { box-shadow: 0 2px 8px rgba(0,0,0,.15); display: flex; align-items: flex-end; }
+.card .cover b { color: #fff; font: 600 13px var(--sans); padding: 8px; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.card .cover img + b { display: none; }
+.card p { margin: 6px 0 0; font-size: 13px; line-height: 1.3; }
+.card p.y { color: var(--dim); } .card p.n { font-weight: 600; }
+.card.this { opacity: .45; }
+.badge { font-size: 10.5px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; color: var(--dim); margin-right: 4px; }
+.plays ul { margin: 4px 0 0; padding-left: 18px; color: var(--dim); }
+.years { display: flex; gap: 6px; align-items: flex-end; margin: 8px 0 4px; }
+.years div { flex: 1; text-align: center; font-size: 10.5px; color: var(--dim); }
+.years i { display: block; background: var(--accent); border-radius: 2px 2px 0 0; margin: 0 auto; width: 70%; min-height: 2px; opacity: .85; }
+.years i.z { background: var(--line); }
+.artists { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; }
+.ar { display: flex; gap: 14px; align-items: center; }
+.ar i { width: 64px; height: 64px; border-radius: 50%; background: var(--chip); display: grid; place-items: center; font: 600 18px var(--serif); font-style: normal; }
+details { border-top: 1px solid var(--line); padding: 10px 0; }
+details summary { cursor: pointer; font-weight: 600; }
+.quot { font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--dim); white-space: pre-wrap; margin-top: 8px; }
+.note { font-size: 12.5px; color: var(--dim); margin-top: 6px; }
+
+/* ---- design A: Roon-style ---- */
+.A .hero { display: grid; grid-template-columns: 300px 1fr; gap: 40px; align-items: center; }
+.A .chips { justify-content: center; margin: 30px 0 26px; }
+.A .body { display: grid; grid-template-columns: 1fr 300px; gap: 40px; }
+/* ---- design B: journal-first ---- */
+.B .grid { display: grid; grid-template-columns: 240px 1fr 290px; gap: 34px; align-items: start; }
+.B .left { position: sticky; top: 70px; } .B .left .actions { flex-direction: column; align-items: stretch; }
+.B .left .btn { text-align: center; } .B .left .split .btn:first-child { flex: 1; }
+.B h1.title { font-size: 36px; margin-top: 0; }
+.B .line { color: var(--dim); margin: 10px 0 14px; }
+.B .rail { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.B .rail h3 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); margin-top: 16px; }
+.B .rail h3:first-child { margin-top: 0; }
+.B .big { font: 600 34px/1 var(--serif); }
+.B .mini { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: center; margin-top: 8px; font-size: 13px; }
+.B .mini .cover { box-shadow: none; }
+/* ---- design C: phone ---- */
+.C .phone { width: 390px; max-width: 100%; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-radius: 26px; padding: 18px 16px 26px; }
+.C h1.title { font-size: 28px; margin: 14px 0 2px; } .C .artist { font-size: 17px; }
+.C .bar { position: sticky; top: 62px; background: var(--panel); padding: 10px 0; z-index: 3; }
+.C .actions { margin-top: 0; } .C .btn { padding: 7px 12px; font-size: 13px; }
+.C .chips { flex-wrap: nowrap; overflow-x: auto; padding: 8px 0; } .C .chip { white-space: nowrap; }
+.C .strip { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 860px) {
+  .A .hero, .A .body, .B .grid { grid-template-columns: 1fr; } h1.title { font-size: 32px; } .B .left { position: static; }
+}
+</style>
+</head>
+<body>
+<div class="ctl">
+  <span><b>Design</b><span class="seg" id="design"></span></span>
+  <span><b>Example</b><span class="seg" id="album"></span></span>
+  <span><b>Show</b><span class="seg" id="phase"></span></span>
+  <label><input type="checkbox" id="marks" checked> markers</label>
+  <span class="legend">
+    <span><i class="dot now"></i>now — already in the Album JSON, frontend only</span>
+    <span><i class="dot disk"></i>on disk — in the stores/cache, needs a server field</span>
+    <span><i class="dot fetch"></i>fetch — new lookup + store</span>
+    <span><i class="dot na"></i>not available</span>
+  </span>
+</div>
+<div id="root"></div>
+
+<script>
+const tidalImg = (u, s) => u ? `https://resources.tidal.com/images/${u.replace(/-/g, '/')}/${s}x${s}.jpg` : '';
+const ALBUMS = {
+  geese: {
+    label: 'Geese (Discogs CD + streams)', color: '#77aad3', cover: '5058278b-a1e5-4393-bab0-62c053bfc96a',
+    title: 'Getting Killed', artist: 'Geese', year: '2025', fullDate: '26 September 2025', fullDateTier: 'disk',
+    artistLinks: [['Wikipedia', 1], ['AllMusic', 1]], albumLinks: [['Wikipedia', 1], ['AllMusic', 0]],
+    genres: ['alternative'], styles: ['Discogs style', 'Discogs style'],
+    length: '45 min · 11 tracks', format: 'CD', quality: 'Tidal: Hi-Res lossless · explicit', label: 'Partisan Records · PTPS60CD',
+    added: '2025-12-16', location: 'Shelf / Box · position', rating: '★★★★☆',
+    fav: 'In Tidal collection since 2026-04-12',
+    plays: ['2026-11-19 17:29', '2026-02-14 15:44', '2025-12-27 21:37', '2025-12-16 21:20'],
+    years: { 2019: 0, 2020: 0, 2021: 0, 2022: 0, 2023: 0, 2024: 0, 2025: 2, 2026: 2 },
+    services: ['Discogs', 'Tidal app', 'Tidal web', 'Apple Music', 'Jellyfin'],
+    wikiPage: 'en.wikipedia.org/wiki/Getting_Killed',
+    tracks: [['Trinidad', '3:44'], ['Cobra', '3:05'], ['Husbands', '4:08'], ['Getting Killed', '4:44'], ['Islands of Men', '5:54'],
+             ['100 Horses', '3:46'], ['Half Real', '3:22'], ['Au Pays du Cocaine', '3:30'], ['… 3 more', '']],
+    versions: [['CD — Partisan Records PTPS60CD', 'this release', 'now'], ['Tidal — Hi-Res lossless', 'linked in the Location field', 'now'],
+               ['Apple Music', 'linked', 'now'], ['Jellyfin files', 'linked', 'now'], ['All pressings of the Discogs master', 'masters/{id}/versions', 'fetch']],
+    library: [['Getting Killed', '2025', '5058278b-a1e5-4393-bab0-62c053bfc96a', 1], ['3D Country', '2023', '52a9fc8b-a690-4a5b-b6a4-56386da79499', 0]],
+    disco: [['Projector', '2021'], ['3D Country', '2023', 'lib'], ['Getting Killed', '2025', 'lib'], ['I', '2024'], ['II', '2024']],
+  },
+  volodos: {
+    label: 'Volodos (Tidal only, classical)', color: '#d13b38', cover: '9fd5813b-e717-4b4b-8e00-cda0fd79f812',
+    title: 'Schubert: Piano Sonata D.959 & Minuets D. 334, D. 335, D. 600', artist: 'Arcadi Volodos', year: '2019',
+    fullDate: '1 November 2019', fullDateTier: 'now',
+    artistLinks: [['Wikipedia', 1], ['AllMusic', 1]], albumLinks: [['Wikipedia', 0], ['AllMusic', 0]],
+    genres: ['classical'], styles: [],
+    length: '55 min · 7 tracks', format: 'Tidal', quality: 'Hi-Res lossless', label: '℗ 2019 Sony Music Entertainment',
+    added: '2026-07-10', location: null, rating: '☆☆☆☆☆',
+    fav: 'In Tidal collection since 2026-07-10',
+    plays: [], years: { 2019: 0, 2020: 0, 2021: 0, 2022: 0, 2023: 0, 2024: 0, 2025: 0, 2026: 0 },
+    services: ['Tidal app', 'Tidal web', 'Apple Music', 'find on Discogs'],
+    wikiPage: null,
+    tracks: [['Piano Sonata No. 20 in A major, D. 959', '', 'work'], ['I. Allegro', '', 'mov'], ['II. Andantino', '', 'mov'],
+             ['III. Scherzo. Allegro vivace', '', 'mov'], ['IV. Rondo. Allegretto', '11:48', 'mov'],
+             ['Minuet in A major, D. 334', '3:13'], ['Minuet in E major, D. 335', '3:55'], ['Minuet in C-sharp minor, D. 600', '6:52']],
+    versions: [['Tidal — Hi-Res lossless', 'this album', 'now'], ['Apple Music', 'matched by UPC', 'now'],
+               ['Other Tidal editions', 'to be probed', 'fetch']],
+    library: [['Solo Piano Works', '2002 · CD', null, 0], ['Volodos Plays Brahms', '2017', '86b3dca8-a5a0-4f2c-8947-4174c4a5a39a', 0],
+              ['Schubert: Piano Sonata D.959 …', '2019', '9fd5813b-e717-4b4b-8e00-cda0fd79f812', 1],
+              ['Schubert: Sonata D. 850 – Schumann: Kinderszenen', '2026', '8e7ce54c-7cc0-41bb-8d33-3099ad7ec5b1', 0]],
+    disco: [['Volodos Plays Brahms', '2017', 'lib'], ['Schubert: D.959', '2019', 'lib'], ['Schubert D. 850 / Schumann', '2026', 'lib'], ['Volodos plays Mompou', '2013']],
+  },
+};
+const DESIGNS = { A: 'A · Roon-style', B: 'B · Journal-first', C: 'C · Phone' };
+const PHASES = ['now only', '+ on disk', '+ fetched', 'everything'];
+const RANK = { now: 0, disk: 1, fetch: 2, na: 3 };
+const TAG = { now: 'now', disk: 'on disk', fetch: 'fetch', na: 'n/a' };
+const S = { design: 'A', album: 'geese', phase: 3, marks: true, tab: null };
+
+// wrap a piece in its tier; drop it if the chosen phase does not include that tier
+const T = (tier, html, cls = '') => RANK[tier] > S.phase ? '' : `<div class="t ${tier} ${cls}"><span class="tag">${TAG[tier]}</span>${html}</div>`;
+const cover = (a, size = 640) => `<div class="cover" style="background:${a.color}"><img src="${tidalImg(a.cover, size)}" alt="" onerror="this.remove()"></div>`;
+const lk = ([name, found]) => `<a class="${found ? '' : 'search'}" href="#">${name}</a>`;
+
+function pieces(a) {
+  const P = {};
+  P.cover = T('now', cover(a));
+  P.date = a.fullDateTier === 'now' ? T('now', `<div class="date">${a.fullDate}</div>`)
+         : (S.phase >= 1 ? T('disk', `<div class="date">${a.fullDate}</div>`) : T('now', `<div class="date">${a.year}</div>`));
+  P.title = T('now', `<h1 class="title">${a.title}</h1>`);
+  P.artist = T('now', `<div class="artist">${a.artist}<small>${a.artistLinks.map(lk).join(' · ')}</small></div>`);
+  P.play = T('now', `<span class="split"><button class="btn primary">▶ lblue</button><button class="btn primary" title="replace · now · next · last">▾</button></span>`, 'inl');
+  P.played = T('now', `<button class="btn">✓ Album Played</button>`, 'inl');
+  P.heart = T('now', `<button class="btn" title="${a.fav}">♥ in collection</button>`, 'inl');
+  P.heartToggle = T('fetch', `<button class="btn" title="add/remove Tidal favourite: a write to Tidal">♡ toggle</button>`, 'inl');
+  P.later = T('na', `<button class="btn" title="Roon's Listen Later: no equivalent yet; could become a clutter tag">◷ later</button>`, 'inl');
+  P.actions = `<div class="actions">${P.play}${P.played}${P.heart}${P.heartToggle}${P.later}</div>`;
+  P.chips = `<div class="chips">` + T('now', a.genres.map(g => `<span class="chip">${g}</span>`).join(' '), 'inl')
+          + (a.styles.length ? T('disk', a.styles.map(g => `<span class="chip">${g}</span>`).join(' '), 'inl') : '') + `</div>`;
+  P.about = T('fetch', `<div class="about"><span class="ph">${a.wikiPage
+      ? `Lead paragraphs of the album's Wikipedia article (${a.wikiPage}, already in the links store) appear here, two or three paragraphs, collapsible like Roon's review.`
+      : `No Wikipedia article for this album: the artist's lead paragraph (en.wikipedia.org/wiki/${a.artist.replace(/ /g, '_')}) appears here instead, and Tidal's own album review if the probe finds one.`}</span>
+      <div class="src">Wikipedia, CC BY-SA · <a href="#">read the article</a></div></div>`)
+    + T('na', `<div class="note">Roon's review text is licensed from TiVo/AllMusic — not obtainable; the AllMusic link stands in for it.</div>`);
+  const row = (tier, k, v) => T(tier, `<div class="frow"><span>${k}</span><span>${v}</span></div>`);
+  P.facts = row('disk', 'Length', a.length) + row('now', 'Rating', a.rating) + row('now', 'Format', a.format)
+    + row('disk', 'Quality', a.quality) + row('disk', 'Label', a.label) + row('now', 'Added', a.added)
+    + (a.location ? row('now', 'Location', a.location) : '')
+    + row('now', 'Plays', a.plays.length ? `${a.plays.length} · last ${a.plays[0].slice(0, 10)}` : 'not played yet')
+    + row('now', 'Tidal', a.fav.replace('In Tidal collection ', '')) + row('na', 'Dynamic range', 'Roon measures this from the audio');
+  P.links = T('now', `<div class="links"><h3>Read more</h3>
+      <a class="${a.albumLinks[0][1] ? '' : 'search'}" href="#">Album on Wikipedia</a><a class="${a.albumLinks[1][1] ? '' : 'search'}" href="#">Album on AllMusic</a>
+      <a href="#">${a.artist} on Wikipedia</a><a href="#">${a.artist} on AllMusic</a></div>`);
+  P.services = T('now', `<div class="links"><h3>Open in</h3>${a.services.map(s => `<a href="#">${s}</a>`).join('')}</div>`);
+  P.plays = T('now', `<div class="plays"><h3>Play history</h3>${a.plays.length
+      ? `Played ${a.plays.length} times<ul>${a.plays.map(p => `<li>${p}</li>`).join('')}</ul>` : 'Not played yet.'}</div>`);
+  const mx = Math.max(1, ...Object.values(a.years));
+  P.years = T('now', `<div class="years">${Object.entries(a.years).map(([y, n]) =>
+      `<div><i class="${n ? '' : 'z'}" style="height:${n ? 8 + 26 * n / mx : 2}px"></i>${String(y).slice(2)}</div>`).join('')}</div>`);
+  P.tracks = `<div>${a.tracks.map(([t, d, k], i) => `<div class="trk ${k || ''}"><span class="n">${k === 'work' ? '' : i + (a.tracks[0][2] ? 0 : 1)}</span><span>${t}</span><span class="d">${d}</span></div>`).join('')}</div>`
+    + T('na', `<div class="note">Per-track play counts, track hearts and “radio picks” are Roon's own data. clutter logs plays per album.</div>`);
+  P.credits = `<div class="note">Performers, producer, engineer, composer per track — from Tidal credits and, for Discogs releases, the release's <i>extraartists</i>. Comes with the same lookup as the tracks.</div>`;
+  P.versions = a.versions.map(([n, d, tier]) => T(tier, `<div class="trk"><span class="n">·</span><span>${n}<small>${d}</small></span><span></span></div>`)).join('');
+  const card = ([t, y, cv, me], col) => `<div class="card ${me ? 'this' : ''}"><div class="cover" style="background:${cv === 'lib' || !cv ? col : a.color}">${cv && cv !== 'lib' ? `<img src="${tidalImg(cv, 320)}" alt="" onerror="this.remove()">` : ''}<b>${t}</b></div><p class="y">${y}${cv === 'lib' ? ' <span class="badge">in library</span>' : ''}</p><p class="n">${t}</p></div>`;
+  P.library = T('disk', `<section class="sect"><header><h2>${a.artist}</h2><span>in my library</span></header><div class="strip">${a.library.map(c => card(c, '#7d7468')).join('')}</div></section>`);
+  P.disco = T('fetch', `<section class="sect"><header><h2>${a.artist}</h2><span>discography (Tidal)</span></header><div class="strip">${a.disco.map(c => card(c, '#5f6b7a')).join('')}</div></section>`);
+  P.similar = T('fetch', `<section class="sect"><header><h2>Similar albums</h2><span>Tidal, to be probed</span></header><div class="strip">${[1, 2, 3, 4, 5].map(i => card(['Album ' + i, 'year'], '#8a8f99')).join('')}</div></section>`);
+  P.simArtists = T('fetch', `<section class="sect"><header><h2>Similar artists</h2><span>Tidal, to be probed</span></header><div class="artists">${['A', 'B', 'C'].map(x => `<div class="ar"><i>${x}</i><div><b>Artist ${x}</b><div class="note">picture from Tidal · <span class="badge">n in library</span></div></div></div>`).join('')}</div></section>`);
+  P.sameStyle = T('disk', `<section class="sect"><header><h2>More ${a.genres[0]}</h2><span>from my library, least recently played first</span></header><div class="strip">${[1, 2, 3, 4, 5].map(i => card(['Library album ' + i, 'last played …'], '#857a8f')).join('')}</div></section>`);
+  P.recommended = T('na', `<section class="sect"><header><h2>Recommended albums</h2><span>Roon's recommender — no equivalent</span></header></section>`);
+  P.quot = T('now', `<details><summary>Obsidian note text</summary><div class="quot">251122-${a.artist} - ${a.title}\n---\ndate: 2026-11-22T10:30\ntitle: ${a.artist} - ${a.title}\n---\n### ${a.artist} – ${a.title}\n…</div></details>`);
+  return P;
+}
+
+function tabsBlock(P) {
+  const tabs = [['Tracks', 'fetch', P.tracks], ['Credits', 'fetch', P.credits], ['Versions', 'now', P.versions]].filter(t => RANK[t[1]] <= S.phase);
+  if (!tabs.length) return '';
+  const cur = tabs.find(t => t[0] === S.tab) || tabs[0];
+  return `<div class="tabs">${tabs.map(t => `<button class="${t === cur ? 'on' : ''}" data-tab="${t[0]}">${t[0]}</button>`).join('')}</div>`
+       + T(cur[1], `<div style="padding-top:8px">${cur[2]}</div>`);
+}
+
+function designA(a, P) {
+  return `<div class="page A">
+    <div class="hero">${P.cover}<div>${P.date}${P.title}${P.artist}${P.actions}</div></div>
+    ${P.chips}
+    <div class="body"><div>${P.about}</div><div>${P.facts}<div style="height:18px"></div>${P.links}<div style="height:14px"></div>${P.services}</div></div>
+    ${tabsBlock(P)}
+    <section class="sect">${P.plays}${P.years}</section>
+    ${P.library}${P.disco}${P.sameStyle}${P.similar}${P.simArtists}${P.recommended}
+    <div class="sect">${P.quot}</div></div>`;
+}
+function designB(a, P) {
+  const mini = a.library.filter(c => !c[3]).map(([t, y, cv]) => `<div class="mini"><div class="cover" style="background:${a.color}">${cv ? `<img src="${tidalImg(cv, 160)}" alt="" onerror="this.remove()">` : ''}</div><div><b>${t}</b><br><span class="note">${y}</span></div></div>`).join('');
+  return `<div class="page B"><div class="grid">
+    <div class="left">${P.cover}${P.actions}<div style="height:16px"></div>${P.services}</div>
+    <div>${P.date}${P.title}${P.artist}
+      ${T('disk', `<div class="line">${a.format} · ${a.length} · ${a.label}</div>`)}
+      ${P.chips}<div style="height:18px"></div>${P.about}${tabsBlock(P)}
+      ${P.disco}${P.similar}<div class="sect">${P.quot}</div></div>
+    <div class="rail">
+      ${T('now', `<h3>Your plays</h3><div class="big">${a.plays.length || '–'}</div><div class="note">${a.plays.length ? 'last ' + a.plays[0] : 'not played yet'}</div>`)}
+      ${P.years}
+      ${T('now', a.plays.length ? `<div class="plays"><ul>${a.plays.map(p => `<li>${p}</li>`).join('')}</ul></div>` : '')}
+      ${T('now', `<h3>In the collection</h3><div class="note">${a.location ? a.location + '<br>' : ''}Added ${a.added} · ${a.rating}<br>${a.fav}</div>`)}
+      ${T('disk', `<h3>More by ${a.artist}</h3>${mini}`)}
+      ${T('now', `<h3>Read more</h3><div class="links">${a.albumLinks.map(l => lk([`Album · ${l[0]}`, l[1]])).join('')}${a.artistLinks.map(l => lk([`${a.artist} · ${l[0]}`, l[1]])).join('')}</div>`)}
+    </div></div></div>`;
+}
+function designC(a, P) {
+  const acc = (title, tier, body, open) => T(tier, `<details ${open ? 'open' : ''}><summary>${title}</summary><div style="padding-top:8px">${body}</div></details>`);
+  return `<div class="page C"><div class="phone">
+    ${P.cover}${P.title}${P.artist}${P.date}
+    <div class="bar"><div class="actions">${P.play}${P.played}${P.heart}</div></div>
+    ${P.chips}
+    ${acc('Details', 'now', P.facts, true)}
+    ${acc('About', 'fetch', P.about)}
+    ${acc('Tracks', 'fetch', P.tracks)}
+    ${acc('Play history', 'now', (a.plays.length ? `<div class="plays">Played ${a.plays.length} times<ul>${a.plays.map(p => `<li>${p}</li>`).join('')}</ul></div>` : 'Not played yet.') + P.years, true)}
+    ${acc('More by ' + a.artist, 'disk', `<div class="strip">${a.library.filter(c => !c[3]).map(([t, y, cv]) => `<div class="card"><div class="cover" style="background:${a.color}">${cv ? `<img src="${tidalImg(cv, 160)}" alt="" onerror="this.remove()">` : ''}<b>${t}</b></div><p class="y">${y}</p></div>`).join('')}</div>`)}
+    ${acc('Links', 'now', P.links + P.services)}
+    ${P.quot}
+  </div></div>`;
+}
+
+function seg(id, entries, key) {
+  const el = document.getElementById(id);
+  el.innerHTML = entries.map(([v, l]) => `<button data-v="${v}" class="${String(S[key]) === String(v) ? 'on' : ''}">${l}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('button'); if (!b) return; S[key] = key === 'phase' ? +b.dataset.v : b.dataset.v; draw(); };
+}
+function draw() {
+  seg('design', Object.entries(DESIGNS), 'design');
+  seg('album', Object.entries(ALBUMS).map(([k, v]) => [k, v.label]), 'album');
+  seg('phase', PHASES.map((p, i) => [i, p]), 'phase');
+  const a = ALBUMS[S.album], P = pieces(a), root = document.getElementById('root');
+  root.className = S.marks ? 'marks' : '';
+  root.innerHTML = ({ A: designA, B: designB, C: designC })[S.design](a, P);
+  root.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; draw(); });
+}
+document.getElementById('marks').onchange = e => { S.marks = e.target.checked; draw(); };
+draw();
+</script>
+</body>
+</html>

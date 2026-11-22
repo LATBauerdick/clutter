@@ -624,3 +624,132 @@ a:active {
   opacity: 0.45;
   font-style: italic;
 }
+
+/* ---- album page, laid out after Roon's (docs/album-page-plan.md, design A) ---- */
+.av {
+  max-width: 1100px;
+  margin: 76px 28px 0 28px;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+.av-hero {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 40px;
+  align-items: center;
+}
+.av-cover img {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .2);
+}
+.av-date { color: #6b6b70; font-size: 16px; }
+.av-title {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-weight: 600;
+  font-size: 44px;
+  line-height: 1.12;
+  letter-spacing: -.01em;
+  margin: 14px 0 10px 0;
+}
+.av-artist { font-size: 21px; }
+.av-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 20px;
+}
+.av-btn {
+  border: 1.5px solid #1d1d1f;
+  background: transparent;
+  color: #1d1d1f;
+  border-radius: 22px;
+  padding: 8px 15px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.av-btn:hover { box-shadow: 0 0 2px 1px rgba(0, 140, 186, .5); }
+.av-btn.av-primary { background: #5b5bd6; border-color: #5b5bd6; color: white; }
+.av-play { display: inline-flex; }
+.av-play .av-btn { border-radius: 0; border-left-color: rgba(255, 255, 255, .5); }
+.av-play .av-btn:first-child { border-radius: 22px 0 0 22px; border-left-color: #5b5bd6; }
+.av-play .av-btn:last-child { border-radius: 0 22px 22px 0; }
+.av-play .av-mode { padding: 8px 10px; font-size: 12px; font-weight: 400; }
+.av-msg { color: #6b6b70; font-size: 13px; }
+.av-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 30px 0 26px 0;
+  min-height: 1px;
+}
+.av-chip {
+  border: 0;
+  background: #dfe3ee;
+  color: #1d1d1f;
+  border-radius: 16px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.av-chip:hover, .av-tag:hover { background: #c9cfe2; }
+.av-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 40px;
+  align-items: start;
+}
+.av h3 { font-size: 18px; font-weight: 600; margin: 0 0 8px 0; }
+.av-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 20px;
+  font-size: 14.5px;
+}
+.av-k { font-weight: 600; }
+.av-v { color: #55555a; min-width: 0; }
+.av-v a:link, .av-v a:visited, .av-links a:link, .av-links a:visited { color: #5b5bd6; text-decoration: none; }
+.av-stars { color: #c79a00; letter-spacing: .05em; }
+.av-tag {
+  border: 0;
+  background: #eceef4;
+  color: #55555a;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin: 0 4px 4px 0;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.av-links { margin-top: 24px; font-size: 14.5px; }
+.av-links > a { display: block; padding: 2px 0; }
+.av-links .wiki-links { margin: 0 0 4px 0; font-family: inherit; font-size: inherit; }
+.av-who { color: #55555a; }
+.av-plays p { color: #55555a; }
+.av-plays li { font-family: inherit; font-size: 14px; line-height: 1.5; color: #55555a; }
+.av-years { display: flex; gap: 6px; align-items: flex-end; margin: 12px 0 10px 0; }
+.av-year { flex: 0 0 26px; text-align: center; font-size: 10.5px; color: #6b6b70; }
+.av-year i { display: block; width: 70%; margin: 0 auto 2px auto; border-radius: 2px 2px 0 0; background: #5b5bd6; }
+.av-year i.z { background: #dcd8d0; }
+/* narrow screens: one column */
+@media (max-width: 760px) {
+  .av { margin: 108px 16px 0 16px; } /* the menu bar wraps to two lines */
+  .av-hero, .av-body { grid-template-columns: 1fr; gap: 20px; }
+  .av-cover { max-width: 420px; }
+  .av-title { font-size: 30px; }
+  .av-chips { justify-content: flex-start; margin: 20px 0; }
+}

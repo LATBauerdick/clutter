@@ -10,7 +10,9 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, intercalate, filter)
+import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index)
+import Data.Foldable (minimum, maximum, any)
+import Data.Int (fromString)
 import Halogen as H
 import Halogen.HTML as HH
 -- import Halogen.HTML.CSS as HC
@@ -19,7 +21,7 @@ import Halogen.HTML.Events as HE
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
-import Data.String (take, indexOf, replaceAll, contains, stripPrefix) as S
+import Data.String (take, drop, length, indexOf, contains, stripPrefix, joinWith) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
@@ -128,59 +130,123 @@ render state = do
                                    [ HH.text $ replaceAll (Pattern "T") (Replacement " ") (S.take 16 p) ] ]
                   Nothing -> []
 
+  -- the album page, laid out after Roon's (docs/album-page-plan.md, design A, phase 0):
+  -- one view for a Discogs release (D…) and for a stream without one (T…, A…)
   renderAlbumView :: forall m. Album -> DateTime -> H.ComponentHTML Action () m
   renderAlbumView a now =
-    -- a Discogs release (D…), or a stream without one (T…, A…)
-    if S.take 1 a.albumID == "D" then discogsView else streamView
-    where
-    ttl = replaceAll (Pattern ":") (Replacement "_") <<< replaceAll (Pattern "/") (Replacement "·") $ a.albumArtist <> " - " <> a.albumTitle
-    dt = fromRight "???????" <<< formatDateTime "YYMMDD" $ now -- "2022-10-19T20:01"
-    dtl = fromRight "???????" <<< formatDateTime "YYYY-MM-DDTHH:mm" $ now -- "2022-10-19T20:01"
-    discogsView =
-      HH.div [ HP.class_ $ HH.ClassName "album-view" ]
-        [ HH.div
-          [ HP.class_ $ HH.ClassName "cover-container" ]
-          [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ] $
-            [ HH.a
-              [ HP.href a.albumURL] $
-              [ HH.img [ HP.src a.albumCover
-                      , HP.alt "cover image"
-                      , HP.class_ $ HH.ClassName "cover-image"
-                      ]
-              ]
+    HH.div [ cls "album-view av" ]
+      [ HH.div [ cls "av-hero" ]
+        [ HH.a [ HP.href a.albumURL, cls "av-cover" ]
+            [ HH.img [ HP.src (if a.albumCover == "" then "/icons/no-cover.png" else a.albumCover)
+                     , HP.alt "cover image"
+                     ]
             ]
-            <> renderBadges 0 a
+        , HH.div [ cls "av-head" ]
+          [ HH.p [ cls "av-date" ] [ HH.text (longDate a.albumReleased) ]
+          , HH.h1 [ cls "av-title" ] [ HH.text a.albumTitle ]
+          , HH.p [ cls "av-artist" ] [ HH.text artistNames ]
+          , actionsView
           ]
-        -- , renderAlbumTN 0 a
-        , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
-        , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
-        , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]
-        , wikiView
-        , HH.br_
-        , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
-                    [ HH.text " Album Played "]
-        , nodeView
-        , playsView
-        , HH.br_
-        , quotableView
         ]
-    -- ▶ Node: play the Tidal version on the Bluesound Node (BluOS API, via the backend)
-    nodeView = case a.albumTidal of
-      Nothing -> HH.text ""
-      Just t ->
-        HH.span_ $
-          [ HH.text " "
-          , HH.button [ HE.onClick \_ -> NodePlay t, HP.title ("Play the Tidal album on " <> state.nodeName) ]
-                      [ HH.text (" ▶ " <> state.nodeName <> " ") ]
-          ] <> case state.nodeMsg of
-                 Just m -> [ HH.text (" " <> m) ]
-                 Nothing -> []
+      , chipsView
+      , HH.div [ cls "av-body" ]
+        [ HH.div [ cls "av-main" ] [ playsView ]
+        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView ]
+        ]
+      ]
+    where
+    cls :: forall r i. String -> HP.IProp ( class :: String | r ) i
+    cls = HP.class_ <<< HH.ClassName
+    isDiscogs = S.take 1 a.albumID == "D"
+    -- the artists' display names (without the Discogs "(n)" suffix) where the backend sends them
+    artistNames = case filter (_ /= "") (map _.arName (fromMaybe [] a.albumArtists)) of
+      [] -> a.albumArtist
+      ns -> S.joinWith ", " ns
+    -- "2025-09-26" -> "26 September 2025"; a bare year stays
+    longDate d = case S.length d == 10, fromString (S.take 2 (S.drop 5 d)), fromString (S.drop 8 d) of
+      true, Just m, Just day | Just mn <- index months (m - 1) -> show day <> " " <> mn <> " " <> S.take 4 d
+      _, _, _ -> d
+    months = [ "January", "February", "March", "April", "May", "June", "July"
+             , "August", "September", "October", "November", "December" ]
+
+    -- ▶ <player>: the Tidal version on the Bluesound Node (BluOS API, via the backend),
+    -- with the backend's four modes; then Album Played
+    actionsView =
+      HH.div [ cls "av-actions" ] $
+        ( case a.albumTidal of
+            Just t | t /= "" ->
+              [ HH.span [ cls "av-play" ]
+                [ HH.button [ cls "av-btn av-primary", HE.onClick \_ -> NodePlay t "replace"
+                            , HP.title ("Play the Tidal album on " <> state.nodeName <> ", replacing its queue") ]
+                            [ HH.text ("▶ " <> state.nodeName) ]
+                , modeBtn t "now" "Play it now, after that go on with the queue"
+                , modeBtn t "next" "Queue it after the current album"
+                , modeBtn t "last" "Add it to the end of the queue"
+                ]
+              ]
+            _ -> [] )
+        <> [ HH.button [ cls "av-btn", HE.onClick \_ -> AlbumPlayed a.albumID ] [ HH.text "✓ Album Played" ] ]
+        <> case state.nodeMsg of
+             Just m -> [ HH.span [ cls "av-msg" ] [ HH.text m ] ]
+             Nothing -> []
+    modeBtn t mode tip =
+      HH.button [ cls "av-btn av-primary av-mode", HE.onClick \_ -> NodePlay t mode, HP.title tip ] [ HH.text mode ]
+
+    -- genres as chips; a click shows that genre from all albums
+    genres = mapMaybe (S.stripPrefix (Pattern "genre.")) a.albumTags
+    -- the other tags, without those the facts already show (provider, rating, plays)
+    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal." ])) a.albumTags
+    chipsView =
+      HH.div [ cls "av-chips" ] $
+        map (\g -> HH.button [ cls "av-chip", HE.onClick \_ -> ShowFocus ("genre." <> g), HP.title ("All albums: " <> g) ]
+                             [ HH.text g ]) genres
+
+    -- the facts column
+    row k v = [ HH.span [ cls "av-k" ] [ HH.text k ], HH.span [ cls "av-v" ] v ]
+    np = length a.albumListenedDates
+    early = a.albumPlays > np -- the Discogs "Plays" mark also holds plays from before the log
+    factsView =
+      HH.div [ cls "av-facts" ] $ concat
+        [ row "Format" [ HH.text a.albumFormat ]
+        , if a.albumRating > 0
+            then row "Rating" [ HH.span [ cls "av-stars" ] [ HH.text (stars a.albumRating) ] ]
+            else []
+        , case a.albumAdded of
+            Just d | d /= "" -> row "Added" [ HH.text (S.take 10 d) ]
+            _ -> []
+        , locationRow
+        , row "Plays" [ HH.text playsText ]
+        , if isDiscogs then [] else row "Tidal" [ HH.text collectionText ]
+        , if otherTags == [] then [] else
+            row "Tags" (map (\t -> HH.button [ cls "av-tag", HE.onClick \_ -> ShowFocus t, HP.title ("All albums: #" <> t) ]
+                                             [ HH.text t ]) otherTags)
+        ]
+    stars n = S.joinWith "" (replicate (min 5 n) "★" <> replicate (5 - min 5 n) "☆")
+    playsText
+      | np == 0 = if early then "before the log began" else "not played yet"
+      | otherwise = show np <> " · last " <> S.take 10 (fromMaybe "" (head a.albumListenedDates))
+                    <> (if early then " (also before the log)" else "")
+    collectionText = case a.albumTidal, a.albumFavoriteUntil of
+      Nothing, _ -> "not on Tidal"
+      Just _, _ | elem "tidal.collection" a.albumTags -> "in the collection since " <> S.take 10 (fromMaybe "" a.albumAdded)
+      Just _, Just u -> "in the collection " <> S.take 10 (fromMaybe "" a.albumAdded) <> " – " <> S.take 10 u
+      Just _, Nothing -> "not in the collection"
+    shelfBtn shelf idx =
+      row "Location" [ HH.button [ cls "av-tag", HE.onClick \_ -> ShowListSort (AlbumList (Just shelf)) "Default" Asc ]
+                                 [ HH.text (shelf <> " #" <> show idx) ] ]
+    locationRow = case a.albumLocation of
+      Just loc | S.contains (Pattern "Box CDs") (S.take 7 loc) -> shelfBtn "Box CDs" (fromMaybe 0 a.albumLocIdx)
+               | loc /= "" -> row "Location" [ HH.a [ HP.href loc ] [ HH.text loc ] ]
+      _ -> case a.albumShelf of
+        Just (Tuple shelf ipos) -> shelfBtn shelf ipos
+        Nothing -> []
+
     -- Wikipedia and AllMusic for the album and each artist (docs/wikidata-plan.md, phase 4);
     -- where Wikidata had nothing, a dimmed search link instead
-    wikiView =
-      let artists = fromMaybe [] a.albumArtists
+    readMoreView =
+      let artists = filter (\r -> r.arName /= "") (fromMaybe [] a.albumArtists)
           firstArtist = maybe a.albumArtist _.arName (head artists)
-          link cls tip url txt = HH.a [ HP.href url, HP.class_ (HH.ClassName cls), HP.title tip, HP.target "_blank" ] [ HH.text txt ]
+          link c tip url txt = HH.a [ HP.href url, cls c, HP.title tip, HP.target "_blank" ] [ HH.text txt ]
           found url txt = link "wiki-link" url url txt
           search url txt = link "wiki-search" "nothing in Wikidata: search" url txt
           wpSearch q = "https://en.wikipedia.org/w/index.php?search=" <> enc q
@@ -191,11 +257,12 @@ render state = do
             , maybe (search amq "AllMusic") (\u -> found u "AllMusic") am
             ]
           albumQ = firstArtist <> " " <> a.albumTitle
-          albumGroup = [ HH.text "Album: " ] <> pair a.albumWiki a.albumAllMusic albumQ (amSearch "albums" albumQ)
-          artistGroup r = [ HH.text (r.arName <> ": ") ] <> pair r.arWiki r.arAllMusic r.arName (amSearch "artists" r.arName)
+          group name links = HH.p [ cls "wiki-links" ] ([ HH.span [ cls "av-who" ] [ HH.text (name <> ": ") ] ] <> links)
       in
-      HH.p [ HP.class_ (HH.ClassName "wiki-links") ] $
-        intercalate [ HH.text "  —  " ] ([ albumGroup ] <> map artistGroup (filter (\r -> r.arName /= "") artists))
+      HH.div [ cls "av-links" ] $
+        [ HH.h3_ [ HH.text "Read more" ]
+        , group "Album" (pair a.albumWiki a.albumAllMusic albumQ (amSearch "albums" albumQ))
+        ] <> map (\r -> group r.arName (pair r.arWiki r.arAllMusic r.arName (amSearch "artists" r.arName))) artists
     -- enough URL encoding for a search term
     enc = replaceAll (Pattern " ") (Replacement "+")
         <<< replaceAll (Pattern "/") (Replacement "%2F")
@@ -204,128 +271,55 @@ render state = do
         <<< replaceAll (Pattern "&") (Replacement "%26")
         <<< replaceAll (Pattern "+") (Replacement "%2B")
         <<< replaceAll (Pattern "%") (Replacement "%25")
-    -- every play from the log, newest first
-    playsView =
-      HH.div [ HP.class_ $ HH.ClassName "album-plays" ] $
-        case a.albumListenedDates of
-          [] -> [ HH.p_ [ HH.text "Not played yet." ] ]
-          ds -> [ HH.p_ [ HH.text $ "Played " <> show (length ds) <> (if length ds == 1 then " time:" else " times:") ]
-                , HH.ul_ (map (\d -> HH.li_ [ HH.text $ replaceAll (Pattern "T") (Replacement " ") (S.take 16 d) ]) ds)
-                ]
-    tagValue :: String -> Maybe String
-    tagValue prefix = head (mapMaybe (S.stripPrefix (Pattern prefix)) a.albumTags)
-    -- a Tidal or Apple Music album without a Discogs release
-    streamView =
-      let qry = S.replaceAll ( Pattern " " ) ( Replacement "+" ) $ a.albumArtist <> "+-+" <> a.albumTitle
-          tidalWeb t = "https://listen.tidal.com/album/" <> t
+
+    -- the album at Discogs and the streaming services
+    openInView =
+      let qry = enc (a.albumArtist <> " - " <> a.albumTitle)
+          ext url txt = [ HH.a [ HP.href url ] [ HH.text txt ] ]
           appleWeb am = if S.take 2 am == "l."
                           then "https://music.apple.com/library/albums/" <> am
                           else "https://music.apple.com/us/album/" <> am
-          inColl = elem "tidal.collection" a.albumTags
       in
-      HH.div [ HP.class_ $ HH.ClassName "album-view" ]
-        [ HH.div
-          [ HP.class_ $ HH.ClassName "cover-container" ]
-          [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ] $
-            [ HH.a
-              [ HP.href a.albumURL ]
-              [ HH.img [ HP.src (if a.albumCover == "" then "/icons/no-cover.png" else a.albumCover)
-                      , HP.alt "cover image"
-                      , HP.class_ $ HH.ClassName "cover-image"
-                      ]
-              ]
-            ]
-            <> renderBadges 0 a
-          ]
-        , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
-        , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
-        , HH.p_ [HH.text ("Year: "   <> S.take 4 a.albumReleased)]
-        , HH.p_ [HH.text ("Genre: "  <> fromMaybe "–" (tagValue "genre."))]
-        , HH.p_ [HH.text $ case a.albumTidal, a.albumFavoriteUntil of
-                    Nothing, _ -> "Not on Tidal"
-                    Just _, _ | inColl -> "In Tidal collection since " <> S.take 10 (fromMaybe "" a.albumAdded)
-                    Just _, Just u -> "In Tidal collection " <> S.take 10 (fromMaybe "" a.albumAdded) <> " – " <> S.take 10 u
-                    Just _, Nothing -> "Not in Tidal collection"]
-        , HH.p_ $ intercalate [ HH.text " · " ] $
-            (case a.albumTidal of
-              Just t -> [ [ HH.a [ HP.href ("tidal://album/" <> t) ] [ HH.text "Tidal app" ] ]
-                        , [ HH.a [ HP.href (tidalWeb t) ] [ HH.text "Tidal web" ] ] ]
-              Nothing -> [])
-            <> (case a.albumAMusic of
-              Just am | am /= "" -> [ [ HH.a [ HP.href (appleWeb am) ] [ HH.text "Apple Music" ] ] ]
+      HH.div [ cls "av-links" ] $
+        [ HH.h3_ [ HH.text "Open in" ] ]
+        <> (if isDiscogs then ext a.albumURL "Discogs"
+                         else ext ("https://www.discogs.com/search/?q=" <> qry <> "&type=all") "find on Discogs")
+        <> (case a.albumTidal of
+              Just t | t /= "" -> ext ("tidal://album/" <> t) "Tidal app" <> ext ("https://listen.tidal.com/album/" <> t) "Tidal web"
               _ -> [])
-            <> [ [ HH.a [ HP.href ("https://www.discogs.com/search/?q=" <> qry <> "&type=all") ]
-                        [ HH.text "find on Discogs" ] ] ]
-        , wikiView
-        , HH.br_
-        , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
-                    [ HH.text " Album Played "]
-        , nodeView
-        , playsView
-        , HH.br_
-        , quotableView
-        ]
-    quotableView =
-      HH.div [ HP.class_ ( HH.ClassName "quoteable" )
-          -- , CSS.style do
-          --     fontSize $ px 20.0
-          --     backgroundColor orange
-          ]
-          ([ HH.samp_ [ HH.text $ dt <> "-" <> ttl ]
-          , HH.br_
-          , HH.samp_ [ HH.text "---" ]
-          , HH.br_
-          , HH.samp_ [ HH.text $ "date: " <> dtl ]
-          , HH.br_
-          , HH.samp_ [ HH.text ("title: " <> ttl) ]
-          , HH.br_
-          , HH.samp_ [ HH.text "---" ]
-          , HH.br_
-          , HH.samp_ [ HH.text ("### " <> a.albumArtist <> " – " <> a.albumTitle) ]
-          , HH.br_
-          , HH.samp_ [ HH.text ("[![](" <> a.albumCover <> ")][1] ") ]
-          , HH.br_
-          -- reference-style link to album page
-          , HH.br_
-          , HH.samp_ [ HH.text ("[1]: " <> a.albumURL) ]
-          ]
-          <> case a.albumAMusic of
-                  Nothing -> []
-                  Just amid ->  [ HH.br_
-                                , if S.take 2 amid == "l."
-                                    then HH.samp_ [ HH.text ("[2]: " <> "https://music.apple.com/library/albums/" <> amid) ]
-                                    else HH.samp_ [ HH.text ("[2]: " <> "https://music.apple.com/us/album/" <> amid) ]
-                                ]
-          <> case a.albumTidal of
-                  Nothing -> []
-                  Just tid ->  [ HH.br_
-                                , HH.samp_ [ HH.text ("[3]: " <> "https://listen.tidal.com/album/" <> tid) ]
-                                ]
-          -- icon with link to album page
-          <> [ HH.br_
-              , HH.br_
-              ]
-          <> case a.albumAMusic of
-                  Nothing -> []
-                  Just _ -> [ HH.samp_ [ HH.text "[![[attachments/am-is.png]]][2]"  ]
-                            ]
-          <> case a.albumTidal of
-                  Nothing -> []
-                  Just _ -> [ HH.samp_ [ HH.text "[![[attachments/tidal-is.png]]][3]" ] ]
-          -- embeded player for album
-          <> [ HH.br_ ]
-          <> case a.albumAMusic of
-                  Nothing -> []
-                  Just amid -> [ HH.br_
-                                , HH.samp_ [ HH.text $ "<iframe allow=\"autoplay *; encrypted-media *; fullscreen *\" frameborder=\"0\" height=\"450\" style=\"width:100%;max-width:660px;overflow:hidden;background:transparent;\" sandbox=\"allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation\" src=\"https://embed.music.apple.com/us/album/turn-blue/" <> amid <> "\"></iframe>" ]
-                                ]
-          <> case a.albumTidal of
-                  Nothing -> []
-                  Just tid -> [ HH.br_
-                              , HH.samp_ [ HH.text $ "<div style=\"position: relative; padding-bottom: 100%; height: 0; overflow: hidden; max-width: 100%;\"><iframe src=\"https://embed.tidal.com/albums/" <> tid <> "?layout=gridify\" frameborder= \"0\" allowfullscreen style=\"position: absolute; top: 0; left: 0; width: 100%; height: 1px; min-height: 100%; margin: 0 auto;\"></iframe></div>" ]
-                  ]
+        <> (case a.albumAMusic of
+              Just am | am /= "" -> ext (appleWeb am) "Apple Music"
+              _ -> [])
+        <> (case a.albumJellyfin of
+              Just j | j /= "" -> ext ("http://usrv.local:8096/web/#/details?id=" <> j) "Jellyfin"
+              _ -> [])
 
-          )
+    -- every play from the log, newest first, with a bar per year
+    playYears = mapMaybe (fromString <<< S.take 4) a.albumListenedDates
+    yearNow = fromMaybe 0 (fromString (fromRight "" (formatDateTime "YYYY" now)))
+    playsView =
+      HH.div [ cls "album-plays av-plays" ] $
+        [ HH.h3_ [ HH.text "Play history" ] ] <>
+        case a.albumListenedDates of
+          [] -> [ HH.p_ [ HH.text (if early then "Played before the log began." else "Not played yet.") ] ]
+          ds -> [ HH.p_ [ HH.text $ "Played " <> show np <> (if np == 1 then " time" else " times")
+                                    <> (if early then ", and before the log began" else "") ]
+                , yearsView
+                , HH.ul_ (map (\d -> HH.li_ [ HH.text $ replaceAll (Pattern "T") (Replacement " ") (S.take 16 d) ]) ds)
+                ]
+    yearsView =
+      let first = fromMaybe yearNow (minimum playYears)
+          ys = range first (max first yearNow)
+          count y = length (filter (_ == y) playYears)
+          mx = max 1 (fromMaybe 1 (maximum (map count ys)))
+          bar y =
+            let n = count y
+                h = if n == 0 then 2 else 8 + (26 * n) / mx
+            in HH.div [ cls "av-year", HP.title (show y <> ": " <> show n) ]
+                 [ HH.i [ cls (if n == 0 then "z" else "n"), HP.style ("height:" <> show h <> "px") ] []
+                 , HH.text (S.drop 2 (show y))
+                 ]
+      in HH.div [ cls "av-years" ] (map bar ys)
 
 --L.div_ [L.class_ "login-message"] $ do
 -- L.p_ $ "Tidal Album <" <> show (albumID a) <> ">."

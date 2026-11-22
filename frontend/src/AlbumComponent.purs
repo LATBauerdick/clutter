@@ -111,6 +111,11 @@ handleAction = case _ of
     -- H.liftEffect $ Event.preventDefault event
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
+  ShowFocus tag -> do
+    -- from the album view: all albums with this tag (a genre chip, a tag)
+    let alist = AlbumList (Just "All")
+    H.modify_ _ { listName = alist, loading = true, menu { ln = "All", ffs = [ Tuple tag true ] } }
+    updateAlbumList
   AlbumPlayed aid -> do
     H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
@@ -123,11 +128,11 @@ handleAction = case _ of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
     H.modify_ _ { album = am, now = now, loading = false, result = Just r }
-  NodePlay tid -> do
+  NodePlay tid mode -> do
     -- the album view stays; only the status line under the button changes
     H.modify_ _ { nodeMsg = Just "Node: starting…" }
     api <- H.gets _.apiUrl
-    r <- H.liftAff $ getUrl (api <> "nodeplay/" <> tid)
+    r <- H.liftAff $ getUrl (api <> "nodeplay/" <> tid <> "?mode=" <> mode)
     let msg = case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String } of
                 Right { reqInfo: i } -> i
                 Left _ -> r

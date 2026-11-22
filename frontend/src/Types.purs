@@ -131,7 +131,8 @@ data Action = ToggleSortOrder
             | ShowListSort AlbumList String SortOrder
             | ShowAlbum String
             | AlbumPlayed String
-            | NodePlay String -- Tidal album id: play it on the Bluesound Node
+            | NodePlay String String -- Tidal album id, mode (replace|now|next|last): play it on the Bluesound Node
+            | ShowFocus String -- a tag: show all albums that carry it
             | NodeCtl String -- toggle | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
