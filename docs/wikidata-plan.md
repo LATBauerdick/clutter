@@ -1,8 +1,11 @@
 # Wikipedia and AllMusic links via Wikidata — plan
 
-Status: **phases 1 and 2 done** (2026-11-21): `scripts/update-wikidata.py`, run by
+Status: **phases 1–3 done**. Phases 1–2 (2026-11-21): `scripts/update-wikidata.py`, run by
 `update-json` (both modes). Fills: 3,574 Discogs keys in 18 queries, then 7,257 Tidal/Apple keys
-in 37, no rate limiting.
+in 37, no rate limiting. Phase 3 (2026-11-22): `src/Wikidata.hs`; `/api/albumq/…` carries
+`albumWikiKeys`, `albumWiki`, `albumAllMusic` and `albumArtists` — checked on a Discogs album
+(U.F.O.F.), a Tidal-only album (Offset, *Father of 4*) and two classical Tidal albums whose
+artists were matched by name (Pletnev, Wiener Philharmoniker). Next: phase 4, the frontend.
 
 | key | keys | Wikidata | enwiki | dewiki | AllMusic |
 |---|---|---|---|---|---|
@@ -138,11 +141,25 @@ their links line, and each artist's (decision 3).
 |---|---|---|
 | 1 ✅ | script + store for Discogs masters and artists | store filled; coverage report matches the sample |
 | 2 ✅ | Tidal side: Tidal artists, Tidal and Apple albums | report per key type |
-| 3 | server: parse artist ids, load store, extend `Album` JSON | `/api/albumq/…` carries the links |
+| 3 ✅ | server: parse artist ids, load store, extend `Album` JSON | `/api/albumq/…` carries the links |
 | 4 | frontend links line, with fallback search links if wanted | visible on a Discogs, a Tidal-only and a classical album |
 | 5 | Wikipedia links in the Day One and Obsidian entries | a new play's entry carries them |
 
 Phase 1 alone is useful to judge the data before any Haskell work.
+
+### As built (phase 3)
+
+- `Release` carries `dartistids` (store keys parallel to `dartists`: `da:`, `ta:`, `""` for Apple
+  and the Discogs placeholder artists) and `dmaster` (`master_id`, 0 → `Nothing`).
+- `Album` gets `albumWikiKeys` (best first: `dm`, `t`, `a`; a Discogs release with a `T…`/`A…`
+  location note gets those too), `albumWiki`, `albumAllMusic` (full URLs) and
+  `albumArtists :: [ArtistRef]` (`arName` without the Discogs `(n)` suffix, `arKey`, `arWiki`,
+  `arAllMusic`). Each link field takes the first key that has it.
+- An artist with no link of its own takes the entry of the linked Discogs artist with the same
+  case-folded display name, if exactly one has that name.
+- `Wikidata.attachWiki` runs at `envInit` and again in `withPlays` (via the `Env` field
+  `wikiLinks`), so albums added later (Tidal reconnect, made-up play albums) get links too. The
+  store is read once at start; after `update-wikidata.py` restart the server.
 
 ## Decisions (LATB, 2026-11-21)
 

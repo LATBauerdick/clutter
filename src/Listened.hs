@@ -34,7 +34,7 @@ import Relude
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (takeExtension, (</>))
 import System.IO (SeekMode (..), hFileSize, hPutStrLn, hSeek)
-import Types (Album (..), AlbumKey (..), PlayEvent (..), TagFolder (..))
+import Types (Album (..), AlbumKey (..), ArtistRef (..), PlayEvent (..), TagFolder (..))
 
 keySource :: AlbumKey -> Text
 keySource k = case k of
@@ -236,4 +236,8 @@ playAlbum e =
     , albumPlays = 0
     , albumListenedDates = [peTs e]
     , albumFavoriteUntil = Nothing
+    , albumWikiKeys = catMaybes [("t:" <>) . show <$> peTidal e, ("a:" <>) . show <$> peApple e]
+    , albumWiki = Nothing
+    , albumAllMusic = Nothing
+    , albumArtists = [ArtistRef{arName = peArtist e, arKey = "", arWiki = Nothing, arAllMusic = Nothing}]
     }

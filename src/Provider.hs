@@ -24,6 +24,7 @@ module Provider (
 where
 
 -- import Data.Text.Encoding ( decodeUtf8 )
+import qualified Data.Char as Ch
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -41,10 +42,12 @@ import qualified FromDiscogs as FD (
  )
 import qualified FromTidal as FT (readTidalReleases, readTidalReleasesCache, readTidalStore, tidalStorePath)
 import System.Directory (doesFileExist)
+import qualified Wikidata as W (displayName)
 import Relude
 import Types (
   AMusic (..),
   Album (..),
+  ArtistRef (..),
   AlbumKey (..),
   AppM,
   Discogs (..),
@@ -87,9 +90,28 @@ dToAlbum r =
     (dplays r)
     [] -- albumListenedDates, from the play log (Listened.attachPlays)
     Nothing -- albumFavoriteUntil
+    (wikiKeys r) -- albumWikiKeys
+    Nothing -- albumWiki, from wikidata.json (Wikidata.attachWiki)
+    Nothing -- albumAllMusic
+    (artistRefs r) -- albumArtists
  where
 
   makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
+
+-- Wikidata store keys of a release, best first (docs/wikidata-plan.md): Discogs master, Tidal, Apple
+wikiKeys :: Release -> [Text]
+wikiKeys r =
+  catMaybes
+    [ ("dm:" <>) . show <$> dmaster r
+    , ("t:" <>) <$> mfilter (not . T.null) (dtidalid r)
+    , ("a:" <>) <$> mfilter (T.all Ch.isDigit) (mfilter (not . T.null) (damid r))
+    ]
+
+-- the release's artists, links still empty
+artistRefs :: Release -> [ArtistRef]
+artistRefs r = zipWith ref (dartists r) (dartistids r <> repeat "")
+ where
+  ref n k = ArtistRef{arName = W.displayName n, arKey = k, arWiki = Nothing, arAllMusic = Nothing}
 
 -- Discogs lists hold Discogs releases
 readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector AlbumKey))
@@ -297,6 +319,10 @@ readTidalAlbums p = do
         0
         [] -- albumListenedDates, from the play log
         (dfavuntil r) -- albumFavoriteUntil
+        (wikiKeys r) -- albumWikiKeys
+        Nothing -- albumWiki, from wikidata.json (Wikidata.attachWiki)
+        Nothing -- albumAllMusic
+        (artistRefs r) -- albumArtists
   -- clutter's Tidal album store holds every album that was ever a favourite or was played;
   -- without it, the favourites dump as before
   store <- FT.tidalStorePath
@@ -338,6 +364,10 @@ readAMusicAlbums p = do
         0
         [] -- albumListenedDates, from the play log
         (dfavuntil r) -- albumFavoriteUntil
+        (wikiKeys r) -- albumWikiKeys
+        Nothing -- albumWiki, from wikidata.json (Wikidata.attachWiki)
+        Nothing -- albumAllMusic
+        (artistRefs r) -- albumArtists
   ds <- FA.readAMusicReleases (getAMusic p)
   let as = toAlbum <$> ds
   -- print as

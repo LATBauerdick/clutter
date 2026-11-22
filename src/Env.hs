@@ -47,6 +47,7 @@ import Provider (
   updateTidalFolderAids,
  )
 
+import Wikidata (attachWiki, readWikiStore)
 import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
 import System.IO (hPutStrLn)
@@ -334,7 +335,9 @@ envInit c = do
   ldir <- listenedDir
   plays' <- readPlays ldir
   hPutStrLn stderr $ "read " <> show (length plays') <> " plays from " <> ldir
-  let albums' = linkTidalTags (attachPlays plays' albums'')
+  -- Wikipedia/AllMusic links (docs/wikidata-plan.md), also re-attached by withPlays
+  wstore <- readWikiStore
+  let albums' = attachWiki wstore (linkTidalTags (attachPlays plays' albums''))
 
   -- create the Tags index
   putTextLn "----------------------envInit: Updating Tags index"
@@ -415,6 +418,7 @@ envInit c = do
       , getList = getList'
       , sorts = V.fromList $ M.keys sfs
       , getSort = \am sn -> fromMaybe sDef (M.lookup sn sfs) am
+      , wikiLinks = attachWiki wstore
       }
 
 --
@@ -541,7 +545,8 @@ envUpdateSort msb mso = do
 withPlays :: Map AlbumKey Album -> AppM (Map AlbumKey Album)
 withPlays am = do
   es <- asks playsR >>= readIORef
-  pure (linkTidalTags (attachPlays es am))
+  wl <- asks wikiLinks
+  pure (wl (linkTidalTags (attachPlays es am)))
 
 -- re-attach the play dates to all albums, after a play was logged
 envRefreshPlays :: AppM ()

@@ -225,6 +225,8 @@ getReleases t = getRelease <$> tis
         , dinst = 0
         , dtitle = ttitle
         , dartists = as
+        , dartistids = (\WTArtist{id = i} -> "ta:" <> show i) <$> tartists
+        , dmaster = Nothing
         , dreleased = treleased
         , dadded = tcreated
         , dcover = tcover
@@ -293,6 +295,8 @@ readTidalStore fn = do
         , dinst = 0
         , dtitle = ttitle
         , dartists = (\WTArtist{name = n} -> n) <$> tartists
+        , dartistids = (\WTArtist{id = i} -> "ta:" <> show i) <$> tartists
+        , dmaster = Nothing
         , dreleased = treleased
         , dadded = maybe "" favSince fav
         , dcover = tcover

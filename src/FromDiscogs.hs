@@ -117,6 +117,7 @@ data WBasicInfo = WBasicInfo
     year :: Int,
     cover_image :: !Text,
     artists :: [WArtist],
+    master_id :: Maybe Int,
     formats :: [WFormat],
     genres :: [Text],
     styles :: [Text]
@@ -380,10 +381,12 @@ getR lns dr = r
         folder_id,
         rating,
         basic_information =
-          WBasicInfo {title, year, cover_image, artists, formats, genres, styles},
+          WBasicInfo {title, year, cover_image, artists, master_id, formats, genres, styles},
         notes
       } = dr
     as = (\WArtist {name = n} -> n) <$> artists
+    -- Wikidata store keys; Various, Unknown Artist, No Artist have none
+    aids = (\WArtist {id = i} -> if i `elem` [0, 194, 355, 118760] then "" else "da:" <> show i) <$> artists
     nts :: Maybe Text -- Notes field
     nts = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 3 then Nothing else Just v) $ notes of
       Just a -> if a /= "" then Just a else Nothing
@@ -567,6 +570,8 @@ getR lns dr = r
           dinst = instance_id,
           dtitle = title,
           dartists = as,
+          dartistids = aids,
+          dmaster = mfilter (> 0) master_id,
           dreleased = show year,
           dadded = date_added,
           dcover = cover_image,

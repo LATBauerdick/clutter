@@ -33,6 +33,10 @@ album =
     , albumPlays = 2
     , albumListenedDates = []
     , albumFavoriteUntil = Nothing
+    , albumWikiKeys = []
+    , albumWiki = Nothing
+    , albumAllMusic = Nothing
+    , albumArtists = []
     }
 
 tidalAlbum :: Album

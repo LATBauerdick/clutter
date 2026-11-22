@@ -12,6 +12,7 @@ module Types (
   AMusicInfo (..),
   Release (..),
   Album (..),
+  ArtistRef (..),
   AlbumKey (..),
   keyText,
   parseKey,
@@ -129,6 +130,7 @@ data Env = Env
   , url :: Text
   , getList :: Text -> AppM (Vector AlbumKey)
   , getSort :: Map AlbumKey Album -> Text -> (SortOrder -> Vector AlbumKey -> Vector AlbumKey)
+  , wikiLinks :: Map AlbumKey Album -> Map AlbumKey Album -- Wikidata.attachWiki with the store read at start
   }
 instance Show Env where
   show :: Env -> String
@@ -176,6 +178,8 @@ data Release = Release
   , dinst :: Int
   , dtitle :: !Text
   , dartists :: [Text]
+  , dartistids :: [Text] -- Wikidata store keys, parallel to dartists: "da:<id>", "ta:<id>", "" if none
+  , dmaster :: Maybe Int -- Discogs master id
   , dreleased :: !Text
   , dadded :: !Text
   , dcover :: !Text
@@ -216,8 +220,23 @@ data Album = Album
   , albumPlays :: Int -- Discogs collection field 7 "Plays"
   , albumListenedDates :: [Text] -- play times from clutter's play log, newest first
   , albumFavoriteUntil :: Maybe Text -- removed from the Tidal collection: when
+  , albumWikiKeys :: [Text] -- Wikidata store keys of the album, best first: "dm:<id>", "t:<id>", "a:<id>"
+  , albumWiki :: Maybe Text -- Wikipedia page (English, else German), from wikidata.json
+  , albumAllMusic :: Maybe Text -- AllMusic page
+  , albumArtists :: [ArtistRef] -- one per artist, with its links
   }
   deriving (Show, Generic)
+
+-- an album's artist, with links from wikidata.json (Wikidata.attachWiki)
+data ArtistRef = ArtistRef
+  { arName :: Text -- display name, without the Discogs "(n)" suffix
+  , arKey :: Text -- Wikidata store key, "da:<id>" or "ta:<id>", "" if none
+  , arWiki :: Maybe Text
+  , arAllMusic :: Maybe Text
+  }
+  deriving (Show, Generic)
+instance ToJSON ArtistRef
+
 instance Eq Album where
   (==) a b = albumID a == albumID b
 instance ToJSON Album
