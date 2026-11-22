@@ -1,4 +1,14 @@
 
+# ./update-json          everything: Discogs collection, folders, lists, wants, then Tidal
+# ./update-json --tidal  Tidal only: favourites (cache/traw.json) and the album store,
+#                        incl. the Apple Music lookup by UPC for albums not yet checked
+TIDAL_ONLY=
+case "${1:-}" in
+    --tidal) TIDAL_ONLY=1 ;;
+    "") ;;
+    *) echo "usage: ./update-json [--tidal]" >&2; exit 2 ;;
+esac
+
 # fresh Tidal token first (silent refresh; prints a login link only if the session is gone)
 ./tidalauth || echo "tidalauth failed -- Tidal fetch will use the old token" >&2
 
@@ -20,6 +30,7 @@ TDT=$(jq -r '.tdt' ../tok.json)
 #TCC=$(sed '8!d' ../tok.dat)
 #TDT=$(sed '9!d' ../tok.dat)
 
+if [ -z "$TIDAL_ONLY" ]; then
 echo $TOK
 echo $USR
 echo $JKY
@@ -43,6 +54,7 @@ for i in $(cat all-list-ids); do curl "https://api.discogs.com/lists/$i" -H "Aut
 
 # Want list
 curl "https://api.discogs.com/users/$USR/wants?page=1&per_page=500" -H "Authorization: Discogs token=$TOK" > wants1.json
+fi
 
 # Tidal
 curl -H "Authorization: Bearer $TDT"  "https://api.tidalhifi.com/v1/users/$TID/favorites/albums/?countryCode=$TCC&limit=9999"  > traw.json
