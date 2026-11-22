@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 #
-# Phase 1 of docs/wikidata-plan.md: Wikipedia and AllMusic links via Wikidata.
+# Phases 1 and 2 of docs/wikidata-plan.md: Wikipedia and AllMusic links via Wikidata.
 #
 # Keeps ~/Sync/clutter/wikidata.json (CLUTTER_WIKIDATA overrides): for each Discogs master
-# and each Discogs artist of the collection (cache/draw*.json), the Wikidata item, its
+# and artist of the collection (cache/draw*.json), and each album, its Apple Music album and
+# its artists in the Tidal album store (~/Sync/clutter/tidal-albums.json), the Wikidata item, its
 # English and German Wikipedia pages and its AllMusic id. A key that Wikidata does not know
 # is kept as {checked} only. A regular run asks only new keys; rechecks are by hand
 # (LATB, 2026-11-21), and every run reminds once misses are REMIND_DAYS old.
 #
-# Sends only public Discogs ids to query.wikidata.org, 200 per query. Honours 429 with
+# Sends only public Discogs, Tidal and Apple ids to query.wikidata.org, 200 per query. Honours 429 with
 # Retry-After (WDQS sometimes limits to 1 query a minute), and saves after every batch, so an
 # interrupted run keeps what it got.
 #
@@ -34,6 +35,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOME = os.path.expanduser("~")
 STORE = os.environ.get("CLUTTER_WIKIDATA") or os.path.join(HOME, "Sync", "clutter", "wikidata.json")
 CACHE = os.path.join(HERE, "cache")
+TIDAL_STORE = os.environ.get("CLUTTER_TIDAL_ALBUMS") or os.path.join(HOME, "Sync", "clutter", "tidal-albums.json")
 SPARQL = "https://query.wikidata.org/sparql"
 UA = "clutter/0.1 (personal music catalogue; stdlib urllib)"
 BATCH = 200
@@ -45,6 +47,9 @@ SKIP_ARTISTS = {0, 194, 355, 118760}
 KINDS = {
     "dm": ("P1954", "P1729", "albums"),   # Discogs master -> AllMusic album
     "da": ("P1953", "P1728", "artists"),  # Discogs artist -> AllMusic artist
+    "t": ("P4577", "P1729", "albums"),    # Tidal album -> AllMusic album
+    "a": ("P2281", "P1729", "albums"),    # Apple Music album -> AllMusic album
+    "ta": ("P4576", "P1728", "artists"),  # Tidal artist -> AllMusic artist
 }
 
 
@@ -62,8 +67,27 @@ def read_collection():
     return rel
 
 
-def wanted_keys(rel):
+def read_tidal_store():
+    try:
+        return json.load(open(TIDAL_STORE, encoding="utf-8")).get("albums", {})
+    except (OSError, ValueError) as e:
+        log(f"Tidal store: {e}")
+        return {}
+
+
+def wanted_keys(rel, tidal):
     keys = set()
+    for tid, e in tidal.items():
+        al = e.get("album")
+        if not al:
+            continue
+        keys.add(f"t:{tid}")
+        aid = (e.get("apple") or {}).get("id")
+        if aid:
+            keys.add(f"a:{aid}")
+        for a in al.get("artists") or [al.get("artist") or {}]:
+            if a.get("id"):
+                keys.add(f"ta:{a['id']}")
     for b in rel:
         if b.get("master_id"):
             keys.add(f"dm:{b['master_id']}")
@@ -170,14 +194,15 @@ def main():
             store.setdefault(s, {})
 
     rel = read_collection()
-    if not rel:
-        log("no collection in cache/draw*.json -- nothing to do")
+    tidal = read_tidal_store()
+    if not rel and not tidal:
+        log("no collection in cache/draw*.json and no Tidal store -- nothing to do")
         return
-    keys = wanted_keys(rel)
+    keys = wanted_keys(rel, tidal)
     todo = sorted(k for k in keys if due(store[KINDS[k.split(":")[0]][2]].get(k), a.recheck))
     if a.limit:
         todo = todo[: a.limit]
-    log(f"{len(rel)} releases, {len(keys)} keys, {len(todo)} due")
+    log(f"{len(rel)} releases, {len(tidal)} Tidal albums, {len(keys)} keys, {len(todo)} due")
     if a.dry_run or not todo:
         remind(store, keys, today)
         return

@@ -1,15 +1,27 @@
 # Wikipedia and AllMusic links via Wikidata — plan
 
-Status: **phase 1 done** (2026-11-21): `scripts/update-wikidata.py`, run by `update-json` (full
-mode). First fill: 3,574 keys in 18 queries, no rate limiting.
+Status: **phases 1 and 2 done** (2026-11-21): `scripts/update-wikidata.py`, run by
+`update-json` (both modes). Fills: 3,574 Discogs keys in 18 queries, then 7,257 Tidal/Apple keys
+in 37, no rate limiting.
 
 | key | keys | Wikidata | enwiki | dewiki | AllMusic |
 |---|---|---|---|---|---|
 | Discogs master (`dm`) | 1,786 | 552 | 536 | 290 | 401 |
 | Discogs artist (`da`) | 1,788 | 1,571 | 1,459 | 1,267 | 1,347 |
+| Tidal album (`t`) | 2,806 | 150 | 148 | 74 | 145 |
+| Apple album (`a`) | 2,272 | 148 | 147 | 70 | 140 |
+| Tidal artist (`ta`) | 2,179 | 1,247 | 1,212 | 1,019 | 1,111 |
 
-Per release (2,037): 580 get an album link, 1,975 at least one artist link, 1,980 any link
-(97 %). A rerun asks nothing until misses are 180 days old.
+- Per Discogs release (2,037): 580 get an album link, 1,975 at least one artist link, 1,980 any
+  link (97 %).
+- Per Tidal-only album (2,714, not linked from a Discogs release): 174 an album link, 1,874 an
+  artist link, 1,887 any link (70 %); classical 318 of 581 (55 %).
+- Tidal artist ids are thinner in Wikidata (57 %) than Discogs artist ids (88 %). Of the 1,269
+  Tidal artist slots without a link, 213 match a linked Discogs artist by name (Discogs `(n)`
+  suffix stripped, case-folded): phase 3 does that match when it attaches links. The rest get
+  search links (decision 2).
+- Apple album ids add almost nothing over Tidal album ids (the same albums), but cost nothing.
+- A rerun asks only new keys; rechecks by hand (`--recheck`).
 
 Decisions are at the end.
 
@@ -124,8 +136,8 @@ their links line, and each artist's (decision 3).
 
 | phase | content | done when |
 |---|---|---|
-| 1 | script + store for Discogs masters and artists | store filled; coverage report matches the sample |
-| 2 | Tidal side: measure P4576 / P2281, then add Tidal artists, Tidal and Apple albums | report per key type |
+| 1 ✅ | script + store for Discogs masters and artists | store filled; coverage report matches the sample |
+| 2 ✅ | Tidal side: Tidal artists, Tidal and Apple albums | report per key type |
 | 3 | server: parse artist ids, load store, extend `Album` JSON | `/api/albumq/…` carries the links |
 | 4 | frontend links line, with fallback search links if wanted | visible on a Discogs, a Tidal-only and a classical album |
 | 5 | Wikipedia links in the Day One and Obsidian entries | a new play's entry carries them |
