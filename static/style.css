@@ -615,3 +615,12 @@ a:active {
   visibility: visible;
 }
 
+
+/* Wikipedia/AllMusic links in the album view (Wikidata, phase 4) */
+.wiki-links {
+  line-height: 1.6;
+}
+.wiki-links a.wiki-search {
+  opacity: 0.45;
+  font-style: italic;
+}

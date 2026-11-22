@@ -1,11 +1,15 @@
 # Wikipedia and AllMusic links via Wikidata — plan
 
-Status: **phases 1–3 done**. Phases 1–2 (2026-11-21): `scripts/update-wikidata.py`, run by
+Status: **phases 1–4 done**; phase 5 (Day One/Obsidian) is next. Phases 1–2 (2026-11-21): `scripts/update-wikidata.py`, run by
 `update-json` (both modes). Fills: 3,574 Discogs keys in 18 queries, then 7,257 Tidal/Apple keys
 in 37, no rate limiting. Phase 3 (2026-11-22): `src/Wikidata.hs`; `/api/albumq/…` carries
 `albumWikiKeys`, `albumWiki`, `albumAllMusic` and `albumArtists` — checked on a Discogs album
 (U.F.O.F.), a Tidal-only album (Offset, *Father of 4*) and two classical Tidal albums whose
-artists were matched by name (Pletnev, Wiener Philharmoniker). Next: phase 4, the frontend.
+artists were matched by name (Pletnev, Wiener Philharmoniker). Phase 4 (2026-11-22): the album
+view (`Render.purs` `wikiView`, both the Discogs and the stream view) shows
+`Album: Wikipedia · AllMusic — <artist>: Wikipedia · AllMusic …`; missing links are search links,
+dimmed and italic (`.wiki-search` in `static/style.css`). Checked in headless Chrome on U.F.O.F.
+and the Pletnev Beethoven album.
 
 | key | keys | Wikidata | enwiki | dewiki | AllMusic |
 |---|---|---|---|---|---|
@@ -142,7 +146,7 @@ their links line, and each artist's (decision 3).
 | 1 ✅ | script + store for Discogs masters and artists | store filled; coverage report matches the sample |
 | 2 ✅ | Tidal side: Tidal artists, Tidal and Apple albums | report per key type |
 | 3 ✅ | server: parse artist ids, load store, extend `Album` JSON | `/api/albumq/…` carries the links |
-| 4 | frontend links line, with fallback search links if wanted | visible on a Discogs, a Tidal-only and a classical album |
+| 4 ✅ | frontend links line, with fallback search links if wanted | visible on a Discogs, a Tidal-only and a classical album |
 | 5 | Wikipedia links in the Day One and Obsidian entries | a new play's entry carries them |
 
 Phase 1 alone is useful to judge the data before any Haskell work.

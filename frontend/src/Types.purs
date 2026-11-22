@@ -1,4 +1,5 @@
 module Types  ( Album
+              , ArtistRef
               , AlbumJ
               , AlbumsJ
               , ListenedJ
@@ -61,8 +62,18 @@ type Album =      { albumID :: String
                   , albumRating :: Int
                   , albumReleased :: String
                   , albumFavoriteUntil :: Maybe String -- removed from the Tidal collection: when
+                  -- Wikipedia/AllMusic links from wikidata.json (backend Wikidata.hs); Maybe, so
+                  -- an older backend without them still decodes
+                  , albumWiki :: Maybe String
+                  , albumAllMusic :: Maybe String
+                  , albumArtists :: Maybe (Array ArtistRef)
                   , albumShelf :: Maybe (Tuple String Int)
                   , albumPlayedAt :: Maybe String -- set in the Listened views: the time of this play
+                  }
+type ArtistRef =  { arName :: String -- without the Discogs "(n)" suffix
+                  , arKey :: String
+                  , arWiki :: Maybe String
+                  , arAllMusic :: Maybe String
                   }
 type AlbumJ =     { aid :: String
                   , album :: Album

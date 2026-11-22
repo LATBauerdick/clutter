@@ -10,7 +10,7 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, intercalate)
+import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, intercalate, filter)
 import Halogen as H
 import Halogen.HTML as HH
 -- import Halogen.HTML.CSS as HC
@@ -155,6 +155,7 @@ render state = do
         , HH.p_ [HH.text ("Title: "  <> a.albumTitle)]
         , HH.p_ [HH.text ("Artist: " <> a.albumArtist)]
         , HH.p_ [HH.text ("Year: "   <> a.albumReleased)]
+        , wikiView
         , HH.br_
         , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
                     [ HH.text " Album Played "]
@@ -174,6 +175,35 @@ render state = do
           ] <> case state.nodeMsg of
                  Just m -> [ HH.text (" " <> m) ]
                  Nothing -> []
+    -- Wikipedia and AllMusic for the album and each artist (docs/wikidata-plan.md, phase 4);
+    -- where Wikidata had nothing, a dimmed search link instead
+    wikiView =
+      let artists = fromMaybe [] a.albumArtists
+          firstArtist = maybe a.albumArtist _.arName (head artists)
+          link cls tip url txt = HH.a [ HP.href url, HP.class_ (HH.ClassName cls), HP.title tip, HP.target "_blank" ] [ HH.text txt ]
+          found url txt = link "wiki-link" url url txt
+          search url txt = link "wiki-search" "nothing in Wikidata: search" url txt
+          wpSearch q = "https://en.wikipedia.org/w/index.php?search=" <> enc q
+          amSearch kind q = "https://www.allmusic.com/search/" <> kind <> "/" <> enc q
+          pair w am wq amq =
+            [ maybe (search (wpSearch wq) "Wikipedia") (\u -> found u "Wikipedia") w
+            , HH.text " · "
+            , maybe (search amq "AllMusic") (\u -> found u "AllMusic") am
+            ]
+          albumQ = firstArtist <> " " <> a.albumTitle
+          albumGroup = [ HH.text "Album: " ] <> pair a.albumWiki a.albumAllMusic albumQ (amSearch "albums" albumQ)
+          artistGroup r = [ HH.text (r.arName <> ": ") ] <> pair r.arWiki r.arAllMusic r.arName (amSearch "artists" r.arName)
+      in
+      HH.p [ HP.class_ (HH.ClassName "wiki-links") ] $
+        intercalate [ HH.text "  —  " ] ([ albumGroup ] <> map artistGroup (filter (\r -> r.arName /= "") artists))
+    -- enough URL encoding for a search term
+    enc = replaceAll (Pattern " ") (Replacement "+")
+        <<< replaceAll (Pattern "/") (Replacement "%2F")
+        <<< replaceAll (Pattern "?") (Replacement "%3F")
+        <<< replaceAll (Pattern "#") (Replacement "%23")
+        <<< replaceAll (Pattern "&") (Replacement "%26")
+        <<< replaceAll (Pattern "+") (Replacement "%2B")
+        <<< replaceAll (Pattern "%") (Replacement "%25")
     -- every play from the log, newest first
     playsView =
       HH.div [ HP.class_ $ HH.ClassName "album-plays" ] $
@@ -226,6 +256,7 @@ render state = do
               _ -> [])
             <> [ [ HH.a [ HP.href ("https://www.discogs.com/search/?q=" <> qry <> "&type=all") ]
                         [ HH.text "find on Discogs" ] ] ]
+        , wikiView
         , HH.br_
         , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
                     [ HH.text " Album Played "]
