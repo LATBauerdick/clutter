@@ -18,7 +18,25 @@ longest not played (12). A Tidal/Apple album that a Discogs release links to is 
 duplicate. The frontend asks for the details after the album (`loadDetail`), shows Length /
 Quality / Label rows, the full date, style chips and the three strips; against a backend without
 the endpoint it shows the phase 0 page. Checked on the same two albums on 8082. Not in phase 1:
-an artist link to a clutter list. Phases 2–4 open. Mockup: `docs/album-page-mockup.html` (open in a
+an artist link to a clutter list.
+**Phase 2 built** (2026-11-22, uncommitted): `GET /api/albumtq/:id[?refresh=1]` → `{tjId,
+tjTracks, tjError}`; `src/Tracks.hs` fetches on demand and caches per album in
+`~/Sync/clutter/album-details/<key>.json` (`CLUTTER_ALBUM_DETAILS` overrides). Source (LATB,
+2026-11-22: **physical media show the Discogs release, Tidal only when asked**): a Discogs key →
+the Discogs release (tracklist with headings and index sub-tracks, `extraartists`), with the
+review from its linked Tidal album; `?source=tidal` (the "Tidal version" switch in the Tracks
+header, off again with each album) → that Tidal album's tracks, cached as `<key>-tidal.json`. A
+stream (Tidal key) → Tidal (one call, `albums/{id}/items/credits`, gives tracks and per-track
+credits; plus `albums/{id}/review`). Tokens are read from `tok.json` at fetch time; on a Tidal 401 the
+server runs `./tidalauth` once and retries (that path is not tested). Probe 2026-11-22: Tidal's
+review is **TiVo's text, the one Roon shows** (Geese yes, the Volodos album 404); `albums/{id}/similar`
+is 404 for both test albums; `artists/{id}/albums`, `artists/{id}/similar` and `artists/{id}/bio`
+(TiVo) answer. The page shows, in the main column: the review (four lines, more/less, folded again
+with each album), Tracks (works grouped from "Work: Movement" titles, discs, `↻` refresh), Credits
+(folded), then play history. Checked on 8082: Geese D35208358 (Tidal, 0.2 s first, cache after),
+Volodos T124439542, D30818052, D4921592 (Discogs vinyl, no durations).
+Phase 3 changes: the about text is already there where Tidal has a review; Wikipedia leads remain
+for the albums without one. Phase 4 open (discography, similar artists). Mockup: `docs/album-page-mockup.html` (open in a
 browser; switch design, example album and phase at the top). Source: the six Roon screenshots in
 `docs/Screenshot 2026-11-22 at 10.*.png` (Geese, *Getting Killed*; Volodos, Schubert D. 959).
 

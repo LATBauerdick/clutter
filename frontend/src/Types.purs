@@ -4,6 +4,10 @@ module Types  ( Album
               , AlbumRef
               , Related
               , AlbumXJ
+              , Track
+              , Credit
+              , AlbumTracks
+              , AlbumTJ
               , AlbumJ
               , AlbumsJ
               , ListenedJ
@@ -106,6 +110,29 @@ type Related =    { relVersions :: Array AlbumRef
 type AlbumXJ =    { xid :: String
                   , xfacts :: AlbumFacts
                   , xrelated :: Related
+                  , xloc :: Maybe (Tuple String Int) -- location list and position in it
+                  }
+-- /api/albumtq: tracks, credits and review, fetched on demand and cached per album (backend Tracks.hs)
+type Track =      { tkDisc :: Int
+                  , tkPos :: String
+                  , tkWork :: Maybe String -- the work this track is a movement of
+                  , tkTitle :: String
+                  , tkSecs :: Maybe Int
+                  , tkArtists :: Array String
+                  }
+type Credit =     { crRole :: String
+                  , crNames :: Array String
+                  }
+type AlbumTracks = { atSource :: String -- tidal | discogs
+                   , atFetched :: String
+                   , atTracks :: Array Track
+                   , atCredits :: Array Credit
+                   , atReview :: Maybe String
+                   , atReviewSource :: Maybe String
+                   }
+type AlbumTJ =    { tjId :: String
+                  , tjTracks :: Maybe AlbumTracks
+                  , tjError :: String
                   }
 type AlbumJ =     { aid :: String
                   , album :: Album
@@ -131,6 +158,10 @@ type State =      { apiUrl :: String
                   , pos :: Int
                   , album :: Maybe Album
                   , albumX :: Maybe AlbumXJ -- details of that album, loaded after it
+                  , albumT :: Maybe AlbumTJ -- its tracks, credits and review, loaded last (may take a moment)
+                  , tracksLoading :: Boolean
+                  , tracksTidal :: Boolean -- a Discogs release: show its Tidal version's tracks; off again with each album
+                  , aboutOpen :: Boolean -- the review is shown in full; folded again with each album
                   , listName :: AlbumList
                   , albumList :: Array Album
                   , loading :: Boolean
@@ -177,6 +208,9 @@ data Action = ToggleSortOrder
             | NodeCtl String -- toggle | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
+            | ToggleAbout -- the review: all of it, or its first lines
+            | TracksSource Boolean -- a Discogs release: its own tracks (false) or the Tidal version's (true)
+            | RefreshTracks -- fetch the tracks, credits and review of the album again
             | Back -- the ‹ button: the same as the browser's Back
             | Forward -- the › button: the same as the browser's Forward
             | GoTo Int -- the browser moved to this history entry: show its view

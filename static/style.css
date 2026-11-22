@@ -665,6 +665,33 @@ a:active {
   margin: 14px 0 10px 0;
 }
 .av-artist { font-size: 21px; }
+/* where the physical album is */
+.av-loc {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 14px;
+  border: 0;
+  border-left: 4px solid #5b5bd6;
+  background: #e9ebfa;
+  color: #1d1d1f;
+  padding: 6px 13px 6px 10px;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.av-loc:hover { background: #d9dcf6; }
+.av-loc span { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: #5b5bd6; font-weight: 400; }
+/* in no location list */
+.av-loc-none, .av-loc-none:hover {
+  border-left-color: #b9b9c0;
+  background: #f1f1f3;
+  color: #6b6b70;
+  font-weight: 400;
+  cursor: default;
+}
+.av-loc-none span { color: #8a8a90; }
 .av-actions {
   display: flex;
   flex-wrap: wrap;
@@ -751,6 +778,47 @@ a:active {
 .av-year { flex: 0 0 26px; text-align: center; font-size: 10.5px; color: #6b6b70; }
 .av-year i { display: block; width: 70%; margin: 0 auto 2px auto; border-radius: 2px 2px 0 0; background: #5b5bd6; }
 .av-year i.z { background: #dcd8d0; }
+/* review, tracks and credits (phase 2) */
+.av-about { font-size: 16px; line-height: 1.6; margin-bottom: 34px; }
+.av-about-text { white-space: pre-line; } /* the review's paragraph breaks */
+.av-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+.av-about-more {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 6px 0 8px 0;
+  font-family: inherit;
+  font-size: 14px;
+  color: #5b5bd6;
+  cursor: pointer;
+}
+.av-credits summary { cursor: pointer; color: #5b5bd6; margin-bottom: 12px; }
+.av-src { font-size: 12px; color: #6b6b70; }
+.av-tracks { margin-bottom: 30px; }
+.av-tracks .av-sect-head { margin-bottom: 4px; }
+.av-note { color: #6b6b70; padding: 10px 0; }
+.av-trk {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 4px;
+  border-bottom: 1px solid #e6e2da;
+}
+.av-trk-n, .av-trk-d { color: #6b6b70; font-variant-numeric: tabular-nums; }
+.av-trk-n { text-align: right; }
+.av-trk-t small { display: block; color: #6b6b70; font-size: 12.5px; margin-top: 2px; }
+.av-mov { padding-left: 22px; }
+.av-work { font-weight: 600; padding: 14px 4px 4px 4px; }
+.av-disc { font-size: 12.5px; letter-spacing: .05em; text-transform: uppercase; color: #6b6b70; padding: 18px 4px 2px 4px; }
+.av-credits { margin-bottom: 34px; }
+.av-tag:disabled { opacity: .4; cursor: default; }
+
 /* album strips: other versions, more by the artist, similar albums */
 .av-sect { margin-top: 40px; }
 .av-sect-head {

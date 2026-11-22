@@ -8,7 +8,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple(..), fst, snd)
 import Data.Either (Either(..))
 import Data.Map as M
-import Data.String (contains, stripPrefix, length)
+import Data.String (contains, stripPrefix, length, joinWith)
 import Data.String.Pattern (Pattern(..))
 import Effect.Class.Console as Console
 import Data.Array (foldMap, zipWith, snoc, take, index, updateAt)
@@ -20,7 +20,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (Album, AlbumJ, AlbumXJ, AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..), View(..))
+import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..), View(..))
 import GetStuff (getUrl, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState)
 import Render (render)
 
@@ -80,7 +80,7 @@ handleAction = case _ of
   MakeRequest event -> do
     H.liftEffect $ Event.preventDefault event
     pushView
-    H.modify_ _ { listName = AlbumList Nothing, albumX = Nothing, loading = true }
+    H.modify_ _ { listName = AlbumList Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, tracksTidal = false, loading = true }
     albumID <- H.gets _.albumID
     now <- H.liftAff getNow
     api <- H.gets _.apiUrl
@@ -95,6 +95,12 @@ handleAction = case _ of
     loadDetail am
 
   ShowAlbum aid -> pushView *> showAlbum aid
+
+  ToggleAbout -> H.modify_ \st -> st { aboutOpen = not st.aboutOpen }
+  RefreshTracks -> loadTracks true
+  TracksSource tidal -> do
+    H.modify_ _ { tracksTidal = tidal }
+    loadTracks false
 
   Back -> H.liftEffect historyBack
   Forward -> H.liftEffect historyForward
@@ -130,7 +136,7 @@ handleAction = case _ of
     H.modify_ _ { listName = alist, loading = true, menu { ln = "All", ffs = [ Tuple tag true ] } }
     updateAlbumList
   AlbumPlayed aid -> do
-    H.modify_ _ { album = Nothing, albumX = Nothing, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -172,7 +178,7 @@ handleAction = case _ of
     H.liftAff $ Console.log msg
     H.modify_ _ { nodeMsg = Just msg }
   UpdateDiscogs -> do
-    H.modify_ _ { album = Nothing, albumX = Nothing, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -202,7 +208,7 @@ handleAction = case _ of
 
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
     showAlbum aid = do
-      H.modify_ _ { album = Nothing, albumX = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
+      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, tracksTidal = false, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
       now <- H.liftAff getNow
       H.liftAff $ Console.logShow now
       api <- H.gets _.apiUrl
@@ -227,6 +233,26 @@ handleAction = case _ of
         case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumXJ, cur of
           Right x, Just c | x.xid == c.albumID -> H.modify_ _ { albumX = Just x }
           _, _ -> pure unit
+        loadTracks false
+
+    -- tracks, credits and review: from the backend's per-album cache, or fetched by it
+    -- (refresh: fetched again)
+    loadTracks :: forall output' m'. MonadAff m' => Boolean -> H.HalogenM State Action () output' m' Unit
+    loadTracks refresh = do
+      am <- H.gets _.album
+      case am of
+        Nothing -> pure unit
+        Just a -> do
+          H.modify_ _ { tracksLoading = true }
+          api <- H.gets _.apiUrl
+          tidal <- H.gets _.tracksTidal
+          let qs = (if refresh then [ "refresh=1" ] else []) <> (if tidal then [ "source=tidal" ] else [])
+          r <- H.liftAff $ getUrl (api <> "albumtq/" <> a.albumID <> (if qs == [] then "" else "?" <> joinWith "&" qs))
+          cur <- H.gets _.album
+          case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumTJ, cur of
+            Right t, Just c | t.tjId == c.albumID -> H.modify_ _ { albumT = Just t, tracksLoading = false }
+            Right _, _ -> pure unit -- another album was opened meanwhile
+            Left _, _ -> H.modify_ _ { tracksLoading = false }
 
     updateAlbumList :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
     updateAlbumList = do

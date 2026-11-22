@@ -39,6 +39,7 @@ import Env (
  )
 import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
+import Tracks (AlbumTracks, albumTracks)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
@@ -194,9 +195,29 @@ data AlbumXJ = AlbumXJ
   { xid :: AlbumKey
   , xfacts :: AlbumFacts
   , xrelated :: Related
+  , xloc :: Maybe (Text, Int) -- where the physical album is: location list and position in it
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
+
+-- tracks, credits and review of an album (docs/album-page-plan.md, phase 2): fetched from
+-- Discogs (a physical release) or Tidal (a stream) when first asked for, then from the
+-- per-album cache; refresh=1 refetches, source=tidal asks for a release's Tidal version
+type API15 =
+  "api"
+    :> "albumtq"
+    :> Capture "aid" AlbumKey
+    :> QueryParam "refresh" Text
+    :> QueryParam "source" Text -- "tidal": the Tidal version of a Discogs release
+    :> Get '[JSON] AlbumTJ
+
+data AlbumTJ = AlbumTJ
+  { tjId :: AlbumKey
+  , tjTracks :: Maybe AlbumTracks
+  , tjError :: Text -- why there are none, "" otherwise
+  }
+  deriving (Show, Generic)
+instance ToJSON AlbumTJ
 
 data AlbumJ = AlbumJ
   { aid :: AlbumKey
@@ -254,6 +275,7 @@ type ClutterAPI =
     :<|> API12
     :<|> API13
     :<|> API14
+    :<|> API15
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -324,6 +346,7 @@ clutterServer sd =
     :<|> serveNodectl
     :<|> serveNodeinfo
     :<|> serveAlbumxq
+    :<|> serveAlbumtq
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -440,10 +463,22 @@ clutterServer sd =
   serveAlbumxq i = do
     am <- asks albumsR >>= readIORef
     facts <- asks albumFacts
+    lcs <- asks locsR >>= readIORef
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a}
+      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [], xrelated = noRelated}
+      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [], xrelated = noRelated, xloc = Nothing}
+
+  serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
+  serveAlbumtq i mrefresh msource = do
+    am <- asks albumsR >>= readIORef
+    case M.lookup i am of
+      Nothing -> pure AlbumTJ{tjId = i, tjTracks = Nothing, tjError = "not in the collection"}
+      Just a -> do
+        r <- liftIO $ albumTracks (isJust mrefresh) (msource == Just "tidal") a
+        pure $ case r of
+          Right t -> AlbumTJ{tjId = i, tjTracks = Just t, tjError = ""}
+          Left err -> AlbumTJ{tjId = i, tjTracks = Nothing, tjError = err}
 
   serveParamsq :: AppM ParamsJ
   serveParamsq = do

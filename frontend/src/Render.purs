@@ -10,8 +10,8 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null)
-import Data.Foldable (minimum, maximum, any)
+import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null, cons, any, nub)
+import Data.Foldable (minimum, maximum)
 import Data.Int (fromString)
 import Halogen as H
 import Halogen.HTML as HH
@@ -25,7 +25,7 @@ import Data.String (take, drop, length, indexOf, contains, stripPrefix, joinWith
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
-import Types (Album, AlbumRef, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
+import Types (Album, AlbumRef, Track, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
 import RenderTopMenu (renderTopMenu)
 
 render :: forall m0. State -> H.ComponentHTML Action () m0
@@ -146,12 +146,13 @@ render state = do
                                               <> maybe "" (" · " <> _) (facts >>= _.afKind)) ]
           , HH.h1 [ cls "av-title" ] [ HH.text a.albumTitle ]
           , HH.p [ cls "av-artist" ] [ HH.text artistNames ]
+          , whereView
           , actionsView
           ]
         ]
       , chipsView
       , HH.div [ cls "av-body" ]
-        [ HH.div [ cls "av-main" ] [ playsView ]
+        [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> [ playsView ])
         , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView ]
         ]
       , HH.div_ stripsView
@@ -165,7 +166,8 @@ render state = do
       Just x | x.xid == a.albumID -> Just x
       _ -> Nothing
     facts = _.xfacts <$> detail
-    styles = maybe [] _.afStyles facts
+    -- the Discogs styles, without those that are a genre chip already
+    styles = filter (\st -> not (elem (S.toLower st) genres)) (nub (maybe [] _.afStyles facts))
     -- the artists' display names (without the Discogs "(n)" suffix) where the backend sends them
     artistNames = case filter (_ /= "") (map _.arName (fromMaybe [] a.albumArtists)) of
       [] -> a.albumArtist
@@ -177,6 +179,26 @@ render state = do
       _, _, _ -> d
     months = [ "January", "February", "March", "April", "May", "June", "July"
              , "August", "September", "October", "November", "December" ]
+
+    -- where the physical album is: its location list and position there (from the details),
+    -- or the CD box number from the Discogs Location field; a click shows that shelf
+    whereIs = case detail >>= _.xloc of
+      Just l -> Just l
+      Nothing -> case a.albumLocation of
+        Just loc | S.contains (Pattern "Box CDs") (S.take 7 loc) -> Just (Tuple "Box CDs" (fromMaybe 0 a.albumLocIdx))
+        _ -> a.albumShelf
+    whereView = case whereIs of
+      Just (Tuple shelf i) ->
+        HH.button [ cls "av-loc", HE.onClick \_ -> ShowListSort (AlbumList (Just shelf)) "Default" Asc
+                  , HP.title ("Show " <> shelf) ]
+                  [ HH.span_ [ HH.text "Location" ], HH.text (shelf <> " · #" <> show i) ]
+      -- a physical album in no location list; said only once the details are there
+      Nothing | isPhysical && detail /= Nothing ->
+        HH.div [ cls "av-loc av-loc-none", HP.title "In none of the location lists (Shelf, Cube, Box, …)" ]
+               [ HH.span_ [ HH.text "Location" ], HH.text "not filed" ]
+      Nothing -> HH.text ""
+    -- a Discogs release that is not a download or a stream
+    isPhysical = isDiscogs && a.albumFormat /= "Streaming" && not (S.contains (Pattern "File") a.albumFormat)
 
     -- ▶ <player>: the Tidal version on the Bluesound Node (BluOS API, via the backend),
     -- with the backend's four modes; then Album Played
@@ -255,15 +277,10 @@ render state = do
       Just _, _ | elem "tidal.collection" a.albumTags -> "in the collection since " <> S.take 10 (fromMaybe "" a.albumAdded)
       Just _, Just u -> "in the collection " <> S.take 10 (fromMaybe "" a.albumAdded) <> " – " <> S.take 10 u
       Just _, Nothing -> "not in the collection"
-    shelfBtn shelf idx =
-      row "Location" [ HH.button [ cls "av-tag", HE.onClick \_ -> ShowListSort (AlbumList (Just shelf)) "Default" Asc ]
-                                 [ HH.text (shelf <> " #" <> show idx) ] ]
+    -- a shelf or box is shown under the artist (whereView); here only a location that is a link
     locationRow = case a.albumLocation of
-      Just loc | S.contains (Pattern "Box CDs") (S.take 7 loc) -> shelfBtn "Box CDs" (fromMaybe 0 a.albumLocIdx)
-               | loc /= "" -> row "Location" [ HH.a [ HP.href loc ] [ HH.text loc ] ]
-      _ -> case a.albumShelf of
-        Just (Tuple shelf ipos) -> shelfBtn shelf ipos
-        Nothing -> []
+      Just loc | loc /= "" && whereIs == Nothing -> row "Location" [ HH.a [ HP.href loc ] [ HH.text loc ] ]
+      _ -> []
 
     -- Wikipedia and AllMusic for the album and each artist (docs/wikidata-plan.md, phase 4);
     -- where Wikidata had nothing, a dimmed search link instead
@@ -299,24 +316,109 @@ render state = do
     -- the album at Discogs and the streaming services
     openInView =
       let qry = enc (a.albumArtist <> " - " <> a.albumTitle)
-          ext url txt = [ HH.a [ HP.href url ] [ HH.text txt ] ]
-          appleWeb am = if S.take 2 am == "l."
-                          then "https://music.apple.com/library/albums/" <> am
-                          else "https://music.apple.com/us/album/" <> am
+          -- web pages open in a new tab; app links (tidal://, music://) go to the app
+          ext url txt = [ HH.a [ HP.href url, HP.target "_blank" ] [ HH.text txt ] ]
+          app url txt = [ HH.a [ HP.href url ] [ HH.text txt ] ]
+          -- the Music app for a catalog album; a library album only has its web page
+          apple am = if S.take 2 am == "l."
+                       then ext ("https://music.apple.com/library/albums/" <> am) "Apple Music"
+                       else app ("music://music.apple.com/us/album/" <> am) "Apple Music"
       in
       HH.div [ cls "av-links" ] $
         [ HH.h3_ [ HH.text "Open in" ] ]
         <> (if isDiscogs then ext a.albumURL "Discogs"
                          else ext ("https://www.discogs.com/search/?q=" <> qry <> "&type=all") "find on Discogs")
         <> (case a.albumTidal of
-              Just t | t /= "" -> ext ("tidal://album/" <> t) "Tidal app" <> ext ("https://listen.tidal.com/album/" <> t) "Tidal web"
+              Just t | t /= "" -> app ("tidal://album/" <> t) "Tidal app" <> ext ("https://listen.tidal.com/album/" <> t) "Tidal web"
               _ -> [])
         <> (case a.albumAMusic of
-              Just am | am /= "" -> ext (appleWeb am) "Apple Music"
+              Just am | am /= "" -> apple am
               _ -> [])
         <> (case a.albumJellyfin of
               Just j | j /= "" -> ext ("http://usrv.local:8096/web/#/details?id=" <> j) "Jellyfin"
               _ -> [])
+
+    -- tracks, credits and review from /api/albumtq, once they are there and belong to this album
+    tj = case state.albumT of
+      Just t | t.tjId == a.albumID -> Just t
+      _ -> Nothing
+    tracks = tj >>= _.tjTracks
+
+    -- the review: its first four lines, all of it after "more"; folded again with each album
+    aboutView = case tracks >>= _.atReview of
+      Just txt | txt /= "" ->
+        [ HH.div [ cls "av-about" ]
+            [ HH.div [ cls (if state.aboutOpen then "av-about-text" else "av-about-text av-clamp") ] [ HH.text txt ]
+            , HH.button [ cls "av-about-more", HE.onClick \_ -> ToggleAbout ]
+                        [ HH.text (if state.aboutOpen then "less ▴" else "more ▾") ]
+            , HH.p [ cls "av-src" ] [ HH.text (fromMaybe "Review" (tracks >>= _.atReviewSource) <> ", via Tidal") ]
+            ]
+        ]
+      _ -> []
+
+    -- the track list, with a line per disc and per work; ↻ fetches it again
+    tracksView =
+      [ HH.div [ cls "av-tracks" ] $
+          [ HH.div [ cls "av-sect-head" ] $
+              [ HH.h2_ [ HH.text "Tracks" ] ]
+              <> (case tracks of
+                    Just t -> [ HH.span_ [ HH.text ("from " <> t.atSource <> " · " <> S.take 10 t.atFetched) ] ]
+                    Nothing -> [])
+              -- a physical release shows its own tracks; its Tidal version on request
+              <> (case a.albumTidal of
+                    Just t | isDiscogs && t /= "" ->
+                      [ HH.button [ cls "av-tag", HE.onClick \_ -> TracksSource (not state.tracksTidal)
+                                  , HP.disabled state.tracksLoading
+                                  , HP.title (if state.tracksTidal then "Show the tracks of the Discogs release"
+                                                                   else "Show the tracks of the Tidal version") ]
+                                  [ HH.text (if state.tracksTidal then "Discogs release" else "Tidal version") ] ]
+                    _ -> [])
+              <> [ HH.button [ cls "av-tag", HE.onClick \_ -> RefreshTracks, HP.disabled state.tracksLoading
+                             , HP.title "Fetch tracks, credits and review again" ] [ HH.text "↻" ] ]
+          ] <> case tracks of
+                 Just t -> trackRows t.atTracks
+                 Nothing | state.tracksLoading -> [ HH.p [ cls "av-note" ] [ HH.text "Loading tracks…" ] ]
+                         | otherwise -> [ HH.p [ cls "av-note" ] [ HH.text (maybe "No tracks." (\t -> "No tracks: " <> t.tjError) tj) ] ]
+      ]
+    trackRows :: Array Track -> Array (H.ComponentHTML Action () m)
+    trackRows ts =
+      let discs = nub (map _.tkDisc ts)
+          multi = length discs > 1
+          -- other artists than the album's on some track: show them (compilations)
+          showArtists = any (\t -> not (null t.tkArtists) && S.joinWith ", " t.tkArtists /= artistNames) ts
+                        && S.contains (Pattern "Various") a.albumArtist
+          one (Tuple prev t) =
+            (if multi && map _.tkDisc prev /= Just t.tkDisc
+               then [ HH.div [ cls "av-disc" ] [ HH.text ("Disc " <> show t.tkDisc) ] ] else [])
+            <> (case t.tkWork of
+                  Just w | (prev >>= _.tkWork) /= Just w || map _.tkDisc prev /= Just t.tkDisc ->
+                    [ HH.div [ cls "av-work" ] [ HH.text w ] ]
+                  _ -> [])
+            <> [ HH.div [ cls (if t.tkWork == Nothing then "av-trk" else "av-trk av-mov") ]
+                 [ HH.span [ cls "av-trk-n" ] [ HH.text t.tkPos ]
+                 , HH.span [ cls "av-trk-t" ] $
+                     [ HH.text t.tkTitle ]
+                     <> (if showArtists then [ HH.small_ [ HH.text (S.joinWith ", " t.tkArtists) ] ] else [])
+                 , HH.span [ cls "av-trk-d" ] [ HH.text (maybe "" mmss t.tkSecs) ]
+                 ]
+               ]
+      in concat (map one (zip (cons Nothing (map Just ts)) ts))
+    mmss s = (if s >= 3600 then show (s / 3600) <> ":" <> two ((s `mod` 3600) / 60) else show (s / 60)) <> ":" <> two (s `mod` 60)
+    two n = (if n < 10 then "0" else "") <> show n
+
+    -- who did what, folded away
+    creditsView = case tracks of
+      Just t | not (null t.atCredits) ->
+        [ HH.details [ cls "av-credits" ]
+            [ HH.summary_ [ HH.text ("Credits (" <> show (length t.atCredits) <> ")") ]
+            , HH.div [ cls "av-facts" ] (concat (map (\c -> row c.crRole [ HH.text (S.joinWith ", " c.crNames) ])
+                                                    -- Discogs' catch-all "Other [...]" roles last
+                                                    (filter (not <<< isOther) t.atCredits <> filter isOther t.atCredits)))
+            ]
+        ]
+      _ -> []
+
+    isOther c = S.take 5 c.crRole == "Other"
 
     -- the album strips: other versions, more by the artists, similar albums; all from the library
     stripsView = case _.xrelated <$> detail of

@@ -119,6 +119,7 @@ Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, 
 **JSON Endpoints** (for frontend):
 - `/api/albumq/:id` - Get album data
 - `/api/albumxq/:id` - the album page's details (`docs/album-page-plan.md`, phase 1): `xfacts` (length, tracks, quality, label, full date, kind, explicit, styles — `src/Details.hs`, read from `cache/draw*.json` and the Tidal album store at start) and `xrelated` (other versions, more by the artists, similar albums — `src/Related.hs`). The frontend asks for it after `albumq`, so `Album` stays small in lists
+- `/api/albumtq/:id[?refresh=1][&source=tidal]` - tracks, credits and review (phase 2, `src/Tracks.hs`): fetched on demand and cached per album in `~/Sync/clutter/album-details/<key>.json` (`CLUTTER_ALBUM_DETAILS`); `refresh` refetches. A Discogs release shows the Discogs tracklist (review from its linked Tidal album); `source=tidal` gives its Tidal version (`<key>-tidal.json`); a Tidal album shows Tidal's. Reads `tok.json` at fetch time and runs `./tidalauth` once on a Tidal 401, so it works past the 4 h token life
 - `/api/albumsq/:list?sortBy=&sortOrder=&focus=` - Get filtered album list
 - `/api/paramsq/all` - Get menu parameters (sorts, lists, locations)
 - `/api/req?event=` - Trigger backend actions (e.g., "update")

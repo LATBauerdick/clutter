@@ -41,6 +41,7 @@ library
       RenderAlbumView
       RenderTopMenu
       RenderUtil
+      Tracks
       Types
       Wikidata
   other-modules:
