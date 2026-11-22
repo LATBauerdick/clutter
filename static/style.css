@@ -282,7 +282,7 @@ img:hover {
 }
 .album-thumb:hover .hov-album-info {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: auto; /* so that its text can be selected */
 }
 
 .cover-container {
@@ -305,41 +305,31 @@ img:hover {
   z-index: 1;
 }
 
+/* the card under a cover in a list, while the pointer is on it */
+.album-thumb { position: relative; }
 .hov-album-info {
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s ease;
-
-  /* grid-area: 1 / 1; */
+  transition: opacity .15s ease .35s; /* a moment's rest on the cover first */
   position: absolute;
-  transform: translate(50px, 100px);
-
-  /* width: 200px; */
-  overflow: visible;
-  width: max-content;
-  height: 40px;
-  margin-top: 4px;
-  margin-left: 4px;
-  padding-top: 4px;
-  /* padding-bottom: 12px; */
-  padding-left: 4px;
-  padding-right: 4px;
-
-  /* box-sizing: border-box; */
-  /* overflow: hidden; */
+  top: 209px;
+  left: 0;
+  width: 205px;
+  box-sizing: border-box;
+  padding: 10px 12px 11px 12px;
   background-color: white;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), 
-              0 2px 4px rgba(0, 0, 0, 0.08);
-  z-index: 3;
+  border: 1px solid #dcd8d0;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .2);
+  text-align: left;
+  line-height: 1.35;
+  z-index: 6;
 }
-
-.hov-album-info::selection,
-.hov-album-info::-moz-selection {
-    opacity: 1;
-    background: yellow;
-}
+.hov-album-info p { margin: 0; white-space: normal; overflow: visible; }
+.hov-title { font-size: 14px; font-weight: 600; color: #1d1d1f; }
+.hov-artist { font-size: 13px; color: #1d1d1f; margin-top: 2px !important; }
+.hov-meta { font-size: 12px; color: #6b6b70; margin-top: 5px !important; }
+.hov-album-info ::selection { background: yellow; }
 
 p.album-title {
   white-space: nowrap;
@@ -634,7 +624,7 @@ a:active {
 /* ---- album page, laid out after Roon's (docs/album-page-plan.md, design A) ---- */
 .av {
   max-width: 1100px;
-  margin: 76px 28px 0 28px;
+  margin: 26px 28px 60px 28px;
   font-size: 15px;
   line-height: 1.45;
   font-weight: 400;
@@ -863,10 +853,169 @@ a:active {
 .av-style { background: #eceef4; }
 /* narrow screens: one column */
 @media (max-width: 760px) {
-  .av { margin: 108px 16px 0 16px; } /* the menu bar wraps to two lines */
-  .av-hero, .av-body { grid-template-columns: 1fr; gap: 20px; }
-  .av-cover { max-width: 420px; }
-  .av-title { font-size: 30px; }
+  .av { margin: 18px 16px 50px 16px; }
+  /* iPad mini upright: the cover stays beside the title, the columns stack */
+  .av-hero { grid-template-columns: 240px 1fr; gap: 26px; }
+  .av-body { grid-template-columns: 1fr; gap: 20px; }
+  .av-title { font-size: 32px; }
   .av-chips { justify-content: flex-start; margin: 20px 0; }
   .av-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 12px; }
+}
+
+/* ---- the frame: sidebar, top bar, list toolbar (docs/menu-mockup.html, design A) ---- */
+body { margin: 0; }
+.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; font-size: 14px; line-height: 1.4; font-weight: 400; }
+.side {
+  background: #f9f9f9; /* Roon's sidebar grey, sampled from its screenshot */
+  border-right: 1px solid #ececec;
+  padding: 14px 8px 30px 8px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.brand { font-family: Georgia, serif; font-weight: 600; font-size: 22px; padding: 2px 12px 6px 12px; }
+.brand i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ff7000; margin-right: 8px; }
+.side h4 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #6b6b70; margin: 18px 0 4px 12px; font-weight: 600; }
+.nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #1d1d1f;
+  font-family: inherit;
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-item:hover { background: rgba(127, 127, 127, .14); }
+.nav-item.nav-on { background: #e9ebfa; color: #5b5bd6; font-weight: 600; }
+.side details { margin-top: 6px; }
+.side summary { list-style: none; cursor: pointer; padding: 6px 12px; border-radius: 7px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #6b6b70; font-weight: 600; }
+.side summary:hover { background: rgba(127, 127, 127, .14); }
+.side details .nav-item, .nav-folded .nav-item { padding-left: 24px; }
+/* a fold that the app opens (Listened): looks like the <details> ones */
+.nav-fold {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  margin-top: 6px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #6b6b70;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nav-fold:hover { background: rgba(127, 127, 127, .14); }
+/* closed, with one of its lists on show */
+.nav-fold.nav-fold-on { background: #e9ebfa; color: #5b5bd6; }
+/* one triangle for both kinds of fold */
+.side summary::-webkit-details-marker { display: none; }
+.nav-fold::before, .side summary::before { content: "▸"; display: inline-block; width: 17px; font-size: 14px; line-height: 1; }
+.nav-fold.nav-fold-open::before, .side details[open] > summary::before { content: "▾"; }
+.main { min-width: 0; }
+.top {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 16px;
+  background: white;
+  border-bottom: 1px solid #dcd8d0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.ic { border: 0; background: transparent; color: #1d1d1f; padding: 5px 9px; border-radius: 7px; font-family: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.ic-nav { font-size: 30px; line-height: .75; padding: 3px 10px 7px 10px; font-weight: 400; }
+.ic:hover { background: rgba(127, 127, 127, .16); }
+.ic:disabled { opacity: .28; cursor: default; background: transparent; }
+.burger { display: none; }
+.top-title { flex: 1; min-width: 0; font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-title small { font-weight: 400; color: #6b6b70; font-size: 13px; margin-left: 8px; }
+.search { border: 1px solid #dcd8d0; border-radius: 16px; padding: 6px 12px; width: 200px; font-family: inherit; font-size: 14px; background: white; }
+.player { display: inline-flex; align-items: center; gap: 2px; border: 1px solid #cfccc5; border-radius: 18px; padding: 1px 12px 1px 4px; white-space: nowrap; }
+.player small { font-size: 12px; color: #55555a; }
+.pop-anchor { position: relative; display: inline-block; }
+.pop {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  background: white;
+  border: 1px solid #dcd8d0;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+  padding: 10px;
+  min-width: 190px;
+}
+.pop.pop-open { display: block; }
+.pop.pop-right { left: auto; right: 0; }
+.pop-focus { width: min(640px, calc(100vw - 280px)); max-height: 70vh; overflow-y: auto; }
+.pop h5 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #6b6b70; margin: 12px 0 4px 0; font-weight: 600; }
+.pop-note { font-size: 12px; color: #6b6b70; margin-top: 10px; }
+.menuitem { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: #1d1d1f; font-family: inherit; font-size: 14px; padding: 7px 10px; border-radius: 7px; white-space: nowrap; cursor: pointer; }
+.menuitem:hover { background: #e9ebfa; }
+.lookup { border-top: 1px solid #e6e2da; margin-top: 8px; padding: 10px 10px 4px 10px; }
+.lookup label { display: block; font-size: 12px; color: #6b6b70; margin: 0 0 5px 0; }
+.lookup input { width: 170px; border: 1px solid #dcd8d0; border-radius: 6px; padding: 5px 8px; font-family: inherit; font-size: 13px; }
+.lookup button { border: 0; background: #5b5bd6; color: white; border-radius: 6px; padding: 6px 10px; margin-left: 6px; font-family: inherit; font-size: 13px; cursor: pointer; }
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 16px;
+  background: white;
+  border-bottom: 1px solid #dcd8d0;
+  position: relative;
+  z-index: 9;
+}
+.grow { flex: 1; }
+.pill { border: 1px solid #dcd8d0; background: white; color: #1d1d1f; border-radius: 14px; padding: 4px 11px; font-family: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.pill:hover { border-color: #5b5bd6; }
+.chipf { display: inline-flex; align-items: center; border-radius: 14px; background: #e9ebfa; white-space: nowrap; }
+.chipf button { border: 0; background: transparent; color: #5b5bd6; font-family: inherit; font-size: 12.5px; padding: 4px 4px 4px 11px; cursor: pointer; }
+.chipf button + button { padding: 4px 9px 4px 3px; font-size: 14px; }
+.chipf.chipf-not { background: #fde8e8; }
+.chipf.chipf-not button { color: #b42318; }
+.tag { border: 1px solid #dcd8d0; background: white; color: #1d1d1f; border-radius: 6px; padding: 2px 7px; margin: 2px; font-family: inherit; font-size: 12px; cursor: pointer; }
+.tag:hover { border-color: #5b5bd6; }
+.tag.tag-on { background: #e9ebfa; border-color: #5b5bd6; color: #5b5bd6; }
+.tag.tag-not { background: #fde8e8; border-color: #e7a9a4; color: #b42318; text-decoration: line-through; }
+.backdrop { position: fixed; inset: 0; z-index: 5; }
+.main .albums { margin-top: 18px; margin-left: 16px; }
+/* a narrow screen (phone, iPad mini upright): the sidebar is a drawer behind ☰ */
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { display: none; position: fixed; left: 0; top: 0; bottom: 0; width: min(300px, 82vw); z-index: 30; box-shadow: 8px 0 30px rgba(0, 0, 0, .3); }
+  .side.side-open { display: block; }
+  .burger { display: inline-block; }
+  .backdrop { background: rgba(0, 0, 0, .18); }
+  .pop-focus { width: calc(100vw - 32px); }
+}
+@media (max-width: 560px) {
+  .top { gap: 2px; padding: 6px 8px; flex-wrap: wrap; }
+  .player small { display: none; }
+  .player { padding-right: 4px; }
+  .search { order: 9; width: 100%; margin-top: 4px; }
+  .tools { padding: 8px; }
+  .pop-focus { position: fixed; left: 8px; right: 8px; top: 110px; width: auto; }
+}
+/* a phone: the cover above the title */
+@media (max-width: 560px) {
+  .av-hero { grid-template-columns: 1fr; gap: 20px; }
+  .av-cover { max-width: 420px; }
+  .av-title { font-size: 30px; }
 }

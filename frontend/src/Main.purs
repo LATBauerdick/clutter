@@ -65,6 +65,11 @@ initialState = do -- should eventually be saved in preferences
   pure  { apiUrl : apiBaseUrl
         , listName: AlbumList (Just ln)
         , albumList : ls
+        , menuOpen: Nothing
+        , sideOpen: false
+        , listenedOpen: false
+        , search: ""
+        , tagFilter: ""
         , views: []
         , pos: 0
         , album: Nothing
@@ -73,6 +78,7 @@ initialState = do -- should eventually be saved in preferences
         , tracksLoading: false
         , tracksTidal: false
         , aboutOpen: false
+        , aboutLong: false
         , loading: false
         , albumID: "0"
         , now: now

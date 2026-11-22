@@ -9,6 +9,7 @@ import Data.Tuple (Tuple(..), fst, snd)
 import Data.Either (Either(..))
 import Data.Map as M
 import Data.String (contains, stripPrefix, length, joinWith)
+import Data.String (take) as S
 import Data.String.Pattern (Pattern(..))
 import Effect.Class.Console as Console
 import Data.Array (foldMap, zipWith, snoc, take, index, updateAt)
@@ -21,7 +22,7 @@ import Web.Event.Event as Event
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
 import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..), View(..))
-import GetStuff (getUrl, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState)
+import GetStuff (getUrl, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, isClamped)
 import Render (render)
 
 aComponent :: forall query input output m. MonadAff m => State -> H.Component query input output m
@@ -56,6 +57,7 @@ handleAction = case _ of
   SetSort sn -> do
     osn <- H.gets _.menu.sortName
     H.liftAff $ Console.logShow sn
+    H.modify_ _ { menuOpen = Nothing }
     if osn == sn then pure unit else H.modify_ _ { menu { sortName = sn } }
     if osn == sn then pure unit else updateAlbumList
 
@@ -80,7 +82,7 @@ handleAction = case _ of
   MakeRequest event -> do
     H.liftEffect $ Event.preventDefault event
     pushView
-    H.modify_ _ { listName = AlbumList Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, tracksTidal = false, loading = true }
+    H.modify_ _ { listName = AlbumList Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true }
     albumID <- H.gets _.albumID
     now <- H.liftAff getNow
     api <- H.gets _.apiUrl
@@ -102,6 +104,22 @@ handleAction = case _ of
     H.modify_ _ { tracksTidal = tidal }
     loadTracks false
 
+  TogglePop p -> H.modify_ \st -> st { menuOpen = if st.menuOpen == Just p then Nothing else Just p }
+  ClosePops -> H.modify_ _ { menuOpen = Nothing, sideOpen = false }
+  ListenedClick year -> do
+    st <- H.get
+    let onListened = case st.listName of
+          AlbumList (Just n) -> S.take 8 n == "Listened"
+          _ -> false
+    if onListened
+      then H.modify_ _ { listenedOpen = not st.listenedOpen }
+      else do
+        H.modify_ _ { listenedOpen = true }
+        handleAction (ShowList (AlbumList (Just year)))
+  ToggleSide -> H.modify_ \st -> st { sideOpen = not st.sideOpen, menuOpen = Nothing }
+  SetSearch s -> H.modify_ _ { search = s }
+  SetTagFilter s -> H.modify_ _ { tagFilter = s }
+
   Back -> H.liftEffect historyBack
   Forward -> H.liftEffect historyForward
   GoTo j -> do
@@ -113,7 +131,7 @@ handleAction = case _ of
     case index vs j of
       Nothing -> pure unit -- an entry from before a reload: nothing to show
       Just v -> do
-        H.modify_ _ { views = vs, pos = j }
+        H.modify_ _ { views = vs, pos = j, menuOpen = Nothing, sideOpen = false, search = "" }
         case v of
           VAlbum aid -> showAlbum aid
           VList alist ln ffs sn so -> do
@@ -136,7 +154,7 @@ handleAction = case _ of
     H.modify_ _ { listName = alist, loading = true, menu { ln = "All", ffs = [ Tuple tag true ] } }
     updateAlbumList
   AlbumPlayed aid -> do
-    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -178,7 +196,8 @@ handleAction = case _ of
     H.liftAff $ Console.log msg
     H.modify_ _ { nodeMsg = Just msg }
   UpdateDiscogs -> do
-    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "" }
+    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -199,6 +218,7 @@ handleAction = case _ of
     -- drop what was ahead of it, and open a new entry for what comes
     pushView :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
     pushView = do
+      H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "" }
       st <- H.get
       case currentView st of
         Nothing -> pure unit
@@ -208,7 +228,7 @@ handleAction = case _ of
 
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
     showAlbum aid = do
-      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, tracksTidal = false, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
+      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
       now <- H.liftAff getNow
       H.liftAff $ Console.logShow now
       api <- H.gets _.apiUrl
@@ -250,7 +270,11 @@ handleAction = case _ of
           r <- H.liftAff $ getUrl (api <> "albumtq/" <> a.albumID <> (if qs == [] then "" else "?" <> joinWith "&" qs))
           cur <- H.gets _.album
           case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumTJ, cur of
-            Right t, Just c | t.tjId == c.albumID -> H.modify_ _ { albumT = Just t, tracksLoading = false }
+            Right t, Just c | t.tjId == c.albumID -> do
+              -- the review is on the page, folded: is there more of it than the lines shown?
+              H.modify_ _ { albumT = Just t, tracksLoading = false, aboutOpen = false }
+              long <- H.liftEffect (isClamped ".av-about-text")
+              H.modify_ _ { aboutLong = long }
             Right _, _ -> pure unit -- another album was opened meanwhile
             Left _, _ -> H.modify_ _ { tracksLoading = false }
 

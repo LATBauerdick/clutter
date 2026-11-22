@@ -6,6 +6,7 @@ module GetStuff ( getNow
                 , historyForward
                 , initHistory
                 , onPopState
+                , isClamped
                 ) where
 
 import Prelude
@@ -42,3 +43,6 @@ foreign import pushHistory :: Int -> Effect Unit
 foreign import historyBack :: Effect Unit
 foreign import historyForward :: Effect Unit
 foreign import onPopState :: (Int -> Effect Unit) -> Effect Unit
+
+-- is the element (a CSS selector) cut off by its line clamp?
+foreign import isClamped :: String -> Effect Boolean

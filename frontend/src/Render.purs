@@ -26,36 +26,22 @@ import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
 import Types (Album, AlbumRef, Track, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
-import RenderTopMenu (renderTopMenu)
+import RenderTopMenu (renderSide, renderTop, renderTools, shownAlbums)
 
 render :: forall m0. State -> H.ComponentHTML Action () m0
-render state = do
-  HH.div_
-    [ case state.listName of
-        AlbumList Nothing  -> albumView state.album state.now
-        _                  -> renderListView
-    , renderTopMenu state
-    , HH.div_
-      [ HH.br_, HH.br_, HH.br_
-      , HH.form
-        [ HE.onSubmit \ev -> MakeRequest ev ]
-        [ HH.h3_ [ HH.text "Look up Album ID" ]
-        , HH.label_
-           [ HH.div_ [ HH.text "Enter album id:" ]
-           , HH.input
-             [ HP.value state.albumID
-             , HE.onValueInput \str -> SetAlbumID str
-             ]
-           ]
-        , HH.button
-           [ HP.disabled state.loading
-           , HP.type_ HP.ButtonSubmit
-           ]
-           [ HH.text "Fetch info" ]
-        , HH.h1_
-           [ HH.text if state.loading then "Working..." else "" ]
-        ]
-      ]
+render state =
+  -- the frame (RenderTopMenu): sidebar, top bar, and on a list its toolbar
+  HH.div [ HP.class_ (HH.ClassName "shell") ]
+    [ renderSide state
+    , HH.div [ HP.class_ (HH.ClassName "main") ] $
+        [ renderTop state ]
+        <> case state.listName of
+             AlbumList Nothing -> [ albumView state.album state.now ]
+             _ -> [ renderTools state, renderListView ]
+    -- a click beside an open menu or the drawer closes it
+    , if state.menuOpen /= Nothing || state.sideOpen
+        then HH.div [ HP.class_ (HH.ClassName "backdrop"), HE.onClick \_ -> ClosePops ] []
+        else HH.text ""
     ]
 
   where
@@ -80,7 +66,7 @@ render state = do
               [ HP.class_ $ HH.ClassName "row"]
               ( map (\(Tuple i a) -> renderAlbumTN i a) $ zip idxs  as )
             ]
-    where as = state.albumList
+    where as = shownAlbums state -- what the search box lets through
           idxs = if pLocList state.listName
             then replicate (length as) 0
             else range 1 (length as)
@@ -110,12 +96,26 @@ render state = do
 
   renderHovAlbumInfo :: forall m. Album -> H.ComponentHTML Action () m
   renderHovAlbumInfo a =
-    HH.div [ HP.class_ $ HH.ClassName "hov-album-info" ]
-           [ HH.p [ HP.class_ $ HH.ClassName "album-title"]
-                  [ HH.text a.albumTitle ]
-           , HH.p [ HP.class_ $ HH.ClassName "album-artist"]
-                  [ HH.text a.albumArtist ]
+    -- a card under the cover while the pointer is on it: title and artist in full (the
+    -- lines under the cover cut them off), then year and format, the plays, the location
+    let np = length a.albumListenedDates
+        fmt = fromMaybe "" (head (S.split (Pattern ",") a.albumFormat))
+        year = if a.albumReleased == "0" then "" else S.take 4 a.albumReleased
+        plays = if np == 0 then (if a.albumPlays > 0 then "played before the log" else "not played yet")
+                else "played " <> show np <> (if np == 1 then " time" else " times") <> " · last "
+                     <> S.take 10 (fromMaybe "" (head a.albumListenedDates))
+        loc = case a.albumShelf of
+          Just (Tuple shelf i) -> shelf <> " · #" <> show i
+          Nothing -> ""
+        meta t = if t == "" then [] else [ HH.p [ HP.class_ $ HH.ClassName "hov-meta" ] [ HH.text t ] ]
+    in
+    HH.div [ HP.class_ $ HH.ClassName "hov-album-info" ] $
+           [ HH.p [ HP.class_ $ HH.ClassName "hov-title" ] [ HH.text a.albumTitle ]
+           , HH.p [ HP.class_ $ HH.ClassName "hov-artist" ] [ HH.text a.albumArtist ]
            ]
+           <> meta (S.joinWith " · " (filter (_ /= "") [ year, fmt ]))
+           <> meta plays
+           <> meta loc
 
   renderAlbumInfo :: forall m. Album -> H.ComponentHTML Action () m
   renderAlbumInfo a =
@@ -228,7 +228,7 @@ render state = do
     -- the other tags, without those the facts already show (provider, rating, plays)
     -- and without the Discogs styles once those are chips
     otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal." ])
-                              && not (elem t (map S.toLower styles))) a.albumTags
+                              && not (elem t (map S.toLower styles)) && not (elem t genres)) a.albumTags
     chipsView =
       HH.div [ cls "av-chips" ] $
         map (\g -> HH.button [ cls "av-chip", HE.onClick \_ -> ShowFocus ("genre." <> g), HP.title ("All albums: " <> g) ]
@@ -349,8 +349,11 @@ render state = do
       Just txt | txt /= "" ->
         [ HH.div [ cls "av-about" ]
             [ HH.div [ cls (if state.aboutOpen then "av-about-text" else "av-about-text av-clamp") ] [ HH.text txt ]
-            , HH.button [ cls "av-about-more", HE.onClick \_ -> ToggleAbout ]
-                        [ HH.text (if state.aboutOpen then "less ▴" else "more ▾") ]
+            -- only when the review is longer than the lines shown
+            , if state.aboutLong || state.aboutOpen
+                then HH.button [ cls "av-about-more", HE.onClick \_ -> ToggleAbout ]
+                               [ HH.text (if state.aboutOpen then "less ▴" else "more ▾") ]
+                else HH.text ""
             , HH.p [ cls "av-src" ] [ HH.text (fromMaybe "Review" (tracks >>= _.atReviewSource) <> ", via Tidal") ]
             ]
         ]

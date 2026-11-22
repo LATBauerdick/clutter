@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>clutter menu bar — redesign mockup</title>
+<style>
+:root { --ink: #1d1d1f; --dim: #6b6b70; --line: #dcd8d0; --bg: #f6f5f2; --panel: #ffffff; --accent: #5b5bd6; --soft: #e9ebfa; --bar: #ffffff; --barink: #1d1d1f; }
+.orange { --accent: #e86400; --soft: #fff1e3; }
+.orangebar { --bar: #ff7000; --barink: #ffffff; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: #d9d7d2; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* mockup controls, not part of the design */
+.ctl { background: #2b2b30; color: #eee; padding: 9px 14px; display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; font-size: 13px; position: sticky; top: 0; z-index: 50; }
+.ctl b { font-weight: 600; margin-right: 6px; }
+.seg { display: inline-flex; border: 1px solid #666; border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: #eee; padding: 4px 11px; }
+.seg button + button { border-left: 1px solid #666; }
+.seg button.on { background: #eee; color: #222; }
+.why { background: #fffbe8; border-bottom: 1px solid #e6dfb8; padding: 9px 16px; font-size: 13px; color: #55502c; }
+.why b { color: #2b2b30; }
+
+.frame { margin: 16px auto; background: var(--bg); box-shadow: 0 4px 24px rgba(0,0,0,.25); position: relative; overflow: hidden; min-height: 760px; }
+.frame.desktop { width: min(1280px, calc(100% - 32px)); }
+.frame.phone { width: 390px; border-radius: 22px; }
+
+/* ---------- shared pieces ---------- */
+.ic { border: 0; background: transparent; padding: 6px 9px; border-radius: 7px; font-size: 19px; line-height: 1; color: var(--barink); }
+.ic:hover { background: rgba(127,127,127,.18); }
+.ic:disabled { opacity: .3; cursor: default; }
+.player { display: inline-flex; align-items: center; gap: 2px; border: 1px solid rgba(127,127,127,.4); border-radius: 18px; padding: 1px 10px 1px 4px; white-space: nowrap; }
+.player small { font-size: 12px; opacity: .8; }
+.search { border: 1px solid var(--line); border-radius: 16px; padding: 6px 12px; width: 190px; font: inherit; background: var(--panel); }
+.phone .search { width: 100%; }
+.title { font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.title small { font-weight: 400; color: var(--dim); margin-left: 8px; font-size: 13px; }
+.orangebar .title small { color: #ffe3c9; }
+.grow { flex: 1; min-width: 0; }
+
+.nav h4 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 18px 0 4px 12px; font-weight: 600; }
+.nav a { display: flex; justify-content: space-between; padding: 6px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.nav a:hover { background: rgba(127,127,127,.12); }
+.nav a.on { background: var(--soft); color: var(--accent); font-weight: 600; }
+.nav a small { color: var(--dim); font-weight: 400; }
+.nav details summary { list-style: none; cursor: pointer; padding: 6px 12px; border-radius: 7px; display: flex; justify-content: space-between; }
+.nav details summary::after { content: "▸"; color: var(--dim); }
+.nav details[open] summary::after { content: "▾"; }
+.nav details a { padding-left: 24px; }
+
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.chipf { display: inline-flex; align-items: center; gap: 6px; border-radius: 14px; padding: 4px 6px 4px 11px; font-size: 12.5px; background: var(--soft); color: var(--accent); }
+.chipf.not { background: #fde8e8; color: #b42318; }
+.chipf button { border: 0; background: transparent; padding: 0 4px; font-size: 14px; }
+.pill { border: 1px solid var(--line); background: var(--panel); border-radius: 14px; padding: 4px 11px; font-size: 12.5px; }
+.pill:hover { border-color: var(--accent); }
+.pop { position: absolute; z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 12px; display: none; }
+.pop.open { display: block; }
+.pop h5 { margin: 8px 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.pop h5:first-child { margin-top: 0; }
+.tag { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; margin: 2px; font-size: 12px; background: var(--panel); }
+.tag.on { background: var(--soft); border-color: var(--accent); color: var(--accent); }
+.tag.not { background: #fde8e8; border-color: #e7a9a4; color: #b42318; text-decoration: line-through; }
+.menuitem { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 7px; white-space: nowrap; }
+.menuitem:hover { background: var(--soft); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px; padding: 18px; }
+.phone .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px; }
+.cov { aspect-ratio: 1; border-radius: 4px; }
+.grid p { margin: 6px 0 0; font-size: 12.5px; } .grid p + p { color: var(--dim); margin-top: 1px; }
+
+/* ---------- A: sidebar ---------- */
+.A .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 760px; }
+.A .side { background: #efeeea; border-right: 1px solid var(--line); padding: 14px 8px; }
+.A .brand { font: 600 22px Georgia, serif; padding: 2px 12px 6px; display: flex; justify-content: space-between; align-items: center; }
+.A .brand i { width: 10px; height: 10px; border-radius: 50%; background: #ff7000; display: inline-block; margin-right: 8px; }
+.A .top { display: flex; gap: 10px; align-items: center; padding: 9px 16px; background: var(--bar); color: var(--barink); border-bottom: 1px solid var(--line); }
+.phone.A .shell { grid-template-columns: 1fr; }
+.phone.A .side { display: none; position: absolute; inset: 0 60px 0 0; z-index: 30; overflow: auto; box-shadow: 8px 0 30px rgba(0,0,0,.3); }
+.phone.A .side.open { display: block; }
+.A .burger { display: none; } .phone.A .burger { display: inline-block; }
+.phone.A .player small, .phone.A .top .search { display: none; }
+
+/* ---------- B: top bar with one library menu ---------- */
+.B .top { display: flex; gap: 10px; align-items: center; padding: 9px 16px; background: var(--bar); color: var(--barink); border-bottom: 1px solid var(--line); position: relative; }
+.B .lib { border: 1px solid rgba(127,127,127,.4); background: transparent; color: var(--barink); border-radius: 16px; padding: 5px 12px; font-weight: 600; }
+.B .mega { left: 60px; top: 48px; width: min(760px, calc(100% - 76px)); color: var(--ink); }
+.B .mega .cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 14px; }
+.phone.B .mega { left: 8px; top: 48px; width: calc(100% - 16px); max-height: 600px; overflow: auto; }
+.phone.B .mega .cols { grid-template-columns: 1fr 1fr; }
+.phone.B .top .search, .phone.B .player small { display: none; }
+
+/* ---------- C: today's bar, cleaned up ---------- */
+.C .top { display: flex; flex-wrap: wrap; align-items: stretch; background: #ff7000; color: #fff; position: relative; }
+.C .top > button, .C .top > span { border: 0; background: transparent; color: #fff; padding: 12px 13px; font-size: 15px; }
+.C .top > button:hover { background: rgba(0,0,0,.15); }
+.C .top .dark { background: #1d1d1f; }
+.C .top .dark:hover { background: #3a3a3f; }
+.C .pop { top: 46px; color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="ctl">
+  <span><b>Design</b><span class="seg" id="design"></span></span>
+  <span><b>Screen</b><span class="seg" id="screen"></span></span>
+  <span><b>Colors</b><span class="seg" id="color"></span></span>
+  <span style="opacity:.75">Menus open on click. Nothing here talks to clutter.</span>
+</div>
+<div class="why" id="why"></div>
+<div id="root"></div>
+
+<script>
+const S = { design: 'A', screen: 'desktop', color: 'blue', view: 'Discogs', pop: null, side: false,
+            focus: [['genre.classical', true], ['format.vinyl', false]], sort: 'Default', asc: true };
+const NAV = {
+  Collection: [['All', 4843], ['Discogs', 2033], ['Tidal', 2806], ['Apple Music', 2272]],
+  Listened: [['Listened', 2066], ['Listened 2026', 205], ['Listened 2025', 331], ['Listened 2024', 298], ['Listened 2023', 310]],
+  Lists: [['Incoming', 5], ['Darko/Lavorgna', 38], ['Petra', 12], ['Master Releases', 64]],
+  Shelves: [['Shelf CDs', 94], ['Shelf A0 Symphonic', 9], ['Shelf A1 Opera', 33], ['Shelf A2 Chamber', 13], ['Shelf A3 Symphonic', 90], ['Shelf B0 Opera', 18], ['Shelf B1', 27], ['Shelf O Opera', 53]],
+  Cubes: [['Cube A4 Vocal', 49], ['Cube A5 Chamber', 67], ['Cube B4 Pop', 50], ['Cube B5 Pop', 50], ['Cube C4 Pop', 42], ['Cube C5 Pop', 55], ['Cube D2 Piano', 72], ['Cube D4 Pop', 49], ['Cube D5 Classical', 73], ['Cube E1 Pop', 56], ['Cube E2 Piano', 57], ['… 8 more', '']],
+  'Boxes and more': [['Box CDs', 290], ['Basement', 11], ['Lost&Found', 12]],
+};
+const TAGS = {
+  Genre: ['genre.classical', 'genre.rock', 'genre.jazz', 'genre.electronic', 'genre.piano', 'genre.opera', 'genre.alternative'],
+  Format: ['format.vinyl', 'format.cd', 'format.sacd', 'format.box set', 'format.lp'],
+  Played: ['played.never', 'played.often', 'played.2026'],
+  Rating: ['rated.5', 'rated.4', 'rated.not'],
+  Source: ['provider.discogs', 'provider.tidal', 'provider.applemusic', 'tidal.collection'],
+  Styles: ['art rock', 'indie rock', 'romantic', 'baroque', 'modern', 'ambient', 'sonata', '… 300 more, with a filter box'],
+};
+const WHY = {
+  A: '<b>A · Sidebar (Roon-style).</b> Navigation lives in a rail at the left: collection, listened, lists, and the locations folded into Shelves / Cubes / Boxes. The top bar keeps only ‹ ›, the title, search and the player. Focus and sort move to a toolbar that exists only on list views. On a phone the rail becomes a ☰ drawer. Costs 232 px of width on a desktop.',
+  B: '<b>B · Slim top bar.</b> One "Library ▾" menu holds everything that is navigation, in four columns; the bar itself is one row on any screen. Focus and sort are a toolbar on list views, as in A. Keeps the full width for covers; navigation is one click further away than in A.',
+  C: '<b>C · Today\'s bar, cleaned up.</b> Same layout and orange, but: menus open on click (they are hover-only today, so unusable on touch), the labels no longer have hidden side effects (clicking "Focus" clears the focus, "Sort" resets it), "Discogs" is renamed "Update", and the old "…" tag-page menu goes. Smallest change; still wraps to two rows on a phone.',
+};
+const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const count = () => { for (const g of Object.values(NAV)) for (const [n, c] of g) if (n === S.view) return c; return ''; };
+const esc = s => s.replace(/"/g, '&quot;');
+
+function nav(compact) {
+  let h = '';
+  for (const [group, items] of Object.entries(NAV)) {
+    const links = items.map(([n, c]) => `<a class="${n === S.view ? 'on' : ''}" data-view="${esc(n)}">${n}<small>${c}</small></a>`).join('');
+    const fold = ['Shelves', 'Cubes', 'Boxes and more'].includes(group);
+    h += compact || !fold ? `<div><h4>${group}</h4>${links}</div>`
+       : `<details ${items.some(i => i[0] === S.view) ? 'open' : ''}><summary>${group}</summary>${links}</details>`;
+  }
+  return h;
+}
+function player() { return `<span class="player"><button class="ic" title="pause / resume">⏯</button><button class="ic" title="stop">⏹</button><small>lblue</small></span>`; }
+function tools() {
+  const chips = S.focus.map(([t, on], i) => `<span class="chipf ${on ? '' : 'not'}" title="${on ? 'has' : 'has not'} this tag — click the name to flip">${on ? '' : '− '}#${t}<button data-unfocus="${i}" title="remove">×</button></span>`).join('');
+  return `<div class="tools" style="position:relative">
+    ${chips}
+    <button class="pill" data-pop="focus">+ Focus</button>
+    <button class="pill" data-preset title="a saved focus: never played, vinyl">★ Never-played vinyl</button>
+    ${S.focus.length ? '<button class="pill" data-clear>Clear</button>' : ''}
+    <span class="grow"></span>
+    <button class="pill" data-pop="sort">Sort: ${S.sort} ▾</button>
+    <button class="pill" data-order title="ascending / descending">${S.asc ? '↑' : '↓'}</button>
+    <div class="pop ${S.pop === 'focus' ? 'open' : ''}" style="left:18px;top:44px;width:min(640px,calc(100% - 36px))">
+      ${Object.entries(TAGS).map(([g, ts]) => `<h5>${g}</h5>` + ts.map(t => { const f = S.focus.find(x => x[0] === t); return `<button class="tag ${f ? (f[1] ? 'on' : 'not') : ''}" data-tag="${esc(t)}">${t}</button>`; }).join('')).join('')}
+      <p style="margin:10px 0 0;font-size:12px;color:var(--dim)">Click: has the tag · again: has not · again: off — as today, but grouped.</p>
+    </div>
+    <div class="pop ${S.pop === 'sort' ? 'open' : ''}" style="right:60px;top:44px">
+      ${['Default', 'Added', 'Artist', 'Title'].map(s => `<button class="menuitem" data-sort="${s}">${s === S.sort ? '✓ ' : ''}${s}</button>`).join('')}
+    </div></div>`;
+}
+function grid() {
+  const n = S.screen === 'phone' ? 6 : 14;
+  return `<div class="grid">${Array.from({ length: n }, (_, i) => `<div><div class="cov" style="background:hsl(${hue(S.view + i)} 35% ${52 + (i % 4) * 6}%)"></div><p>Album title ${i + 1}</p><p>Artist</p></div>`).join('')}</div>`;
+}
+const titleHtml = () => `<span class="title grow">${S.view}<small>${count()} albums</small></span>`;
+const more = () => `<span style="position:relative"><button class="ic" data-pop="more" title="more">⋯</button>
+  <div class="pop ${S.pop === 'more' ? 'open' : ''}" style="right:0;top:36px;color:var(--ink)"><button class="menuitem">Update from Discogs</button><button class="menuitem">Look up an album id…</button></div></span>`;
+
+function designA() {
+  return `<div class="shell">
+    <aside class="side nav ${S.side ? 'open' : ''}"><div class="brand"><span><i></i>clutter</span></div>${nav(false)}</aside>
+    <main>
+      <div class="top"><button class="ic burger" data-side>☰</button><button class="ic" disabled>‹</button><button class="ic">›</button>
+        ${titleHtml()}<input class="search" placeholder="Search this list">${player()}${more()}</div>
+      ${tools()}${grid()}
+    </main></div>`;
+}
+function designB() {
+  return `<div class="top"><button class="ic" disabled>‹</button><button class="ic">›</button>
+      <button class="lib" data-pop="lib">Library ▾</button>${titleHtml()}
+      <input class="search" placeholder="Search this list">${player()}${more()}
+      <div class="pop mega nav ${S.pop === 'lib' ? 'open' : ''}"><div class="cols">${nav(true)}</div></div></div>
+    ${tools()}${grid()}`;
+}
+function designC() {
+  const f = S.focus.map(([t, on]) => (on ? '#' : '−#') + t).join(' ');
+  return `<div class="top">
+      <button class="dark">‹</button><button class="dark">›</button>
+      <span><b>${S.view}</b></span>
+      <button data-pop="focus">Focus${f ? ' (' + f + ')' : ''} ▾</button>
+      <button data-pop="sort">Sort: ${S.sort} ▾</button><button data-order>${S.asc ? '↑' : '↓'}</button>
+      <button class="dark" data-view="Listened">Listened</button><button class="dark" data-preset>Never-played vinyl</button>
+      <button class="dark">⏯ lblue</button><button class="dark">⏹</button>
+      <button data-pop="lists">List ▾</button><button data-pop="locs">Location ▾</button><button>Update</button>
+      <div class="pop nav ${S.pop === 'lists' ? 'open' : ''}" style="left:40%">${Object.entries(NAV).slice(0, 3).map(([g, it]) => `<h5>${g}</h5>` + it.map(([n]) => `<button class="menuitem" data-view="${esc(n)}">${n}</button>`).join('')).join('')}</div>
+      <div class="pop nav ${S.pop === 'locs' ? 'open' : ''}" style="left:50%;max-height:480px;overflow:auto">${Object.entries(NAV).slice(3).map(([g, it]) => `<h5>${g}</h5>` + it.map(([n]) => `<button class="menuitem" data-view="${esc(n)}">${n}</button>`).join('')).join('')}</div>
+      <div class="pop ${S.pop === 'focus' ? 'open' : ''}" style="left:8px;width:min(640px,calc(100% - 16px))">${Object.entries(TAGS).map(([g, ts]) => `<h5>${g}</h5>` + ts.map(t => { const x = S.focus.find(y => y[0] === t); return `<button class="tag ${x ? (x[1] ? 'on' : 'not') : ''}" data-tag="${esc(t)}">${t}</button>`; }).join('')).join('')}<p><button class="pill" data-clear>Clear focus</button></p></div>
+      <div class="pop ${S.pop === 'sort' ? 'open' : ''}" style="left:30%">${['Default', 'Added', 'Artist', 'Title'].map(s => `<button class="menuitem" data-sort="${s}">${s === S.sort ? '✓ ' : ''}${s}</button>`).join('')}</div>
+    </div>${grid()}`;
+}
+
+function seg(id, entries, key) {
+  const el = document.getElementById(id);
+  el.innerHTML = entries.map(([v, l]) => `<button data-v="${v}" class="${S[key] === v ? 'on' : ''}">${l}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('button'); if (b) { S[key] = b.dataset.v; S.pop = null; S.side = false; draw(); } };
+}
+function draw() {
+  seg('design', [['A', 'A · Sidebar'], ['B', 'B · Slim top bar'], ['C', 'C · Today, cleaned up']], 'design');
+  seg('screen', [['desktop', 'Desktop'], ['phone', 'Phone']], 'screen');
+  seg('color', [['blue', 'White bar, blue'], ['orange', 'White bar, orange accent'], ['orangebar', 'Orange bar']], 'color');
+  document.getElementById('why').innerHTML = WHY[S.design];
+  const root = document.getElementById('root');
+  const cls = S.design === 'C' ? '' : (S.color === 'orange' ? 'orange' : S.color === 'orangebar' ? 'orange orangebar' : '');
+  root.innerHTML = `<div class="frame ${S.screen} ${S.design} ${cls}">${({ A: designA, B: designB, C: designC })[S.design]()}</div>`;
+}
+document.getElementById('root').onclick = e => {
+  const t = e.target.closest('[data-view],[data-pop],[data-tag],[data-unfocus],[data-clear],[data-preset],[data-sort],[data-order],[data-side]');
+  if (!t) { if (S.pop && !e.target.closest('.pop')) { S.pop = null; draw(); } return; }
+  const d = t.dataset;
+  if ('view' in d) { if (d.view.startsWith('…')) return; S.view = d.view; S.pop = null; S.side = false; }
+  else if ('pop' in d) S.pop = S.pop === d.pop ? null : d.pop;
+  else if ('tag' in d) { if (d.tag.startsWith('…')) return; const i = S.focus.findIndex(x => x[0] === d.tag); if (i < 0) S.focus.push([d.tag, true]); else if (S.focus[i][1]) S.focus[i][1] = false; else S.focus.splice(i, 1); }
+  else if ('unfocus' in d) S.focus.splice(+d.unfocus, 1);
+  else if ('clear' in d) S.focus = [];
+  else if ('preset' in d) S.focus = [['played.never', true], ['format.vinyl', true]];
+  else if ('sort' in d) { S.sort = d.sort; S.pop = null; }
+  else if ('order' in d) S.asc = !S.asc;
+  else if ('side' in d) S.side = !S.side;
+  draw();
+};
+draw();
+</script>
+</body>
+</html>

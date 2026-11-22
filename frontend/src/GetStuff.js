@@ -11,3 +11,9 @@ export const historyForward = () => { history.forward(); };
 export const onPopState = (cb) => () => {
   window.addEventListener("popstate", (e) => cb((e.state && e.state.i) || 0)());
 };
+
+// is the first element matching the selector taller inside than it shows (line clamp)?
+export const isClamped = (sel) => () => {
+  const e = document.querySelector(sel);
+  return !!e && e.scrollHeight > e.clientHeight + 1;
+};

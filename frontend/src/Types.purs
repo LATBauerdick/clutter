@@ -154,6 +154,13 @@ derive instance newtypeAlbumList :: Newtype AlbumList _
 type State =      { apiUrl :: String
                   -- one view per browser history entry of this page, and which of them is shown;
                   -- the entry at pos is filled in when that view is left (Back, Forward, ‹ ›)
+                  -- the frame: which click-open menu is open (focus | sort | more), the sidebar as a
+                  -- drawer on a narrow screen, the search in the list on show, the filter of the tag picker
+                  , menuOpen :: Maybe String
+                  , sideOpen :: Boolean
+                  , listenedOpen :: Boolean -- the sidebar's Listened fold, while a Listened list is on show
+                  , search :: String
+                  , tagFilter :: String
                   , views :: Array View
                   , pos :: Int
                   , album :: Maybe Album
@@ -161,6 +168,7 @@ type State =      { apiUrl :: String
                   , albumT :: Maybe AlbumTJ -- its tracks, credits and review, loaded last (may take a moment)
                   , tracksLoading :: Boolean
                   , tracksTidal :: Boolean -- a Discogs release: show its Tidal version's tracks; off again with each album
+                  , aboutLong :: Boolean -- the review is longer than the lines shown, so "more" is offered
                   , aboutOpen :: Boolean -- the review is shown in full; folded again with each album
                   , listName :: AlbumList
                   , albumList :: Array Album
@@ -211,6 +219,12 @@ data Action = ToggleSortOrder
             | ToggleAbout -- the review: all of it, or its first lines
             | TracksSource Boolean -- a Discogs release: its own tracks (false) or the Tidal version's (true)
             | RefreshTracks -- fetch the tracks, credits and review of the album again
+            | TogglePop String -- open or close a menu: focus | sort | more
+            | ClosePops -- a click beside the menus: close them and the drawer
+            | ListenedClick String -- the sidebar's "Listened": show that list (this year's) and open the fold; on a Listened list: open or close it
+            | ToggleSide -- the sidebar as a drawer (narrow screens)
+            | SetSearch String
+            | SetTagFilter String
             | Back -- the ‹ button: the same as the browser's Back
             | Forward -- the › button: the same as the browser's Forward
             | GoTo Int -- the browser moved to this history entry: show its view
