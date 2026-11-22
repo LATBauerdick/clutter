@@ -36,7 +36,12 @@ with each album), Tracks (works grouped from "Work: Movement" titles, discs, `â†
 (folded), then play history. Checked on 8082: Geese D35208358 (Tidal, 0.2 s first, cache after),
 Volodos T124439542, D30818052, D4921592 (Discogs vinyl, no durations).
 Phase 3 changes: the about text is already there where Tidal has a review; Wikipedia leads remain
-for the albums without one. Phase 4 open (discography, similar artists). Mockup: `docs/album-page-mockup.html` (open in a
+for the albums without one. Phase 4 open (discography, similar artists).
+**Also built 2026-11-22, committed** (see `CLAUDE.md` for the endpoints): back/forward navigation;
+the new frame (`docs/menu-mockup.html`, design A: sidebar, top bar, list toolbar); Tidal's Save
+for later list and "Update from Tidal" without a restart; albums gone from Tidal (`tidal.gone`);
+"Remove from clutter" for stream albums. Where things stand and what is next: the project hub
+`~/Notes/Claude/ws/clutter.md`. Mockup: `docs/album-page-mockup.html` (open in a
 browser; switch design, example album and phase at the top). Source: the six Roon screenshots in
 `docs/Screenshot 2026-11-22 at 10.*.png` (Geese, *Getting Killed*; Volodos, Schubert D. 959).
 
