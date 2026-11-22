@@ -28,7 +28,7 @@ aComponent is =
   H.mkComponent
   { initialState: const is
   , render
-  , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
+  , eval: H.mkEval $ H.defaultEval { handleAction = handleAction, initialize = Just LoadNodeName }
   }
 
 handleAction :: forall output m. MonadAff m => Action -> H.HalogenM State Action () output m Unit
@@ -92,7 +92,7 @@ handleAction = case _ of
     H.modify_ _ { album = am, loading = false, result = Just r, now = now }
 
   ShowAlbum aid -> do
-    H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -123,6 +123,30 @@ handleAction = case _ of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
     H.modify_ _ { album = am, now = now, loading = false, result = Just r }
+  NodePlay tid -> do
+    -- the album view stays; only the status line under the button changes
+    H.modify_ _ { nodeMsg = Just "Node: starting…" }
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "nodeplay/" <> tid)
+    let msg = case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String } of
+                Right { reqInfo: i } -> i
+                Left _ -> r
+    H.liftAff $ Console.log msg
+    H.modify_ _ { nodeMsg = Just msg }
+  LoadNodeName -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "nodeinfo")
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: n, reqResult: 1 } -> H.modify_ _ { nodeName = n }
+      _ -> H.liftAff $ Console.log ("nodeinfo: " <> r) -- keep "Node"
+  NodeCtl cmd -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "nodectl/" <> cmd)
+    let msg = case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String } of
+                Right { reqInfo: i } -> i
+                Left _ -> r
+    H.liftAff $ Console.log msg
+    H.modify_ _ { nodeMsg = Just msg }
   UpdateDiscogs -> do
     H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow

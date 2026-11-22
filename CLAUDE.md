@@ -121,6 +121,9 @@ Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, 
 - `/api/albumsq/:list?sortBy=&sortOrder=&focus=` - Get filtered album list
 - `/api/paramsq/all` - Get menu parameters (sorts, lists, locations)
 - `/api/req?event=` - Trigger backend actions (e.g., "update")
+- `/api/nodeplay/:tidalId?mode=replace|now|next|last` - Play a Tidal album on the Bluesound Node via BluOS `/Add` (port 11000); returns `ReqJ` (`reqResult` 1 ok / 0 failed, `reqInfo` the message). Node address from `CLUTTER_BLUOS`, default `http://lblue.local:11000`. The album view's "▶ Node" button uses it (mode `replace`). It does not log a play — "Album Played" stays separate. ⚠️ macOS **Local Network privacy**: the server process needs LAN access, granted per launching app (Rex Server, Ghostty, …). Without it every LAN connect fails with `No route to host` (errno 65) even though Apple's `curl` reaches the Node — a server started from the Claude app hits exactly that (2026-11-21). API notes: `~/Notes/Claude/2026-11-21-bluos-api-for-clutter.md`.
+- `/api/nodectl/:cmd` (`toggle|pause|play|stop`) - Node transport via BluOS `/Pause?toggle=1`, `/Pause`, `/Play`, `/Stop`; `reqInfo` is the player's new `<state>`. Used by the top menu's "⏯ <name>" and "⏹" buttons (last answer in their tooltip).
+- `/api/nodeinfo` - the player's name from BluOS `/SyncStatus` (`name="lblue"`) in `reqInfo`. The frontend loads it once on start (`LoadNodeName`, the component's `initialize`) and labels the Node buttons with it; "Node" until then or if the player is unreachable.
 
 **Provider Update Endpoints**:
 - `/provider/discogs?token=&username=&nreleases=&release=` - Update from Discogs

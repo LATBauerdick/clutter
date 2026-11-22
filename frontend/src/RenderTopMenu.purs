@@ -51,11 +51,30 @@ renderTopMenu state =
         ]
         [ HH.text "Discogs" ]
       ]
+    -- Bluesound Node transport; the last answer shows as the tooltip
+    , HH.div [HP.class_ $ HH.ClassName "dropdown"]
+      [ HH.button
+        [ HP.class_ $ HH.ClassName "dropbtn1 nodebtn"
+        , HE.onClick \_ -> NodeCtl "toggle"
+        , HP.title $ state.nodeName <> ": pause / resume" <> nodeTip
+        ]
+        [ HH.text ("⏯ " <> state.nodeName) ]
+      , HH.button
+        [ HP.class_ $ HH.ClassName "dropbtn1 nodebtn"
+        , HE.onClick \_ -> NodeCtl "stop"
+        , HP.title $ state.nodeName <> ": stop" <> nodeTip
+        ]
+        [ HH.text "⏹" ]
+      ]
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonList
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonLocation
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonConfig
     ]
   where
+
+  nodeTip = case state.nodeMsg of
+    Just m -> " — last: " <> m
+    Nothing -> ""
 
   uhq = state.menu.params.muhq
   sorts = state.menu.params.msorts

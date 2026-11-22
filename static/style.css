@@ -87,6 +87,12 @@ li a:hover {
   margin: 0;
 }
 
+/* Node transport (⏯ ⏹): one block, narrower than the other black buttons */
+#navbar .dropdown .nodebtn {
+  padding: 14px 8px;
+  margin-left: 1px; /* thin gap left of each, also against the button before */
+}
+
 #navbar .dropdown .dropbtn {
   padding: 14px 16px 14px 16px;
   font-size: 16px;

@@ -158,10 +158,22 @@ render state = do
         , HH.br_
         , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
                     [ HH.text " Album Played "]
+        , nodeView
         , playsView
         , HH.br_
         , quotableView
         ]
+    -- ▶ Node: play the Tidal version on the Bluesound Node (BluOS API, via the backend)
+    nodeView = case a.albumTidal of
+      Nothing -> HH.text ""
+      Just t ->
+        HH.span_ $
+          [ HH.text " "
+          , HH.button [ HE.onClick \_ -> NodePlay t, HP.title ("Play the Tidal album on " <> state.nodeName) ]
+                      [ HH.text (" ▶ " <> state.nodeName <> " ") ]
+          ] <> case state.nodeMsg of
+                 Just m -> [ HH.text (" " <> m) ]
+                 Nothing -> []
     -- every play from the log, newest first
     playsView =
       HH.div [ HP.class_ $ HH.ClassName "album-plays" ] $
@@ -217,6 +229,7 @@ render state = do
         , HH.br_
         , HH.button [ HE.onClick \_ -> AlbumPlayed (a.albumID) ]
                     [ HH.text " Album Played "]
+        , nodeView
         , playsView
         , HH.br_
         , quotableView

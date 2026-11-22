@@ -89,6 +89,8 @@ type State =      { apiUrl :: String
                   , albumID :: String
                   , now :: DateTime
                   , result :: Maybe String
+                  , nodeMsg :: Maybe String -- answer to the last ▶ Node
+                  , nodeName :: String -- the Bluesound player's name, "Node" until known
                   , menu :: MenuState
                   }
 type MenuState =  { params :: MenuParams
@@ -118,4 +120,7 @@ data Action = ToggleSortOrder
             | ShowListSort AlbumList String SortOrder
             | ShowAlbum String
             | AlbumPlayed String
+            | NodePlay String -- Tidal album id: play it on the Bluesound Node
+            | NodeCtl String -- toggle | stop
+            | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs

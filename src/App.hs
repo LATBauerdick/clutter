@@ -21,7 +21,8 @@ import Control.Exception (try)
 import Control.Monad (foldM)
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as M
-import Data.Text as T (isSuffixOf, stripPrefix, unlines, unpack)
+import Data.Text as T (breakOn, isInfixOf, isSuffixOf, stripPrefix, takeWhile, unlines, unpack)
+import qualified Network.HTTP.Client as HC
 import Data.Text.IO as TIO (writeFile)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -157,6 +158,28 @@ type API10 =
     :> QueryParams "focus" Text
     :> Get '[JSON] ListenedJ
 
+-- play a Tidal album on the Bluesound Node through its BluOS API (port 11000)
+-- mode: replace (default) | now | next | last
+type API11 =
+  "api"
+    :> "nodeplay"
+    :> Capture "tid" Int
+    :> QueryParam "mode" Text
+    :> Get '[JSON] ReqJ
+
+-- Node transport: toggle (pause/resume) | pause | play | stop
+type API12 =
+  "api"
+    :> "nodectl"
+    :> Capture "cmd" Text
+    :> Get '[JSON] ReqJ
+
+-- the Node's player name from /SyncStatus (e.g. "lblue") in reqInfo
+type API13 =
+  "api"
+    :> "nodeinfo"
+    :> Get '[JSON] ReqJ
+
 data AlbumJ = AlbumJ
   { aid :: AlbumKey
   , album :: Maybe Album
@@ -209,6 +232,9 @@ type ClutterAPI =
     :<|> API8
     :<|> API9
     :<|> API10
+    :<|> API11
+    :<|> API12
+    :<|> API13
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -275,6 +301,9 @@ clutterServer sd =
     :<|> serveAlbump
     :<|> serveApp
     :<|> serveListenedq
+    :<|> serveNodeplay
+    :<|> serveNodectl
+    :<|> serveNodeinfo
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -417,6 +446,43 @@ clutterServer sd =
       _ -> liftIO $ print r
     pure sj
 
+  serveNodeplay :: Int -> Maybe Text -> AppM ReqJ
+  serveNodeplay tid mm = do
+    liftIO $ print ("-------serveNodeplay " :: Text, tid, mm)
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+    base <- liftIO bluosBase
+    (ok, info) <- liftIO $ bluosAdd base tid (fromMaybe "replace" mm)
+    liftIO $ hPutStrLn stderr ("nodeplay " <> show tid <> ": " <> toString info)
+    pure ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+
+  serveNodectl :: Text -> AppM ReqJ
+  serveNodectl cmd = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+    base <- liftIO bluosBase
+    (ok, info) <- liftIO $ bluosCtl base cmd
+    liftIO $ hPutStrLn stderr ("nodectl " <> toString cmd <> ": " <> toString info)
+    pure ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+
+  serveNodeinfo :: AppM ReqJ
+  serveNodeinfo = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+    base <- liftIO bluosBase
+    r <- liftIO $ bluosGet base "/SyncStatus"
+    let (ok, info) = case r of
+          Left err -> (False, err)
+          -- <SyncStatus … name="lblue" model="N130" modelName="NODE" …>
+          Right b -> case T.stripPrefix " name=\"" . snd $ T.breakOn " name=\"" b of
+            Just rest | T.takeWhile (/= '"') rest /= "" -> (True, T.takeWhile (/= '"') rest)
+            _ -> (False, "Node: no name in /SyncStatus")
+    liftIO $ hPutStrLn stderr ("nodeinfo: " <> toString info)
+    pure ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+
+  bluosBase :: IO String
+  bluosBase = fromMaybe "http://lblue.local:11000" <$> lookupEnv "CLUTTER_BLUOS"
+
   serveAlbump :: AlbumKey -> AppM AlbumJ
   serveAlbump i = do
     liftIO $ print ("-------serveAlbump " :: Text, i)
@@ -481,6 +547,63 @@ clutterServer sd =
     aids <- gl ln
     html <- renderAlbumsView ln [] aids
     pure . RawHtml $ L.renderBS html
+
+-- BluOS: queue a Tidal album by its Tidal album id and play it. The parameters are
+-- those of the "Play now" entry in the player's own /Services menu (Tidal-Album);
+-- tested live on the Node 2026-11-21, see ~/Notes/Claude/2026-11-21-bluos-api-for-clutter.md
+-- Returns (ok, message); never throws.
+bluosAdd :: String -> Int -> Text -> IO (Bool, Text)
+bluosAdd base tid mode = do
+  let ps :: String
+      ps = case mode of
+        "now" -> "&playnow=1&clear=0&shuffle=0&where=nextAlbum" -- after the current album
+        "next" -> "&playnow=-1&where=nextAlbum" -- queue, don't play
+        "last" -> "&playnow=-1&where=last"
+        _ -> "&playnow=1&clear=1&where=nextAlbum" -- replace the queue
+  r <- bluosGet base ("/Add?service=Tidal&albumid=" <> show tid <> ps)
+  pure $ case r of
+    Left err -> (False, err)
+    Right b ->
+      -- reply is <playlist length="6" id="362" …/> or <error …><message>…</message></error>
+      let len = maybe "?" (T.takeWhile (/= '"')) . T.stripPrefix "length=\"" . snd $ T.breakOn "length=\"" b
+       in if "<error" `T.isInfixOf` b || not ("<playlist" `T.isInfixOf` b)
+            then (False, "Node refused: " <> b)
+            else (True, "Node: " <> (if mode `elem` ["next", "last"] then "queued, " else "playing, ") <> len <> " tracks in queue")
+
+-- BluOS transport: toggle (pause/resume), pause, play, stop.
+-- The player answers <state>pause</state> (or play/stop/stream).
+bluosCtl :: String -> Text -> IO (Bool, Text)
+bluosCtl base cmd = case cmdPath of
+  Nothing -> pure (False, "Node: unknown command " <> cmd)
+  Just p -> do
+    r <- bluosGet base p
+    pure $ case r of
+      Left err -> (False, err)
+      Right b ->
+        let st = T.takeWhile (/= '<') . snd . T.breakOn ">" . snd $ T.breakOn "<state" b
+         in if "<error" `T.isInfixOf` b
+              then (False, "Node refused: " <> b)
+              else (True, "Node: " <> (if st == "" then b else fromMaybe st (T.stripPrefix ">" st)))
+ where
+  cmdPath :: Maybe String
+  cmdPath = case cmd of
+    "toggle" -> Just "/Pause?toggle=1"
+    "pause" -> Just "/Pause"
+    "play" -> Just "/Play"
+    "stop" -> Just "/Stop"
+    _ -> Nothing
+
+-- one GET to the player; Left is a short, human-readable failure
+bluosGet :: String -> String -> IO (Either Text Text)
+bluosGet base path = do
+  r <- try $ do
+    mgr <- HC.newManager HC.defaultManagerSettings{HC.managerResponseTimeout = HC.responseTimeoutMicro 15000000}
+    req <- HC.parseRequest (base <> path)
+    HC.responseBody <$> HC.httpLbs req mgr
+  pure $ case r of
+    Left (HC.HttpExceptionRequest _ c) -> Left ("Node not reachable at " <> toText base <> ": " <> show c)
+    Left e -> Left ("Node: bad request " <> show e)
+    Right body -> Right (decodeUtf8 body)
 
 isDiscogs :: AlbumKey -> Bool
 isDiscogs k = case k of

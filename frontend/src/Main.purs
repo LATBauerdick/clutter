@@ -70,6 +70,8 @@ initialState = do -- should eventually be saved in preferences
         , albumID: "0"
         , now: now
         , result: Nothing
+        , nodeMsg: Nothing
+        , nodeName: "Node"
         , menu : ms { params { muhq = baseUrl } }
         }
 
