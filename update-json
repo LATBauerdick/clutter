@@ -1,5 +1,5 @@
 
-# ./update-json          everything: Discogs collection, folders, lists, wants, then Tidal
+# ./update-json          everything: Discogs collection, folders, lists, wants, Tidal, Wikidata links
 # ./update-json --tidal  Tidal only: favourites (cache/traw.json) and the album store,
 #                        incl. the Apple Music lookup by UPC for albums not yet checked
 TIDAL_ONLY=
@@ -61,6 +61,12 @@ curl -H "Authorization: Bearer $TDT"  "https://api.tidalhifi.com/v1/users/$TID/f
 # clutter's Tidal album store (~/Sync/clutter/tidal-albums.json): keeps every album that was ever
 # a favourite, so favourites can be deleted in the Tidal app; fetches played non-favourites
 python3 ../scripts/update-tidal-albums.py
+
+# Wikipedia/AllMusic links via Wikidata (~/Sync/clutter/wikidata.json), for Discogs masters and
+# artists; asks only new keys and misses older than 180 days (docs/wikidata-plan.md)
+if [ -z "$TIDAL_ONLY" ]; then
+python3 ../scripts/update-wikidata.py
+fi
 
 ## Apple Music
 ####for i in {0..44}; do limit=100 ; ((off = $i*$limit)) ; curl -v -H "Authorization: Bearer $AMT" "https://api.music.apple.com/v1/me/library/albums?include=catalog&limit=$limit&offset=$off&sort=dateAdded" > am$i.json; done
