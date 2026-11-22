@@ -118,6 +118,7 @@ Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, 
 
 **JSON Endpoints** (for frontend):
 - `/api/albumq/:id` - Get album data
+- `/api/albumxq/:id` - the album page's details (`docs/album-page-plan.md`, phase 1): `xfacts` (length, tracks, quality, label, full date, kind, explicit, styles — `src/Details.hs`, read from `cache/draw*.json` and the Tidal album store at start) and `xrelated` (other versions, more by the artists, similar albums — `src/Related.hs`). The frontend asks for it after `albumq`, so `Album` stays small in lists
 - `/api/albumsq/:list?sortBy=&sortOrder=&focus=` - Get filtered album list
 - `/api/paramsq/all` - Get menu parameters (sorts, lists, locations)
 - `/api/req?event=` - Trigger backend actions (e.g., "update")

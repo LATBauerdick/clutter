@@ -27,6 +27,7 @@ source-repository head
 library
   exposed-modules:
       App
+      Details
       Env
       FromAMusic
       FromDiscogs
@@ -34,6 +35,7 @@ library
       Listened
       Parse
       Provider
+      Related
       Render
       RenderAlbumsView
       RenderAlbumView

@@ -48,6 +48,7 @@ import Provider (
  )
 
 import Wikidata (attachWiki, readWikiStore)
+import Details (factsFor, readDetailStore)
 import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
 import System.IO (hPutStrLn)
@@ -337,6 +338,8 @@ envInit c = do
   hPutStrLn stderr $ "read " <> show (length plays') <> " plays from " <> ldir
   -- Wikipedia/AllMusic links (docs/wikidata-plan.md), also re-attached by withPlays
   wstore <- readWikiStore
+  -- facts for the album page (docs/album-page-plan.md, phase 1)
+  dstore <- readDetailStore
   let albums' = attachWiki wstore (linkTidalTags (attachPlays plays' albums''))
 
   -- create the Tags index
@@ -419,6 +422,7 @@ envInit c = do
       , sorts = V.fromList $ M.keys sfs
       , getSort = \am sn -> fromMaybe sDef (M.lookup sn sfs) am
       , wikiLinks = attachWiki wstore
+      , albumFacts = factsFor dstore
       }
 
 --

@@ -66,6 +66,7 @@ initialState = do -- should eventually be saved in preferences
         , listName: AlbumList (Just ln)
         , albumList : ls
         , album: Nothing
+        , albumX: Nothing
         , loading: false
         , albumID: "0"
         , now: now

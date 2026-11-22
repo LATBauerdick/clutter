@@ -38,6 +38,7 @@ import Env (
   envUpdateSort,
  )
 import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
+import Related (Related (..), noRelated, related)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
@@ -52,6 +53,7 @@ import System.IO (hPutStrLn)
 import System.Process (rawSystem, readProcess)
 import Types (
   Album (..),
+  AlbumFacts (..),
   AlbumKey (..),
   AppM,
   Discogs (..),
@@ -180,6 +182,22 @@ type API13 =
     :> "nodeinfo"
     :> Get '[JSON] ReqJ
 
+-- the album page's details (docs/album-page-plan.md, phase 1): facts from the stores and
+-- the album strips. Asked for when an album is opened, so that Album stays small in lists.
+type API14 =
+  "api"
+    :> "albumxq"
+    :> Capture "aid" AlbumKey
+    :> Get '[JSON] AlbumXJ
+
+data AlbumXJ = AlbumXJ
+  { xid :: AlbumKey
+  , xfacts :: AlbumFacts
+  , xrelated :: Related
+  }
+  deriving (Show, Generic)
+instance ToJSON AlbumXJ
+
 data AlbumJ = AlbumJ
   { aid :: AlbumKey
   , album :: Maybe Album
@@ -235,6 +253,7 @@ type ClutterAPI =
     :<|> API11
     :<|> API12
     :<|> API13
+    :<|> API14
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -304,6 +323,7 @@ clutterServer sd =
     :<|> serveNodeplay
     :<|> serveNodectl
     :<|> serveNodeinfo
+    :<|> serveAlbumxq
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -415,6 +435,15 @@ clutterServer sd =
           Just a -> AlbumJ{aid = i, album = Just a}
           _ -> AlbumJ{aid = i, album = Nothing}
     pure aj
+
+  serveAlbumxq :: AlbumKey -> AppM AlbumXJ
+  serveAlbumxq i = do
+    am <- asks albumsR >>= readIORef
+    facts <- asks albumFacts
+    pure $ case M.lookup i am of
+      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a}
+      -- not in the collection (an album made up from a play): no details
+      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [], xrelated = noRelated}
 
   serveParamsq :: AppM ParamsJ
   serveParamsq = do

@@ -10,7 +10,7 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index)
+import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null)
 import Data.Foldable (minimum, maximum, any)
 import Data.Int (fromString)
 import Halogen as H
@@ -21,11 +21,11 @@ import Halogen.HTML.Events as HE
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
-import Data.String (take, drop, length, indexOf, contains, stripPrefix, joinWith) as S
+import Data.String (take, drop, length, indexOf, contains, stripPrefix, joinWith, toLower, split) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
-import Types (Album, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
+import Types (Album, AlbumRef, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
 import RenderTopMenu (renderTopMenu)
 
 render :: forall m0. State -> H.ComponentHTML Action () m0
@@ -142,7 +142,8 @@ render state = do
                      ]
             ]
         , HH.div [ cls "av-head" ]
-          [ HH.p [ cls "av-date" ] [ HH.text (longDate a.albumReleased) ]
+          [ HH.p [ cls "av-date" ] [ HH.text (longDate (fromMaybe a.albumReleased (facts >>= _.afReleased))
+                                              <> maybe "" (" · " <> _) (facts >>= _.afKind)) ]
           , HH.h1 [ cls "av-title" ] [ HH.text a.albumTitle ]
           , HH.p [ cls "av-artist" ] [ HH.text artistNames ]
           , actionsView
@@ -153,16 +154,24 @@ render state = do
         [ HH.div [ cls "av-main" ] [ playsView ]
         , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView ]
         ]
+      , HH.div_ stripsView
       ]
     where
     cls :: forall r i. String -> HP.IProp ( class :: String | r ) i
     cls = HP.class_ <<< HH.ClassName
     isDiscogs = S.take 1 a.albumID == "D"
+    -- the details from /api/albumxq, once they are there and belong to this album
+    detail = case state.albumX of
+      Just x | x.xid == a.albumID -> Just x
+      _ -> Nothing
+    facts = _.xfacts <$> detail
+    styles = maybe [] _.afStyles facts
     -- the artists' display names (without the Discogs "(n)" suffix) where the backend sends them
     artistNames = case filter (_ /= "") (map _.arName (fromMaybe [] a.albumArtists)) of
       [] -> a.albumArtist
       ns -> S.joinWith ", " ns
     -- "2025-09-26" -> "26 September 2025"; a bare year stays
+    longDate "0" = "" -- Discogs: no year
     longDate d = case S.length d == 10, fromString (S.take 2 (S.drop 5 d)), fromString (S.drop 8 d) of
       true, Just m, Just day | Just mn <- index months (m - 1) -> show day <> " " <> mn <> " " <> S.take 4 d
       _, _, _ -> d
@@ -195,11 +204,15 @@ render state = do
     -- genres as chips; a click shows that genre from all albums
     genres = mapMaybe (S.stripPrefix (Pattern "genre.")) a.albumTags
     -- the other tags, without those the facts already show (provider, rating, plays)
-    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal." ])) a.albumTags
+    -- and without the Discogs styles once those are chips
+    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal." ])
+                              && not (elem t (map S.toLower styles))) a.albumTags
     chipsView =
       HH.div [ cls "av-chips" ] $
         map (\g -> HH.button [ cls "av-chip", HE.onClick \_ -> ShowFocus ("genre." <> g), HP.title ("All albums: " <> g) ]
                              [ HH.text g ]) genres
+        <> map (\s -> HH.button [ cls "av-chip av-style", HE.onClick \_ -> ShowFocus (S.toLower s), HP.title ("All albums: " <> s) ]
+                                [ HH.text s ]) styles
 
     -- the facts column
     row k v = [ HH.span [ cls "av-k" ] [ HH.text k ], HH.span [ cls "av-v" ] v ]
@@ -207,7 +220,18 @@ render state = do
     early = a.albumPlays > np -- the Discogs "Plays" mark also holds plays from before the log
     factsView =
       HH.div [ cls "av-facts" ] $ concat
-        [ row "Format" [ HH.text a.albumFormat ]
+        [ case facts >>= _.afLength of
+            Just s -> row "Length" [ HH.text (show ((s + 30) / 60) <> " min"
+                                              <> maybe "" (\n -> " · " <> show n <> " tracks") (facts >>= _.afTracks)) ]
+            Nothing -> []
+        , row "Format" [ HH.text a.albumFormat ]
+        , case facts >>= _.afQuality of
+            Just q -> row (if isDiscogs then "Tidal" else "Quality")
+                          [ HH.text (q <> if maybe false _.afExplicit facts then " · explicit" else "") ]
+            Nothing -> []
+        , case facts >>= _.afLabel of
+            Just l -> row "Label" [ HH.text l ]
+            Nothing -> []
         , if a.albumRating > 0
             then row "Rating" [ HH.span [ cls "av-stars" ] [ HH.text (stars a.albumRating) ] ]
             else []
@@ -293,6 +317,30 @@ render state = do
         <> (case a.albumJellyfin of
               Just j | j /= "" -> ext ("http://usrv.local:8096/web/#/details?id=" <> j) "Jellyfin"
               _ -> [])
+
+    -- the album strips: other versions, more by the artists, similar albums; all from the library
+    stripsView = case _.xrelated <$> detail of
+      Nothing -> []
+      Just rel ->
+        strip "Other versions" "in my library" rel.relVersions
+        <> strip artistNames "in my library" rel.relByArtist
+        <> strip "Similar albums" ("in my library · " <> S.drop 6 rel.relSimilarName <> " · longest not played first") rel.relSimilar
+    strip title sub refs =
+      if null refs then [] else
+        [ HH.div [ cls "av-sect" ]
+          [ HH.div [ cls "av-sect-head" ] [ HH.h2_ [ HH.text title ], HH.span_ [ HH.text sub ] ]
+          , HH.div [ cls "av-strip" ] (map card refs)
+          ]
+        ]
+    card :: AlbumRef -> H.ComponentHTML Action () m
+    card r =
+      let fmt = fromMaybe "" (head (S.split (Pattern ",") r.rFormat)) in
+      HH.button [ cls "av-card", HE.onClick \_ -> ShowAlbum r.rId, HP.title (r.rArtist <> " – " <> r.rTitle) ] $
+        [ HH.img [ HP.src (if r.rCover == "" then "/icons/no-cover.png" else r.rCover), HP.alt "" ]
+        , HH.span [ cls "av-card-y" ] [ HH.text (S.joinWith " · " (filter (_ /= "") [ r.rYear, fmt ])) ]
+        , HH.span [ cls "av-card-t" ] [ HH.text r.rTitle ]
+        , HH.span [ cls "av-card-a" ] [ HH.text r.rArtist ]
+        ] <> (if r.rNote == "" then [] else [ HH.span [ cls "av-card-y" ] [ HH.text r.rNote ] ])
 
     -- every play from the log, newest first, with a bar per year
     playYears = mapMaybe (fromString <<< S.take 4) a.albumListenedDates

@@ -6,7 +6,19 @@ for Discogs and stream albums (hero, ▶ with the four modes, genre chips and ta
 with a bar per year; the cover badges and the Obsidian note text are gone from this view), styles
 `.av-*` at the end of `static/style.css`. Checked in headless Chrome on a test server (8082) on
 *Getting Killed* (D35208358, wide and 430 px) and the Volodos album (T124439542); the chip, tag
-and mode buttons were not clicked there. Phases 1–4 open. Mockup: `docs/album-page-mockup.html` (open in a
+and mode buttons were not clicked there.
+**Phase 1 built** (2026-11-22, uncommitted): `GET /api/albumxq/:id` → `{xid, xfacts, xrelated}`.
+`src/Details.hs` reads `cache/draw*.json` (label, catalog number, styles) and the Tidal album
+store (length, tracks, quality, full date, EP/single, explicit) once at start — on its own, not
+through `Release`, so an album added while the server runs has no facts until the restart.
+`src/Related.hs` (pure) makes the strips from the albums in memory: other collection releases of
+the same Discogs master, other albums sharing an artist (by store key or name, oldest first, at
+most 24), and "similar": same genre, played before, most shared Discogs styles first, then
+longest not played (12). A Tidal/Apple album that a Discogs release links to is left out as a
+duplicate. The frontend asks for the details after the album (`loadDetail`), shows Length /
+Quality / Label rows, the full date, style chips and the three strips; against a backend without
+the endpoint it shows the phase 0 page. Checked on the same two albums on 8082. Not in phase 1:
+an artist link to a clutter list. Phases 2–4 open. Mockup: `docs/album-page-mockup.html` (open in a
 browser; switch design, example album and phase at the top). Source: the six Roon screenshots in
 `docs/Screenshot 2026-11-22 at 10.*.png` (Geese, *Getting Killed*; Volodos, Schubert D. 959).
 

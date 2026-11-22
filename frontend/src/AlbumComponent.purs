@@ -19,7 +19,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (AlbumJ , AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..))
+import Types  (Album, AlbumJ, AlbumXJ, AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..))
 import GetStuff (getUrl, getNow, _encodeURIComponent )
 import Render (render)
 
@@ -78,7 +78,7 @@ handleAction = case _ of
 
   MakeRequest event -> do
     H.liftEffect $ Event.preventDefault event
-    H.modify_ _ { listName = AlbumList Nothing, loading = true }
+    H.modify_ _ { listName = AlbumList Nothing, albumX = Nothing, loading = true }
     albumID <- H.gets _.albumID
     now <- H.liftAff getNow
     api <- H.gets _.apiUrl
@@ -90,9 +90,10 @@ handleAction = case _ of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
     H.modify_ _ { album = am, loading = false, result = Just r, now = now }
+    loadDetail am
 
   ShowAlbum aid -> do
-    H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
+    H.modify_ _ { album = Nothing, albumX = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -103,6 +104,7 @@ handleAction = case _ of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
     H.modify_ _ { album = am, now = now, loading = false, result = Just r }
+    loadDetail am
 
   ShowListSort alist sn so -> do
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist, sso = so, sortName = sn } }
@@ -117,7 +119,7 @@ handleAction = case _ of
     H.modify_ _ { listName = alist, loading = true, menu { ln = "All", ffs = [ Tuple tag true ] } }
     updateAlbumList
   AlbumPlayed aid -> do
-    H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { album = Nothing, albumX = Nothing, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -128,6 +130,7 @@ handleAction = case _ of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
     H.modify_ _ { album = am, now = now, loading = false, result = Just r }
+    loadDetail am
   NodePlay tid mode -> do
     -- the album view stays; only the status line under the button changes
     H.modify_ _ { nodeMsg = Just "Node: starting…" }
@@ -153,7 +156,7 @@ handleAction = case _ of
     H.liftAff $ Console.log msg
     H.modify_ _ { nodeMsg = Just msg }
   UpdateDiscogs -> do
-    H.modify_ _ { album = Nothing, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { album = Nothing, albumX = Nothing, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -164,6 +167,19 @@ handleAction = case _ of
     updateAlbumList
 
   where
+    -- the album page's details, once the album itself is there; an older backend
+    -- without /api/albumxq just leaves them out
+    loadDetail :: forall output' m'. MonadAff m' => Maybe Album -> H.HalogenM State Action () output' m' Unit
+    loadDetail am = case am of
+      Nothing -> pure unit
+      Just a -> do
+        api <- H.gets _.apiUrl
+        r <- H.liftAff $ getUrl (api <> "albumxq/" <> a.albumID)
+        cur <- H.gets _.album
+        case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumXJ, cur of
+          Right x, Just c | x.xid == c.albumID -> H.modify_ _ { albumX = Just x }
+          _, _ -> pure unit
+
     updateAlbumList :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
     updateAlbumList = do
       H.modify_ _ { loading = true }

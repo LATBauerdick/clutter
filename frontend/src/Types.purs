@@ -1,5 +1,9 @@
 module Types  ( Album
               , ArtistRef
+              , AlbumFacts
+              , AlbumRef
+              , Related
+              , AlbumXJ
               , AlbumJ
               , AlbumsJ
               , ListenedJ
@@ -75,6 +79,33 @@ type ArtistRef =  { arName :: String -- without the Discogs "(n)" suffix
                   , arWiki :: Maybe String
                   , arAllMusic :: Maybe String
                   }
+-- /api/albumxq: the album page's details (backend Details.hs, Related.hs)
+type AlbumFacts = { afLength :: Maybe Int -- seconds
+                  , afTracks :: Maybe Int
+                  , afQuality :: Maybe String
+                  , afLabel :: Maybe String
+                  , afReleased :: Maybe String -- the full date
+                  , afKind :: Maybe String -- "EP", "Single"
+                  , afExplicit :: Boolean
+                  , afStyles :: Array String
+                  }
+type AlbumRef =   { rId :: String
+                  , rTitle :: String
+                  , rArtist :: String
+                  , rCover :: String
+                  , rYear :: String
+                  , rFormat :: String
+                  , rNote :: String
+                  }
+type Related =    { relVersions :: Array AlbumRef
+                  , relByArtist :: Array AlbumRef
+                  , relSimilar :: Array AlbumRef
+                  , relSimilarName :: String
+                  }
+type AlbumXJ =    { xid :: String
+                  , xfacts :: AlbumFacts
+                  , xrelated :: Related
+                  }
 type AlbumJ =     { aid :: String
                   , album :: Album
                   }
@@ -94,6 +125,7 @@ derive instance newtypeAlbumList :: Newtype AlbumList _
 
 type State =      { apiUrl :: String
                   , album :: Maybe Album
+                  , albumX :: Maybe AlbumXJ -- details of that album, loaded after it
                   , listName :: AlbumList
                   , albumList :: Array Album
                   , loading :: Boolean

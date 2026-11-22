@@ -13,6 +13,7 @@ module Types (
   Release (..),
   Album (..),
   ArtistRef (..),
+  AlbumFacts (..),
   AlbumKey (..),
   keyText,
   parseKey,
@@ -131,6 +132,7 @@ data Env = Env
   , getList :: Text -> AppM (Vector AlbumKey)
   , getSort :: Map AlbumKey Album -> Text -> (SortOrder -> Vector AlbumKey -> Vector AlbumKey)
   , wikiLinks :: Map AlbumKey Album -> Map AlbumKey Album -- Wikidata.attachWiki with the store read at start
+  , albumFacts :: Album -> AlbumFacts -- Details.factsFor with the stores read at start
   }
 instance Show Env where
   show :: Env -> String
@@ -236,6 +238,21 @@ data ArtistRef = ArtistRef
   }
   deriving (Show, Generic)
 instance ToJSON ArtistRef
+
+-- facts about an album that are on disk but not in Album (Details.hs; docs/album-page-plan.md,
+-- phase 1). Sent by /api/albumxq, not with every Album in a list.
+data AlbumFacts = AlbumFacts
+  { afLength :: Maybe Int -- seconds
+  , afTracks :: Maybe Int
+  , afQuality :: Maybe Text -- "Hi-Res lossless", "Lossless", "Dolby Atmos"
+  , afLabel :: Maybe Text -- Discogs label and catalog number, or Tidal's copyright line
+  , afReleased :: Maybe Text -- the full date, "2025-09-26"
+  , afKind :: Maybe Text -- "EP", "Single"; Nothing for an album
+  , afExplicit :: Bool
+  , afStyles :: [Text] -- Discogs styles
+  }
+  deriving (Show, Generic)
+instance ToJSON AlbumFacts
 
 instance Eq Album where
   (==) a b = albumID a == albumID b
