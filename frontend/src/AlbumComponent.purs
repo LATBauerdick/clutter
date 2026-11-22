@@ -11,16 +11,17 @@ import Data.Map as M
 import Data.String (contains, stripPrefix, length)
 import Data.String.Pattern (Pattern(..))
 import Effect.Class.Console as Console
-import Data.Array (foldMap, zipWith)
+import Data.Array (foldMap, zipWith, snoc, take, index, updateAt)
 import Halogen as H
+import Halogen.Subscription as HS
 
 import Effect.Aff.Class (class MonadAff)
 import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (Album, AlbumJ, AlbumXJ, AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..))
-import GetStuff (getUrl, getNow, _encodeURIComponent )
+import Types  (Album, AlbumJ, AlbumXJ, AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..), View(..))
+import GetStuff (getUrl, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState)
 import Render (render)
 
 aComponent :: forall query input output m. MonadAff m => State -> H.Component query input output m
@@ -78,6 +79,7 @@ handleAction = case _ of
 
   MakeRequest event -> do
     H.liftEffect $ Event.preventDefault event
+    pushView
     H.modify_ _ { listName = AlbumList Nothing, albumX = Nothing, loading = true }
     albumID <- H.gets _.albumID
     now <- H.liftAff getNow
@@ -92,28 +94,37 @@ handleAction = case _ of
     H.modify_ _ { album = am, loading = false, result = Just r, now = now }
     loadDetail am
 
-  ShowAlbum aid -> do
-    H.modify_ _ { album = Nothing, albumX = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
-    now <- H.liftAff getNow
-    H.liftAff $ Console.logShow now
-    api <- H.gets _.apiUrl
-    r <- H.liftAff $ getUrl (api <> "albumq/" <> aid)
-    H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ)
-    let aje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ
-    let am = case aje of
-                      Right { aid: _, album: a } -> Just a
-                      Left _ -> Nothing
-    H.modify_ _ { album = am, now = now, loading = false, result = Just r }
-    loadDetail am
+  ShowAlbum aid -> pushView *> showAlbum aid
+
+  Back -> H.liftEffect historyBack
+  Forward -> H.liftEffect historyForward
+  GoTo j -> do
+    st <- H.get
+    -- keep the view we are leaving at its own entry, so that Forward finds it again
+    let vs = case currentView st of
+               Just v -> fromMaybe (snoc (take st.pos st.views) v) (updateAt st.pos v st.views)
+               Nothing -> st.views
+    case index vs j of
+      Nothing -> pure unit -- an entry from before a reload: nothing to show
+      Just v -> do
+        H.modify_ _ { views = vs, pos = j }
+        case v of
+          VAlbum aid -> showAlbum aid
+          VList alist ln ffs sn so -> do
+            H.modify_ _ { listName = alist, loading = true, menu { ln = ln, ffs = ffs, sortName = sn, sso = so } }
+            updateAlbumList
 
   ShowListSort alist sn so -> do
+    pushView
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist, sso = so, sortName = sn } }
     updateAlbumList
   ShowList alist -> do
+    pushView
     -- H.liftEffect $ Event.preventDefault event
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
   ShowFocus tag -> do
+    pushView
     -- from the album view: all albums with this tag (a genre chip, a tag)
     let alist = AlbumList (Just "All")
     H.modify_ _ { listName = alist, loading = true, menu { ln = "All", ffs = [ Tuple tag true ] } }
@@ -142,6 +153,11 @@ handleAction = case _ of
     H.liftAff $ Console.log msg
     H.modify_ _ { nodeMsg = Just msg }
   LoadNodeName -> do
+    -- on start: also listen for the browser's Back and Forward
+    { emitter, listener } <- H.liftEffect HS.create
+    _ <- H.subscribe emitter
+    H.liftEffect initHistory
+    H.liftEffect $ onPopState (\j -> HS.notify listener (GoTo j))
     api <- H.gets _.apiUrl
     r <- H.liftAff $ getUrl (api <> "nodeinfo")
     case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
@@ -167,6 +183,38 @@ handleAction = case _ of
     updateAlbumList
 
   where
+    currentView :: State -> Maybe View
+    currentView st = case st.listName, st.album of
+      AlbumList Nothing, Just a -> Just (VAlbum a.albumID)
+      AlbumList Nothing, Nothing -> Nothing
+      l, _ -> Just (VList l st.menu.ln st.menu.ffs st.menu.sortName st.menu.sso)
+
+    -- before showing something new: keep the view we are leaving at its history entry,
+    -- drop what was ahead of it, and open a new entry for what comes
+    pushView :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
+    pushView = do
+      st <- H.get
+      case currentView st of
+        Nothing -> pure unit
+        Just v -> do
+          H.modify_ _ { views = snoc (take st.pos st.views) v, pos = st.pos + 1 }
+          H.liftEffect $ pushHistory (st.pos + 1)
+
+    showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
+    showAlbum aid = do
+      H.modify_ _ { album = Nothing, albumX = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
+      now <- H.liftAff getNow
+      H.liftAff $ Console.logShow now
+      api <- H.gets _.apiUrl
+      r <- H.liftAff $ getUrl (api <> "albumq/" <> aid)
+      H.liftAff $ Console.logShow ((decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ)
+      let aje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ
+      let am = case aje of
+                        Right { aid: _, album: a } -> Just a
+                        Left _ -> Nothing
+      H.modify_ _ { album = am, now = now, loading = false, result = Just r }
+      loadDetail am
+
     -- the album page's details, once the album itself is there; an older backend
     -- without /api/albumxq just leaves them out
     loadDetail :: forall output' m'. MonadAff m' => Maybe Album -> H.HalogenM State Action () output' m' Unit

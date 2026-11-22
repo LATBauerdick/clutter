@@ -9,6 +9,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
 
+import Data.Array (length)
 import Data.Foldable (intercalate)
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Map as M
@@ -20,7 +21,23 @@ renderTopMenu :: forall m'. State -> H.ComponentHTML Action () m'
 renderTopMenu state =
   HH.div
     [ HP.id "navbar" ]
-    [ HH.div [HP.class_ $ HH.ClassName "dropdown"] renderShow
+    [ HH.div [HP.class_ $ HH.ClassName "dropdown"]
+      [ HH.button
+        [ HP.class_ $ HH.ClassName "dropbtn1 nodebtn"
+        , HE.onClick \_ -> Back
+        , HP.title "Back to the view before"
+        , HP.disabled (state.pos == 0)
+        ]
+        [ HH.text "‹" ]
+      , HH.button
+        [ HP.class_ $ HH.ClassName "dropbtn1 nodebtn"
+        , HE.onClick \_ -> Forward
+        , HP.title "Forward again"
+        , HP.disabled (state.pos >= length state.views - 1)
+        ]
+        [ HH.text "›" ]
+      ]
+    , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderShow
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderFocus
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] renderButtonSort
     , HH.div [HP.class_ $ HH.ClassName "dropdown"] [renderButtonOrder]

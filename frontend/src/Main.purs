@@ -65,6 +65,8 @@ initialState = do -- should eventually be saved in preferences
   pure  { apiUrl : apiBaseUrl
         , listName: AlbumList (Just ln)
         , albumList : ls
+        , views: []
+        , pos: 0
         , album: Nothing
         , albumX: Nothing
         , loading: false

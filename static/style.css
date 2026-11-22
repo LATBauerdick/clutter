@@ -87,6 +87,12 @@ li a:hover {
   margin: 0;
 }
 
+/* ‹ › with nowhere to go */
+#navbar .dropdown .dropbtn1:disabled {
+  color: #6e6e6e;
+  cursor: default;
+}
+
 /* Node transport (⏯ ⏹): one block, narrower than the other black buttons */
 #navbar .dropdown .nodebtn {
   padding: 14px 8px;

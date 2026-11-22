@@ -14,6 +14,7 @@ module Types  ( Album
               , AlbumList (..)
               , ParamsJ
               , Action (..)
+              , View (..)
               , pLocList
               ) where
 
@@ -124,6 +125,10 @@ newtype AlbumList = AlbumList (Maybe  String)
 derive instance newtypeAlbumList :: Newtype AlbumList _
 
 type State =      { apiUrl :: String
+                  -- one view per browser history entry of this page, and which of them is shown;
+                  -- the entry at pos is filled in when that view is left (Back, Forward, ‹ ›)
+                  , views :: Array View
+                  , pos :: Int
                   , album :: Maybe Album
                   , albumX :: Maybe AlbumXJ -- details of that album, loaded after it
                   , listName :: AlbumList
@@ -152,6 +157,10 @@ type ParamsJ =    { timeStamp :: String
                   , params :: MenuParams
                   }
 
+-- a view to go back to: an album, or a list with its focus and sort
+data View = VAlbum String
+          | VList AlbumList String (Array (Tuple String Boolean)) String SortOrder
+
 data Action = ToggleSortOrder
             | SetSortOrder SortOrder
             | SetSort String
@@ -168,3 +177,6 @@ data Action = ToggleSortOrder
             | NodeCtl String -- toggle | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
+            | Back -- the ‹ button: the same as the browser's Back
+            | Forward -- the › button: the same as the browser's Forward
+            | GoTo Int -- the browser moved to this history entry: show its view
