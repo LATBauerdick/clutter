@@ -1,6 +1,6 @@
 # Wikipedia and AllMusic links via Wikidata — plan
 
-Status: **phases 1–4 done**; phase 5 (Day One/Obsidian) is next. Phases 1–2 (2026-11-21): `scripts/update-wikidata.py`, run by
+Status: **done** (phases 1–4); phase 5 dropped (decision 3 reversed, 2026-11-22). Phases 1–2 (2026-11-21): `scripts/update-wikidata.py`, run by
 `update-json` (both modes). Fills: 3,574 Discogs keys in 18 queries, then 7,257 Tidal/Apple keys
 in 37, no rate limiting. Phase 3 (2026-11-22): `src/Wikidata.hs`; `/api/albumq/…` carries
 `albumWikiKeys`, `albumWiki`, `albumAllMusic` and `albumArtists` — checked on a Discogs album
@@ -147,7 +147,7 @@ their links line, and each artist's (decision 3).
 | 2 ✅ | Tidal side: Tidal artists, Tidal and Apple albums | report per key type |
 | 3 ✅ | server: parse artist ids, load store, extend `Album` JSON | `/api/albumq/…` carries the links |
 | 4 ✅ | frontend links line, with fallback search links if wanted | visible on a Discogs, a Tidal-only and a classical album |
-| 5 | Wikipedia links in the Day One and Obsidian entries | a new play's entry carries them |
+| 5 ✗ | Wikipedia links in the Day One and Obsidian entries | dropped by LATB, 2026-11-22 |
 
 Phase 1 alone is useful to judge the data before any Haskell work.
 
@@ -169,7 +169,8 @@ Phase 1 alone is useful to judge the data before any Haskell work.
 
 1. Wikipedia language: **English, German as fallback** (one link; the store keeps both).
 2. **Search links** when nothing matched: there is usually something on Wikipedia somewhere.
-3. **Yes**, Wikipedia links in the Day One and Obsidian entries.
+3. ~~Yes, Wikipedia links in the Day One and Obsidian entries.~~ **Reversed 2026-11-22: no links in
+   the entries**; they stay in the album view only.
 4. **Rechecks by hand**, with a reminder at 180 days, not an automatic refresh.
 
 ## Later, not in scope
