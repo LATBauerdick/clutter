@@ -142,6 +142,9 @@ renderTop state =
             [ HH.button [ cls "menuitem", HE.onClick \_ -> UpdateDiscogs, HP.disabled state.loading
                         , HP.title "Fetch the newest releases of the Discogs collection" ]
                         [ HH.text "Update from Discogs" ]
+            , HH.button [ cls "menuitem", HE.onClick \_ -> UpdateTidal, HP.disabled state.loading
+                        , HP.title "Take in new Tidal favourites and the Save for later list" ]
+                        [ HH.text "Update from Tidal" ]
             , HH.form [ cls "lookup", HE.onSubmit \ev -> MakeRequest ev ]
                 [ HH.label_ [ HH.text "Open an album by id" ]
                 , HH.input [ HP.value state.albumID, HP.placeholder "D6715388, T283130328", HE.onValueInput SetAlbumID ]
@@ -156,13 +159,15 @@ renderTop state =
     Just m -> " — last: " <> m
     Nothing -> ""
   title
-    | state.loading = [ HH.text "Loading…" ]
+    | state.loading = [ HH.text (fromMaybe "Loading…" state.notice) ]
     | inList state =
         let n = length (shownAlbums state)
             all = length state.albumList in
         [ HH.text state.menu.ln
         , HH.small_ [ HH.text (if n == all then show all <> " albums" else show n <> " of " <> show all) ]
-        ]
+        ] <> case state.notice of
+               Just m -> [ HH.small [ cls "notice" ] [ HH.text m ] ]
+               Nothing -> []
     | otherwise = case state.album of
         Just a -> [ HH.text a.albumTitle ]
         Nothing -> []

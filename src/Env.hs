@@ -8,6 +8,7 @@ module Env (
   envInit,
   envUpdateAlbum,
   envTidalConnect,
+  envTidalReload,
   envGetTag,
   envUpdateSort,
   envUpdateMenuParams,
@@ -207,6 +208,30 @@ envUpdateMenuParams = do
   pure ms
 
 -- get laters n releases from Discogs
+-- "Update from Tidal": take in the Tidal album store again after update-json --tidal has
+-- brought it up to date (new favourites, the Save for later list), without a restart.
+-- Tidal albums are replaced by the store's, so their tags follow; the Wikidata links and
+-- the album facts are read again, since the update may have added to them; the Tidal and
+-- All lists are rebuilt. Discogs is not asked. Returns how many albums are new.
+envTidalReload :: AppM Int
+envTidalReload = do
+  env <- ask
+  (_, tidalCached, _, _, _) <- liftIO getProviders
+  oldAlbums <- readIORef (albumsR env)
+  vta <- liftIO $ readTidalAlbums tidalCached
+  liftIO readWikiStore >>= writeIORef (wikiLinksR env) . attachWiki
+  liftIO readDetailStore >>= writeIORef (albumFactsR env) . factsFor
+  let tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
+      new = M.size (tidalAlbums `M.difference` oldAlbums)
+  allAlbums <- withPlays (tidalAlbums <> oldAlbums)
+  writeIORef (albumsR env) allAlbums
+  writeIORef (tagsR env) (buildTags (M.elems allAlbums))
+  oldLists <- readIORef (listsR env)
+  let rebuilt = readFolderAids M.empty allAlbums -- the built-in lists only
+      fresh = M.filterWithKey (\k _ -> k `elem` ["Tidal", "All"]) rebuilt
+  writeIORef (listsR env) (fresh <> oldLists)
+  pure new
+
 -- also update folders and lists, update other metadata
 envUpdate :: Maybe Text -> Maybe Text -> Int -> AppM ()
 envUpdate _tok _un nreleases = do
@@ -370,6 +395,8 @@ envInit c = do
   so <- newIORef Asc
   tr <- newIORef tagsMap
   fr <- newIORef []
+  wlr <- newIORef (attachWiki wstore)
+  afr <- newIORef (factsFor dstore)
   -- define sort functions and map to names
   let sDef :: Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey
       sDef _ s l = case s of
@@ -421,8 +448,8 @@ envInit c = do
       , getList = getList'
       , sorts = V.fromList $ M.keys sfs
       , getSort = \am sn -> fromMaybe sDef (M.lookup sn sfs) am
-      , wikiLinks = attachWiki wstore
-      , albumFacts = factsFor dstore
+      , wikiLinksR = wlr
+      , albumFactsR = afr
       }
 
 --
@@ -549,7 +576,7 @@ envUpdateSort msb mso = do
 withPlays :: Map AlbumKey Album -> AppM (Map AlbumKey Album)
 withPlays am = do
   es <- asks playsR >>= readIORef
-  wl <- asks wikiLinks
+  wl <- asks wikiLinksR >>= readIORef
   pure (wl (linkTidalTags (attachPlays es am)))
 
 -- re-attach the play dates to all albums, after a play was logged

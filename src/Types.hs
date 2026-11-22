@@ -131,8 +131,10 @@ data Env = Env
   , url :: Text
   , getList :: Text -> AppM (Vector AlbumKey)
   , getSort :: Map AlbumKey Album -> Text -> (SortOrder -> Vector AlbumKey -> Vector AlbumKey)
-  , wikiLinks :: Map AlbumKey Album -> Map AlbumKey Album -- Wikidata.attachWiki with the store read at start
-  , albumFacts :: Album -> AlbumFacts -- Details.factsFor with the stores read at start
+  , -- Wikidata.attachWiki and Details.factsFor with their stores as last read: at start, and
+    -- again by "Update from Tidal" (Env.envTidalReload), which may have extended them
+    wikiLinksR :: IORef (Map AlbumKey Album -> Map AlbumKey Album)
+  , albumFactsR :: IORef (Album -> AlbumFacts)
   }
 instance Show Env where
   show :: Env -> String

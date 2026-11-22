@@ -8,6 +8,10 @@
 # favourite since/until, and the genre: Apple Music's, looked up by UPC (no login), or where
 # Apple does not know the album, "classical" from a text rule.
 #
+# Also takes in Tidal's "Save for later" list (read with the token in tok.json): albums saved
+# there enter the store as "later" since/until — clutter's inbox for albums not yet judged,
+# which are not favourites. The server runs update-json --tidal for "Update from Tidal".
+#
 # Run by update-json after it fetched cache/traw.json; also seeds itself from the snapshots
 # in ~/Sync/clutter/tidal-favorites/. Only Tidal albums that were played but are neither a
 # favourite nor linked from a Discogs release are fetched from Tidal (a handful).
@@ -38,6 +42,8 @@ LISTENED = os.environ.get("CLUTTER_LISTENED") or os.path.join(HOME, "Sync", "clu
 CACHE = os.path.join(HERE, "cache")
 # Tidal's public web-client token: enough to read an album record
 WEB_TOKEN = "CzET4vdadNUFQ5JU"
+# Tidal's newer API, for the "Save for later" collection
+OPENAPI = "https://openapi.tidal.com/v2"
 
 # ---------------------------------------------------------------- classical or popular
 
@@ -201,6 +207,37 @@ def played_tidal():
     return ids
 
 
+def read_later():
+    """{album id: addedAt} of Tidal's "Save for later", or None if it could not be read"""
+    try:
+        tok = json.load(open(os.path.join(HERE, "tok.json"), encoding="utf-8"))["tdt"]
+    except (OSError, ValueError, KeyError):
+        return None
+    out = {}
+    url = OPENAPI + "/userCollectionSaveForLaters/me?include=items&countryCode=US"
+    first = True
+    for _ in range(200):  # pages
+        req = urllib.request.Request(url, headers={"Authorization": "Bearer " + tok,
+                                                   "Accept": "application/vnd.api+json"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                d = json.load(r)
+            # the first answer is the collection, with its items as a relationship; the
+            # pages after it are the relationship alone
+            rel = d["data"]["relationships"]["items"] if first else d
+            for it in rel.get("data") or []:
+                if it.get("type") == "albums":
+                    out[int(it["id"])] = (it.get("meta") or {}).get("addedAt") or ""
+            nxt = (rel.get("links") or {}).get("next")
+        except (urllib.error.URLError, TimeoutError, ValueError, KeyError, TypeError):
+            return None  # never the token or the URL in a message
+        if not nxt:
+            return out
+        url = OPENAPI + nxt if nxt.startswith("/") else nxt
+        first = False
+    return out
+
+
 def fetch_album(tid):
     req = urllib.request.Request(f"https://api.tidal.com/v1/albums/{tid}?countryCode=US",
                                  headers={"x-tidal-token": WEB_TOKEN, "User-Agent": "clutter"})
@@ -333,6 +370,36 @@ def main():
                 fav["until"] = today
                 unfavs += 1
 
+    # Tidal's "Save for later": saved since/until, like the favourites; an album saved there
+    # that clutter does not hold yet is fetched
+    later = read_later()
+    new_later = unlater = later_failed = 0
+    if later is None:
+        log.append("Save for later could not be read (stale Tidal token?): not updated")
+    else:
+        for tid, added in later.items():
+            e = albums.setdefault(str(tid), {"favorite": None})
+            lt = e.get("later") or {"since": added, "until": None}
+            lt["since"] = min(lt.get("since") or added, added) or added
+            lt["until"] = None
+            if "later" not in e:
+                new_later += 1
+            e["later"] = lt
+            if not e.get("album") and not a.dry_run:
+                r = fetch_album(tid)
+                if r is None:
+                    later_failed += 1
+                elif "_error" in r:
+                    e["missing"] = r["_error"]
+                    later_failed += 1
+                else:
+                    e["album"], e["fetched"] = r, today
+        for tid, e in albums.items():
+            lt = e.get("later")
+            if lt and not lt.get("until") and int(tid) not in later:
+                lt["until"] = today  # taken off the list
+                unlater += 1
+
     # played Tidal albums clutter has no record of, and no Discogs release stands for
     missing = sorted(t for t in played_tidal() if str(t) not in albums and t not in linked)
     fetched = failed = 0
@@ -375,6 +442,9 @@ def main():
                f"{sum(1 for e in albums.values() if not e.get('favorite'))} played only; "
                f"{new_favs} favourites again, {unfavs} newly unfavourited; "
                f"fetched {fetched} of {len(missing)} played albums ({failed} failed)")
+    if later is not None:
+        log.append(f"Save for later: {len(later)} albums, {new_later} new, {unlater} taken off"
+                   + (f", {later_failed} not fetched" if later_failed else ""))
     log.append(f"genre: Apple knows {napple} albums (asked {asked} new, found {found}); {ncls} classical; "
                f"classical agrees with Discogs on {agree} of {total} linked albums")
     if not a.dry_run:

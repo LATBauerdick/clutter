@@ -255,6 +255,7 @@ instance FromJSON TStore where
 data TStoreEntry = TStoreEntry
   { seAlbum :: Maybe WTIItem
   , seFavorite :: Maybe TFavorite
+  , seLater :: Maybe TFavorite -- on Tidal's "Save for later" list: since, until
   , seGenre :: Maybe Text
   , seApple :: Maybe Int -- Apple Music album id, found by UPC
   }
@@ -262,7 +263,7 @@ instance FromJSON TStoreEntry where
   parseJSON = withObject "tidal store entry" $ \o -> do
     apple <- o .:? "apple"
     appleId <- maybe (pure Nothing) (withObject "apple" (.:? "id")) apple
-    TStoreEntry <$> o .:? "album" <*> o .:? "favorite" <*> o .:? "genre" <*> pure appleId
+    TStoreEntry <$> o .:? "album" <*> o .:? "favorite" <*> o .:? "later" <*> o .:? "genre" <*> pure appleId
 
 data TFavorite = TFavorite {favSince :: Text, favUntil :: Maybe Text}
 instance FromJSON TFavorite where
@@ -289,6 +290,9 @@ readTidalStore fn = do
     WTIItem{id = tid, title = ttitle, releaseDate = treleased, cover = tcover, artists = tartists} <- seAlbum e
     let fav = seFavorite e
         isFav = maybe False (isNothing . favUntil) fav
+        -- saved for later: clutter's inbox, not (yet) a favourite
+        later = seLater e
+        isLater = maybe False (isNothing . favUntil) later
     pure
       Release
         { daid = tid
@@ -298,7 +302,7 @@ readTidalStore fn = do
         , dartistids = (\WTArtist{id = i} -> "ta:" <> show i) <$> tartists
         , dmaster = Nothing
         , dreleased = treleased
-        , dadded = maybe "" favSince fav
+        , dadded = maybe (maybe "" favSince later) favSince fav
         , dcover = tcover
         , dfolder = fromEnum TTidal
         , dformat = "Streaming"
@@ -309,6 +313,7 @@ readTidalStore fn = do
         , dlocIdx = Nothing
         , dlocation = Nothing
         , dtags = ["provider.tidal"] <> ["provider.applemusic" | isJust (seApple e)] <> ["tidal.collection" | isFav]
+            <> ["tidal.later" | isLater]
             <> ["tidal.removed" | isJust (favUntil =<< fav)] <> maybe [] (\g -> ["genre." <> g]) (seGenre e)
         , drating = 0
         , dplays = 0

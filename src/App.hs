@@ -32,6 +32,7 @@ import Env (
   envInit,
   envRefreshPlays,
   envTidalConnect,
+  envTidalReload,
   envUpdate,
   envUpdateAlbum,
   envUpdateMenuParams,
@@ -51,7 +52,7 @@ import System.Directory (doesFileExist, makeAbsolute)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (hPutStrLn)
-import System.Process (rawSystem, readProcess)
+import System.Process (rawSystem, readProcess, readProcessWithExitCode)
 import Types (
   Album (..),
   AlbumFacts (..),
@@ -462,7 +463,7 @@ clutterServer sd =
   serveAlbumxq :: AlbumKey -> AppM AlbumXJ
   serveAlbumxq i = do
     am <- asks albumsR >>= readIORef
-    facts <- asks albumFacts
+    facts <- asks albumFactsR >>= readIORef
     lcs <- asks locsR >>= readIORef
     pure $ case M.lookup i am of
       Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs}
@@ -505,10 +506,23 @@ clutterServer sd =
             , reqResult = 1
             }
     case r of
-      Just "update" -> envUpdate Nothing Nothing 20
+      Just "update" -> envUpdate Nothing Nothing 20 >> pure sj
       -- default is to update last 20 release records
-      _ -> liftIO $ print r
-    pure sj
+      -- Tidal: the favourites and the Save for later list, without a restart. update-json
+      -- --tidal refreshes the token and brings the album store up to date; its output is
+      -- dropped unread. Then the store is taken in again.
+      Just "tidal" -> do
+        ran <- liftIO . try $ readProcessWithExitCode "./update-json" ["--tidal"] ""
+        let failed = case ran :: Either SomeException (ExitCode, String, String) of
+              Right (ExitSuccess, _, _) -> Nothing
+              Right (ExitFailure c, _, _) -> Just ("update-json --tidal failed (" <> show c <> ")")
+              Left _ -> Just "update-json could not be run"
+        new <- envTidalReload
+        liftIO $ hPutStrLn stderr ("update from Tidal: " <> show new <> " new albums" <> maybe "" (\e -> "; " <> toString e) failed)
+        pure $ case failed of
+          Nothing -> sj{reqInfo = show new <> (if new == 1 then " new album" else " new albums") <> " from Tidal"}
+          Just e -> sj{reqInfo = e, reqResult = 0}
+      _ -> liftIO (print r) >> pure sj
 
   serveNodeplay :: Int -> Maybe Text -> AppM ReqJ
   serveNodeplay tid mm = do

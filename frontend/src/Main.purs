@@ -66,6 +66,7 @@ initialState = do -- should eventually be saved in preferences
         , listName: AlbumList (Just ln)
         , albumList : ls
         , menuOpen: Nothing
+        , notice: Nothing
         , sideOpen: false
         , listenedOpen: false
         , search: ""

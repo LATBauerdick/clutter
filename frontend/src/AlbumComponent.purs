@@ -21,7 +21,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, AlbumsJ, ListenedJ, State, AlbumList(..), Action(..), SortOrder(..), View(..))
+import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, AlbumsJ, ListenedJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
 import GetStuff (getUrl, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, isClamped)
 import Render (render)
 
@@ -207,6 +207,24 @@ handleAction = case _ of
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
 
+  -- the backend runs update-json --tidal and takes the album store in again (no restart);
+  -- then the Tidal list, newest first, and the menu's tags and lists anew
+  UpdateTidal -> do
+    pushView
+    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, loading = true, notice = Just "Updating from Tidal…" }
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "req?event=tidal")
+    let msg = case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String } of
+                Right { reqInfo: i } -> i
+                Left _ -> "Update from Tidal: no answer"
+    ps <- H.liftAff $ getUrl (api <> "paramsq/all")
+    case (decodeJson =<< parseJson ps) :: Either JsonDecodeError ParamsJ of
+      Right { params: p } -> H.modify_ \st -> st { menu { params = p { muhq = st.menu.params.muhq } } }
+      Left _ -> pure unit
+    let alist = AlbumList (Just "Tidal")
+    H.modify_ _ { notice = Just msg, listName = alist, menu { ln = "Tidal", ffs = [], sortName = "Added", sso = Asc } }
+    updateAlbumList
+
   where
     currentView :: State -> Maybe View
     currentView st = case st.listName, st.album of
@@ -218,7 +236,7 @@ handleAction = case _ of
     -- drop what was ahead of it, and open a new entry for what comes
     pushView :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
     pushView = do
-      H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "" }
+      H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "", notice = Nothing }
       st <- H.get
       case currentView st of
         Nothing -> pure unit

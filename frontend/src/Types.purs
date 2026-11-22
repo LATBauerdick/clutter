@@ -157,6 +157,7 @@ type State =      { apiUrl :: String
                   -- the frame: which click-open menu is open (focus | sort | more), the sidebar as a
                   -- drawer on a narrow screen, the search in the list on show, the filter of the tag picker
                   , menuOpen :: Maybe String
+                  , notice :: Maybe String -- the answer to the last update, shown in the top bar
                   , sideOpen :: Boolean
                   , listenedOpen :: Boolean -- the sidebar's Listened fold, while a Listened list is on show
                   , search :: String
@@ -216,6 +217,7 @@ data Action = ToggleSortOrder
             | NodeCtl String -- toggle | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
+            | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
             | ToggleAbout -- the review: all of it, or its first lines
             | TracksSource Boolean -- a Discogs release: its own tracks (false) or the Tidal version's (true)
             | RefreshTracks -- fetch the tracks, credits and review of the album again

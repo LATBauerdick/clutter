@@ -94,6 +94,12 @@ render state =
       , renderAlbumInfo a
       ]
 
+  -- the artists' display names, without the Discogs "(n)" suffix, where the backend sends them
+  artistOf :: Album -> String
+  artistOf a = case filter (_ /= "") (map _.arName (fromMaybe [] a.albumArtists)) of
+    [] -> a.albumArtist
+    ns -> S.joinWith ", " ns
+
   renderHovAlbumInfo :: forall m. Album -> H.ComponentHTML Action () m
   renderHovAlbumInfo a =
     -- a card under the cover while the pointer is on it: title and artist in full (the
@@ -111,7 +117,7 @@ render state =
     in
     HH.div [ HP.class_ $ HH.ClassName "hov-album-info" ] $
            [ HH.p [ HP.class_ $ HH.ClassName "hov-title" ] [ HH.text a.albumTitle ]
-           , HH.p [ HP.class_ $ HH.ClassName "hov-artist" ] [ HH.text a.albumArtist ]
+           , HH.p [ HP.class_ $ HH.ClassName "hov-artist" ] [ HH.text (artistOf a) ]
            ]
            <> meta (S.joinWith " · " (filter (_ /= "") [ year, fmt ]))
            <> meta plays
@@ -123,7 +129,7 @@ render state =
            [ HH.p [ HP.class_ $ HH.ClassName "album-title"]
                   [ HH.text a.albumTitle ]
            , HH.p [ HP.class_ $ HH.ClassName "album-artist"]
-                  [ HH.text a.albumArtist ]
+                  [ HH.text (artistOf a) ]
            ] <> case a.albumPlayedAt of
                   -- in the Listened views: when this play was, "2026-11-01 13:50"
                   Just p -> [ HH.p [ HP.class_ $ HH.ClassName "album-played" ]
@@ -168,10 +174,7 @@ render state =
     facts = _.xfacts <$> detail
     -- the Discogs styles, without those that are a genre chip already
     styles = filter (\st -> not (elem (S.toLower st) genres)) (nub (maybe [] _.afStyles facts))
-    -- the artists' display names (without the Discogs "(n)" suffix) where the backend sends them
-    artistNames = case filter (_ /= "") (map _.arName (fromMaybe [] a.albumArtists)) of
-      [] -> a.albumArtist
-      ns -> S.joinWith ", " ns
+    artistNames = artistOf a
     -- "2025-09-26" -> "26 September 2025"; a bare year stays
     longDate "0" = "" -- Discogs: no year
     longDate d = case S.length d == 10, fromString (S.take 2 (S.drop 5 d)), fromString (S.drop 8 d) of
@@ -274,6 +277,8 @@ render state =
                     <> (if early then " (also before the log)" else "")
     collectionText = case a.albumTidal, a.albumFavoriteUntil of
       Nothing, _ -> "not on Tidal"
+      Just _, _ | elem "tidal.later" a.albumTags && not (elem "tidal.collection" a.albumTags) ->
+        "saved for later since " <> S.take 10 (fromMaybe "" a.albumAdded)
       Just _, _ | elem "tidal.collection" a.albumTags -> "in the collection since " <> S.take 10 (fromMaybe "" a.albumAdded)
       Just _, Just u -> "in the collection " <> S.take 10 (fromMaybe "" a.albumAdded) <> " – " <> S.take 10 u
       Just _, Nothing -> "not in the collection"
