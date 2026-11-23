@@ -135,22 +135,28 @@ handleAction = case _ of
         case v of
           VAlbum aid -> showAlbum aid
           VList alist ln ffs sn so -> do
+            -- the entry brings its own sort; going back into the play log, keep the lists' sort
+            H.modify_ _ { sortKept = if isListened ln && not (isListened st.menu.ln)
+                                       then Just (Tuple st.menu.sortName st.menu.sso)
+                                       else if isListened ln then st.sortKept else Nothing }
             H.modify_ _ { listName = alist, loading = true, menu { ln = ln, ffs = ffs, sortName = sn, sso = so } }
             updateAlbumList
 
   ShowListSort alist sn so -> do
     pushView
+    H.modify_ _ { sortKept = Nothing }
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist, sso = so, sortName = sn } }
     updateAlbumList
   ShowList alist -> do
     pushView
-    -- H.liftEffect $ Event.preventDefault event
+    adjustSort (fromMaybe "Nothing" <<< unwrap $ alist)
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
   ShowFocus tag -> do
     pushView
     -- from the album view: all albums with this tag (a genre chip, a tag)
     let alist = AlbumList (Just "All")
+    adjustSort "All"
     H.modify_ _ { listName = alist, loading = true, menu { ln = "All", ffs = [ Tuple tag true ] } }
     updateAlbumList
   AlbumPlayed aid -> do
@@ -204,6 +210,7 @@ handleAction = case _ of
     _ <- H.liftAff $ getUrl (api <> "req?event=update")
     H.liftAff $ Console.logShow "Discogs Updated"
     let alist = AlbumList (Just "Discogs")
+    adjustSort "Discogs"
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
 
@@ -218,7 +225,7 @@ handleAction = case _ of
       Right { reqInfo: i, reqResult: 1 } -> do
         let alist = AlbumList (Just "Tidal")
         H.modify_ _ { notice = Just i, album = Nothing, albumX = Nothing, albumT = Nothing
-                    , listName = alist, menu { ln = "Tidal", ffs = [], sortName = "Added", sso = Asc } }
+                    , listName = alist, menu { ln = "Tidal", ffs = [], sortName = "Added", sso = Asc }, sortKept = Nothing }
         updateAlbumList
       Right { reqInfo: i } -> H.modify_ _ { notice = Just i, loading = false }
       Left _ -> H.modify_ _ { notice = Just "Removing: no answer", loading = false }
@@ -238,10 +245,26 @@ handleAction = case _ of
       Right { params: p } -> H.modify_ \st -> st { menu { params = p { muhq = st.menu.params.muhq } } }
       Left _ -> pure unit
     let alist = AlbumList (Just "Tidal")
-    H.modify_ _ { notice = Just msg, listName = alist, menu { ln = "Tidal", ffs = [], sortName = "Added", sso = Asc } }
+    H.modify_ _ { notice = Just msg, listName = alist, menu { ln = "Tidal", ffs = [], sortName = "Added", sso = Asc }, sortKept = Nothing }
     updateAlbumList
 
   where
+    isListened :: String -> Boolean
+    isListened n = S.take 8 n == "Listened"
+
+    -- the play log opens in play order, whatever the other lists are sorted by; their sort
+    -- is kept meanwhile and comes back with the next list that is not the play log.
+    -- Call before menu.ln changes to the new list's name
+    adjustSort :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
+    adjustSort new = do
+      st <- H.get
+      case isListened st.menu.ln, isListened new of
+        false, true -> H.modify_ _ { sortKept = Just (Tuple st.menu.sortName st.menu.sso), menu { sortName = "Default", sso = Asc } }
+        true, false -> case st.sortKept of
+          Just (Tuple sn so) -> H.modify_ _ { sortKept = Nothing, menu { sortName = sn, sso = so } }
+          Nothing -> pure unit
+        _, _ -> pure unit
+
     currentView :: State -> Maybe View
     currentView st = case st.listName, st.album of
       AlbumList Nothing, Just a -> Just (VAlbum a.albumID)

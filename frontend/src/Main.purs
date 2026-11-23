@@ -70,6 +70,7 @@ initialState = do -- should eventually be saved in preferences
         , confirmDrop: false
         , sideOpen: false
         , listenedOpen: false
+        , sortKept: Nothing
         , search: ""
         , tagFilter: ""
         , views: []

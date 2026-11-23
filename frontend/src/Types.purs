@@ -182,6 +182,7 @@ type State =      { apiUrl :: String
                   , nodeMsg :: Maybe String -- answer to the last ▶ Node
                   , nodeName :: String -- the Bluesound player's name, "Node" until known
                   , menu :: MenuState
+                  , sortKept :: Maybe (Tuple String SortOrder) -- the other lists' sort, while a Listened list (which opens in play order) is on show
                   }
 type MenuState =  { params :: MenuParams
                   , ln :: String
