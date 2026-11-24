@@ -129,7 +129,9 @@ type AlbumTracks = { atSource :: String -- tidal | discogs
                    , atTracks :: Array Track
                    , atCredits :: Array Credit
                    , atReview :: Maybe String
-                   , atReviewSource :: Maybe String
+                   , atReviewSource :: Maybe String -- "TiVo" (via Tidal) or "Wikipedia"
+                   , atReviewUrl :: Maybe String -- the Wikipedia article
+                   , atReviewAbout :: Maybe String -- the artist the text is about; Nothing: the album
                    }
 type AlbumTJ =    { tjId :: String
                   , tjTracks :: Maybe AlbumTracks

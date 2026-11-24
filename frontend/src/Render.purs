@@ -383,7 +383,16 @@ render state =
                 then HH.button [ cls "av-about-more", HE.onClick \_ -> ToggleAbout ]
                                [ HH.text (if state.aboutOpen then "less ▴" else "more ▾") ]
                 else HH.text ""
-            , HH.p [ cls "av-src" ] [ HH.text (fromMaybe "Review" (tracks >>= _.atReviewSource) <> ", via Tidal") ]
+            , case tracks >>= _.atReviewUrl of
+                -- a Wikipedia lead (CC BY-SA): say whom it is about, and link the article
+                Just url ->
+                  HH.p [ cls "av-src" ]
+                    [ HH.text (maybe "From " (\n -> "About " <> n <> ", from ") (tracks >>= _.atReviewAbout))
+                    , HH.a [ HP.href url, HP.target "_blank", HP.rel "noopener" ] [ HH.text "Wikipedia" ]
+                    , HH.text " (CC BY-SA)"
+                    ]
+                Nothing ->
+                  HH.p [ cls "av-src" ] [ HH.text (fromMaybe "Review" (tracks >>= _.atReviewSource) <> ", via Tidal") ]
             ]
         ]
       _ -> []

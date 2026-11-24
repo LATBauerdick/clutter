@@ -10,8 +10,12 @@ What is actually next lives in the project hub (`~/Notes/Claude/ws/clutter.md`
 
 ## Album page
 
-- 2026-11-22 · **Phase 3: Wikipedia lead** where Tidal has no review.
-  See `album-page-plan.md`.
+- 2026-11-23 · **About text, leftovers of phase 3** (built 11-23): the text is
+  about the first linked performer in Discogs' order, so an orchestra comes
+  before its conductor and a narrator can come first (*Ivan the Terrible* →
+  Christopher Plummer) — a better pick, or a way to switch artist?; albums
+  whose track fetch fails (gone from Tidal, Apple-only) get no text. See
+  `album-page-plan.md`.
 - 2026-11-22 · **Phase 4: Tidal discography and similar artists.** Both
   endpoints (`artists/{id}/albums`, `artists/{id}/similar`) answered in the
   probe. See `album-page-plan.md`.

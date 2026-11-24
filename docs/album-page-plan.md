@@ -35,8 +35,25 @@ is 404 for both test albums; `artists/{id}/albums`, `artists/{id}/similar` and `
 with each album), Tracks (works grouped from "Work: Movement" titles, discs, `↻` refresh), Credits
 (folded), then play history. Checked on 8082: Geese D35208358 (Tidal, 0.2 s first, cache after),
 Volodos T124439542, D30818052, D4921592 (Discogs vinyl, no durations).
-Phase 3 changes: the about text is already there where Tidal has a review; Wikipedia leads remain
-for the albums without one. Phase 4 open (discography, similar artists).
+**Phase 3 built** (2026-11-23, uncommitted): where Tidal has no review, `Tracks.withAbout` takes
+the lead section of the Wikipedia article — the album's (`albumWiki`), else that of the first
+artist with a link — through the MediaWiki extracts API (`action=query&prop=extracts&exintro`,
+plain text; disambiguation and missing pages and leads under 80 characters are skipped; the
+pronunciation debris in a person article's first bracket is cut, dates and birth names stay).
+It is stored in the same per-album cache file (`atReview`, `atReviewSource = "Wikipedia"`,
+`atReviewUrl`, `atReviewAbout` = the artist, `atAboutChecked`), asked once per file — also for
+cache files written before — and again on ↻. The page shows it in the review block with "About
+<artist>, from Wikipedia (CC BY-SA)" linking the article. Checked on 8082 through the endpoint:
+of 13 cached albums without a review, 9 got a text (album pages: D9438479 *Protection*,
+D34763234; artist pages for the rest); the 4 others have no Wikipedia link at all; albums with
+a TiVo review keep it. **Performer before composer** (LATB, 2026-11-23): among the linked
+artists the first who is not named as a composer in the credits ("Composed By" / "Composer")
+is taken, the first of all if every one is. Checked: Solti/Chicago Wagner → Chicago Symphony
+Orchestra, *Fratres* → Rudolf Werthen, Beethoven/Schubert quartets → Emerson String Quartet,
+Penderecki concerto → Anne-Sophie Mutter, *Ivan the Terrible* → Christopher Plummer (the
+narrator, first in Discogs' order). **Not seen rendered** (no Chrome on lmini this time). Not
+covered: albums whose track fetch fails (gone from Tidal, Apple-only) get no text, since it
+rides on the tracks answer. Phase 4 open (discography, similar artists).
 **Also built 2026-11-22, committed** (see `CLAUDE.md` for the endpoints): back/forward navigation;
 the new frame (`docs/menu-mockup.html`, design A: sidebar, top bar, list toolbar); Tidal's Save
 for later list and "Update from Tidal" without a restart; albums gone from Tidal (`tidal.gone`);
