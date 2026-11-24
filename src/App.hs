@@ -27,6 +27,7 @@ import Data.Text.IO as TIO (writeFile)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import qualified Data.Vector as V
+import Provider (standIns)
 import Env (
   envGetTag,
   envInit,
@@ -367,8 +368,12 @@ clutterServer sd =
     liftIO $ print ("-------decodeListQuery " :: Text, ln, msb, mso, fs)
 
     -- get ids from either list or tags (#tag)
+    -- a tag's albums include stream albums that a Discogs release stands for: leave those out,
+    -- as the built-in lists do (Provider.standIns)
     aids' <- case T.stripPrefix "#" ln of
-      Just tag -> envGetTag tag
+      Just tag -> do
+        hidden <- standIns <$> readIORef (albumsR env)
+        filter (not . (`Set.member` hidden)) <$> envGetTag tag
       Nothing -> V.toList <$> getList env ln
     ---------------------------------------------------------------------------------
     -- filter with focus if any

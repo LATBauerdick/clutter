@@ -142,7 +142,7 @@ Albums are organized by:
 
 Special list handling:
 - Tidal and Apple Music albums that also exist in Discogs show the Discogs ID
-- The "All" list includes everything
+- The "All" list includes everything except the stream albums another album stands for (`Provider.standIns`, 2026-11-23): a Tidal album named in a Discogs release's Location field, an Apple album named by a Discogs release or a Tidal album. A tag used as a list (`#tag`) leaves them out too. Plays, and so the `played.*` tags, sit on the standing album — the twin always reads `played.never`, which is why it must never be listed next to it
 - The "Discogs" list excludes Tidal/Apple Music-only albums
 
 ### Sorting and Filtering

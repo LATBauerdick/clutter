@@ -16,6 +16,17 @@ What is actually next lives in the project hub (`~/Notes/Claude/ws/clutter.md`
   Christopher Plummer) — a better pick, or a way to switch artist?; albums
   whose track fetch fails (gone from Tidal, Apple-only) get no text. See
   `album-page-plan.md`.
+- 2026-11-23 · **Album summary written by a model** (LATB: "ask Siri AI"),
+  for albums with neither a Tidal review nor a Wikipedia page of their own —
+  or as a third text next to them. Candidate routes, none tried: a Shortcut
+  with the "Use Model" action (on-device, Private Cloud Compute or ChatGPT)
+  run by the server with `shortcuts run`; Apple's Foundation Models framework
+  from a small Swift helper; the local model on fstu; the Claude API. To
+  settle first: a model asked cold about an obscure album makes things up, so
+  it should be given the facts clutter has (tracks, credits, label, year,
+  the artist's Wikipedia lead) and summarize those; the text must be marked
+  as generated and cached like the review; `shortcuts run` needs the server
+  to have Automation rights (it runs in a Rex block).
 - 2026-11-22 · **Phase 4: Tidal discography and similar artists.** Both
   endpoints (`artists/{id}/albums`, `artists/{id}/similar`) answered in the
   probe. See `album-page-plan.md`.

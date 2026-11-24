@@ -21,6 +21,7 @@ module Provider (
   updateTidalFolderAids,
   updateAMusicFolderAids,
   linkTidalTags,
+  standIns,
 )
 where
 
@@ -175,7 +176,7 @@ updateTidalFolderAids :: Map AlbumKey Album -> Map Text (Int, Vector AlbumKey) -
 updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
  where
   linkedD = [k | (k@(D _), a) <- M.toList am, isJust (tidalId a)]
-  linkedT = S.fromList [T t | (D _, a) <- M.toList am, Just t <- [tidalId a]]
+  linkedT = standIns am
   tidalOnly = [k | k@(T _) <- M.keys am, not (k `S.member` linkedT)]
   allTidal = sAdded (V.fromList (linkedD <> tidalOnly))
   sAdded :: Vector AlbumKey -> Vector AlbumKey
@@ -186,6 +187,17 @@ updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
 
 tidalId :: Album -> Maybe Int
 tidalId a = readMaybe . toString =<< albumTidal a
+
+-- The stream albums that another album stands for: a Tidal album named in the Location field
+-- of a Discogs release, and an Apple Music album named by a Discogs release or a Tidal album.
+-- A list shows the album that stands for them, never both — whatever the focus: the plays
+-- and so the played.* tags are on the standing album, so a filter must not bring its twin back.
+standIns :: Map AlbumKey Album -> Set AlbumKey
+standIns am = S.fromList (concatMap twins (M.elems am))
+ where
+  twins a =
+    [T t | D _ <- [albumID a], Just t <- [tidalId a]]
+      <> [A i | Just i <- [readMaybe . toString =<< albumAMusic a], albumID a /= A i]
 
 -- a Discogs release whose Tidal album is in the Tidal collection is tagged tidal.collection
 -- too, so #tidal.collection filters the whole Tidal list; likewise tidal.gone, when its
@@ -251,6 +263,7 @@ readFolderAids fm am = fam
       $ fam'
   allAlbums =
     sAdded
+      . V.filter (not . (`S.member` standIns am))
       . V.map albumID
       . V.fromList
       $ M.elems am
