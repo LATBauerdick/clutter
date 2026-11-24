@@ -68,6 +68,10 @@ python3 ../scripts/update-tidal-albums.py
 # by hand with --recheck (docs/wikidata-plan.md)
 python3 ../scripts/update-wikidata.py
 
+# Playing times of the Discogs releases the Tidal album store does not cover
+# (~/Sync/clutter/album-lengths.json), for the length.* tags; asks only for new releases
+python3 ../scripts/update-lengths.py
+
 ## Apple Music
 ####for i in {0..44}; do limit=100 ; ((off = $i*$limit)) ; curl -v -H "Authorization: Bearer $AMT" "https://api.music.apple.com/v1/me/library/albums?include=catalog&limit=$limit&offset=$off&sort=dateAdded" > am$i.json; done
 

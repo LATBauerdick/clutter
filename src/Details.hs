@@ -13,6 +13,7 @@ module Details (
   emptyDetailStore,
   readDetailStore,
   factsFor,
+  attachLength,
 ) where
 
 import Data.Aeson (FromJSON (..), Value, eitherDecode, withObject, (.!=), (.:), (.:?))
@@ -20,9 +21,11 @@ import Data.Aeson.Types (Parser, parseMaybe)
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Relude
-import System.Directory (doesFileExist)
+import Control.Exception (try)
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn)
+import Tracks (cacheDir)
 import Types (Album (..), AlbumFacts (..), AlbumKey (..))
 import Wikidata (displayName)
 
@@ -47,10 +50,12 @@ data TFacts = TFacts
 data DetailStore = DetailStore
   { dsDiscogs :: Map Int DFacts -- by Discogs release id
   , dsTidal :: Map Int TFacts -- by Tidal album id
+  , dsCached :: Map Int Int -- by Discogs release id: seconds, summed from its cached tracks
+  , dsLengths :: Map Int (Maybe Int, Maybe Int) -- by Discogs release id: seconds, tracks (album-lengths.json)
   }
 
 emptyDetailStore :: DetailStore
-emptyDetailStore = DetailStore M.empty M.empty
+emptyDetailStore = DetailStore M.empty M.empty M.empty M.empty
 
 -- Discogs ---------------------------------------------------------------------------------
 
@@ -191,13 +196,90 @@ readTidal = do
 -- store and lookup ------------------------------------------------------------------------
 
 readDetailStore :: IO DetailStore
-readDetailStore = DetailStore <$> readDiscogs <*> readTidal
+readDetailStore = DetailStore <$> readDiscogs <*> readTidal <*> readCached <*> readLengths
+
+-- Playing times of the Discogs releases that the Tidal album store does not cover, looked up
+-- by scripts/update-lengths.py: ~/Sync/clutter/album-lengths.json (CLUTTER_ALBUM_LENGTHS
+-- overrides), {"releases": {"<id>": {"secs": …, "tracks": …}}}; secs is null where Discogs
+-- has no durations. A missing or unreadable store means no lengths from it, no error.
+readLengths :: IO (Map Int (Maybe Int, Maybe Int))
+readLengths = do
+  fn <-
+    lookupEnv "CLUTTER_ALBUM_LENGTHS" >>= \case
+      Just f | not (null f) -> pure f
+      _ -> do
+        home <- fromMaybe "." <$> lookupEnv "HOME"
+        pure $ home </> "Sync" </> "clutter" </> "album-lengths.json"
+  ok <- doesFileExist fn
+  if not ok
+    then hPutStrLn stderr ("no album lengths at " <> fn <> " -- run scripts/update-lengths.py") $> M.empty
+    else
+      eitherDecode <$> readFileLBS fn >>= \case
+        Left err -> hPutStrLn stderr ("album lengths " <> fn <> ": " <> err) $> M.empty
+        Right v -> do
+          let m =
+                M.fromList
+                  [ (i, e)
+                  | (k, x) <- maybe [] M.toList (parseMaybe releases v)
+                  , Just i <- [readMaybe (toString k)]
+                  , Just e <- [parseMaybe entry x]
+                  ]
+          hPutStrLn stderr $
+            "read album lengths from " <> fn <> ": " <> show (M.size (M.filter (isJust . fst) m))
+              <> " of " <> show (M.size m) <> " releases have one"
+          pure m
+ where
+  releases :: Value -> Parser (Map Text Value)
+  releases = withObject "album lengths" (\o -> o .:? "releases" .!= M.empty)
+  entry :: Value -> Parser (Maybe Int, Maybe Int)
+  entry = withObject "length" $ \o -> (,) <$> (mfilter (> 0) <$> o .:? "secs") <*> o .:? "tracks"
+
+-- The length of a Discogs release that has no Tidal album to take it from: the sum of its
+-- track durations, where the page's details cache (Tracks, album-details/D<id>.json) has the
+-- release and Discogs gave a duration for every track. Only releases opened once are there.
+readCached :: IO (Map Int Int)
+readCached = do
+  dir <- cacheDir
+  ok <- doesDirectoryExist dir
+  fns <- if ok then listDirectory dir else pure []
+  M.fromList . catMaybes <$> mapM (entry dir) fns
+ where
+  entry :: FilePath -> FilePath -> IO (Maybe (Int, Int))
+  entry dir fn = case T.stripSuffix ".json" (toText fn) >>= T.stripPrefix "D" >>= readMaybe . toString of
+    Nothing -> pure Nothing -- other keys, and the "-tidal" versions
+    Just n -> do
+      r <- try (readFileLBS (dir </> fn)) :: IO (Either SomeException LByteString)
+      pure $ case r of
+        Right b | Just s <- rightToMaybe (eitherDecode b) >>= parseMaybe total -> Just (n, s)
+        _ -> Nothing
+  total :: Value -> Parser Int
+  total = withObject "album details" $ \o -> do
+    ts <- o .:? "atTracks" .!= []
+    secs <- mapM (withObject "track" (.:? "tkSecs")) (ts :: [Value])
+    case sequence (secs :: [Maybe Int]) of
+      Just ss | sum ss > 0 -> pure (sum ss)
+      _ -> fail "no durations"
+
+-- length.* tags, so that the focus can pick albums by playing time: length.<30min, <40min,
+-- <50min, <60min, <70min (an album of 25 minutes has all five), length.>70min, or
+-- length.unknown. "50 minutes and more" is the focus "without length.<50min". Idempotent.
+attachLength :: (Album -> AlbumFacts) -> Map k Album -> Map k Album
+attachLength facts = M.map $ \a ->
+  a{albumTags = filter (not . ("length." `T.isPrefixOf`)) (albumTags a) <> lengthTags (afLength (facts a))}
+
+lengthTags :: Maybe Int -> [Text]
+lengthTags = \case
+  Just s
+    | s > 0 ->
+        ["length.<" <> show m <> "min" | m <- [30, 40, 50, 60, 70 :: Int], s < m * 60]
+          <> ["length.>70min" | s >= 70 * 60]
+  _ -> ["length.unknown"]
 
 factsFor :: DetailStore -> Album -> AlbumFacts
 factsFor ds a =
   AlbumFacts
-    { afLength = tf >>= tfLength
-    , afTracks = tf >>= tfTracks
+    { afLength = (tf >>= tfLength) <|> (looked >>= fst) <|> cached
+    , afTracks = (tf >>= tfTracks) <|> (looked >>= snd)
     , afQuality = tf >>= tfQuality
     , afLabel = (df >>= dfLabel) <|> (tf >>= tfCopyright)
     , afReleased = tf >>= tfReleased
@@ -213,4 +295,10 @@ factsFor ds a =
   tf = tidalId >>= (`M.lookup` dsTidal ds)
   df = case albumID a of
     D n -> M.lookup n (dsDiscogs ds)
+    _ -> Nothing
+  cached = case albumID a of
+    D n -> M.lookup n (dsCached ds)
+    _ -> Nothing
+  looked = case albumID a of
+    D n -> M.lookup n (dsLengths ds)
     _ -> Nothing

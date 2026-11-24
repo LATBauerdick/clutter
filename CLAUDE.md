@@ -147,6 +147,8 @@ Special list handling:
 
 ### Sorting and Filtering
 
+**Length tags (2026-11-23):** every album carries `length.<30min`, `<40min`, `<50min`, `<60min`, `<70min` (cumulative: a 25-minute album has all five), `length.>70min`, or `length.unknown` (`Details.attachLength`, applied wherever the play tags are). "50 minutes and more" is the focus *without* `length.<50min`. The length comes from the Tidal album store (the album itself, or the Tidal album a Discogs release names); else from `~/Sync/clutter/album-lengths.json` (`CLUTTER_ALBUM_LENGTHS`), which `scripts/update-lengths.py` fills for the other Discogs releases — the named Tidal album's duration (public web token), else the sum of Discogs' track durations from `releases/{id}` where every track has one (`"secs": null` otherwise, not asked again; `--recheck` does). The collection query itself carries no tracklist. `update-json` runs the script for new releases; the server reads the store at start and on Update from Tidal. Last fallback: the summed tracks in the page's details cache. After the first fill (2026-11-23): 1,560 of 2,033 releases and 903 of 1,310 vinyl have a length; 473 have none on Discogs. No toolbar control: the tags are in the tag picker (LATB).
+
 Sorting is implemented through `getSort` function in Env, which returns different sort functions based on sort name.
 Filtering uses focus items (tags prefixed with `#`), with negation support using `-#tag` syntax.
 

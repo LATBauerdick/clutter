@@ -50,7 +50,7 @@ import Provider (
  )
 
 import Wikidata (attachWiki, readWikiStore)
-import Details (factsFor, readDetailStore)
+import Details (attachLength, factsFor, readDetailStore)
 import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
 import System.IO (hPutStrLn)
@@ -368,7 +368,7 @@ envInit c = do
   wstore <- readWikiStore
   -- facts for the album page (docs/album-page-plan.md, phase 1)
   dstore <- readDetailStore
-  let albums' = attachWiki wstore (linkTidalTags (attachPlays plays' albums''))
+  let albums' = attachLength (factsFor dstore) (attachWiki wstore (linkTidalTags (attachPlays plays' albums'')))
 
   -- create the Tags index
   putTextLn "----------------------envInit: Updating Tags index"
@@ -580,7 +580,9 @@ withPlays :: Map AlbumKey Album -> AppM (Map AlbumKey Album)
 withPlays am = do
   es <- asks playsR >>= readIORef
   wl <- asks wikiLinksR >>= readIORef
-  pure (wl (linkTidalTags (attachPlays es am)))
+  -- the length.* tags, from the album facts as last read
+  fa <- asks albumFactsR >>= readIORef
+  pure (attachLength fa (wl (linkTidalTags (attachPlays es am))))
 
 -- re-attach the play dates to all albums, after a play was logged
 envRefreshPlays :: AppM ()

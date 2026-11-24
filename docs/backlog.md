@@ -43,6 +43,12 @@ What is actually next lives in the project hub (`~/Notes/Claude/ws/clutter.md`
 
 ## Lists and search
 
+- 2026-11-23 · **Lengths still unknown: 473 Discogs releases** (407 vinyl)
+  whose Discogs entry has no track durations and that name no Tidal album.
+  Ways on: link them to a Tidal album (the parked lookup UI), another
+  pressing of the same master that has durations, or type the length in by
+  hand. `scripts/update-lengths.py --recheck` asks Discogs again.
+
 - 2026-11-22 · **Saved searches / focus presets.** Today only "★ Never-played vinyl" is built in. A way to define and name such presets (NPV and others).
 - 2026-11-22 · **"Gone from Tidal" list** as a pre-defined search over the  `tidal.gone` tag (201 of 2,807 albums on 2026-11-22).
 

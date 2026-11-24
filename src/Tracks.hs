@@ -10,7 +10,7 @@
 -- its first artist with one. Tokens come from tok.json in
 -- the working directory, read at fetch time because the Tidal token lives only 4 hours; no
 -- part of a token is ever logged or returned.
-module Tracks (Track (..), Credit (..), AlbumTracks (..), albumTracks) where
+module Tracks (Track (..), Credit (..), AlbumTracks (..), albumTracks, cacheDir) where
 
 import Control.Exception (SomeAsyncException, onException, throwIO, try)
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, eitherDecode, encode, withObject, (.!=), (.:), (.:?))

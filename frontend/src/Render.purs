@@ -11,7 +11,9 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
 import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null, cons, any, nub)
-import Data.Foldable (minimum, maximum)
+import Control.Alt ((<|>))
+import Data.Foldable (minimum, maximum, sum)
+import Data.Traversable (traverse)
 import Data.Int (fromString)
 import Halogen as H
 import Halogen.HTML as HH
@@ -240,7 +242,7 @@ render state =
     genres = mapMaybe (S.stripPrefix (Pattern "genre.")) a.albumTags
     -- the other tags, without those the facts already show (provider, rating, plays)
     -- and without the Discogs styles once those are chips
-    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal." ])
+    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal.", "length." ])
                               && not (elem t (map S.toLower styles)) && not (elem t genres)) a.albumTags
     chipsView =
       HH.div [ cls "av-chips" ] $
@@ -253,9 +255,14 @@ render state =
     row k v = [ HH.span [ cls "av-k" ] [ HH.text k ], HH.span [ cls "av-v" ] v ]
     np = length a.albumListenedDates
     early = a.albumPlays > np -- the Discogs "Plays" mark also holds plays from before the log
+    -- no length on record: the sum of the track durations, if every track has one
+    tracksSecs = case state.albumT of
+      Just t | t.tjId == a.albumID, Just at <- t.tjTracks, not (null at.atTracks) ->
+        map sum (traverse _.tkSecs at.atTracks)
+      _ -> Nothing
     factsView =
       HH.div [ cls "av-facts" ] $ concat
-        [ case facts >>= _.afLength of
+        [ case (facts >>= _.afLength) <|> tracksSecs of
             Just s -> row "Length" [ HH.text (show ((s + 30) / 60) <> " min"
                                               <> maybe "" (\n -> " · " <> show n <> " tracks") (facts >>= _.afTracks)) ]
             Nothing -> []
