@@ -65,7 +65,9 @@ related am a =
     T n -> show n `S.member` linkedTidal
     A n -> show n `S.member` linkedApple
     _ -> False
-  others = [b | b <- M.elems am, albumID b /= albumID a, not (shadowed b), not (sameStream b)]
+  -- the strips show the collection: not the inbox, not what was marked "not for me"
+  -- (docs/jellyfin-plan.md, "Membership")
+  others = [b | b <- M.elems am, albumID b /= albumID a, not (shadowed b), not (sameStream b), "collection.in" `elem` albumTags b]
   -- the album's own stream, when the album is the Discogs release (or the other way round)
   sameStream b = case (albumID a, albumID b) of
     (D _, T n) -> albumTidal a == Just (show n)

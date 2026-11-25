@@ -37,6 +37,7 @@ album =
     , albumWiki = Nothing
     , albumAllMusic = Nothing
     , albumArtists = []
+    , albumFiles = []
     }
 
 tidalAlbum :: Album
@@ -88,7 +89,7 @@ main = do
       , check "append after torn line survives" (r3 == [e1, e2, e2])
       , check "one event per line" (length (BS.split 10 raw) == 5)
       , check "Nothing fields omitted" (not ("\"note\"" `BS.isInfixOf` raw))
-      , check "keys parse with prefix" (map parseKey ["D1", "T283130328", "A2", "J3"] == [Just (D 1), Just (T 283130328), Just (A 2), Just (J 3)])
+      , check "keys parse with prefix" (map parseKey ["D1", "T283130328", "A2", "J32AA55195F1BBDC563AD5F452FCEDB0F", "J3"] == [Just (D 1), Just (T 283130328), Just (A 2), Just (J "32aa55195f1bbdc563ad5f452fcedb0f"), Nothing])
       , check "a bare number is a Discogs release" (parseKey "6715388" == Just (D 6715388))
       , check "bad keys are rejected" (all (isNothing . parseKey) ["", "X12", "T", "Tabc"])
       , check "key text round trip" (parseKey (keyText (T 187293380)) == Just (T 187293380))

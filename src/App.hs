@@ -32,6 +32,8 @@ import Env (
   envGetTag,
   envInit,
   envRefreshPlays,
+  envSetLink,
+  envSetMark,
   envTidalConnect,
   envTidalReload,
   envUpdate,
@@ -39,6 +41,7 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
+import Collection (appendLink, appendMark, collectionFile)
 import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
 import Tracks (AlbumTracks, albumTracks)
@@ -198,9 +201,22 @@ data AlbumXJ = AlbumXJ
   , xfacts :: AlbumFacts
   , xrelated :: Related
   , xloc :: Maybe (Text, Int) -- where the physical album is: location list and position in it
+  , xfiles :: [FileV] -- the file albums on the server that are versions of this album
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
+
+-- a file album as a version of another album (docs/jellyfin-plan.md)
+data FileV = FileV
+  { fvKey :: AlbumKey
+  , fvTitle :: Text
+  , fvArtist :: Text
+  , fvStorage :: Text -- storage location, "" if none
+  , fvUrl :: Text -- the album in Jellyfin, "" if Jellyfin's address is not known
+  , fvLogged :: Bool -- linked in the collection log (can be taken off here); False: named in the Discogs Location field
+  }
+  deriving (Show, Generic)
+instance ToJSON FileV
 
 -- tracks, credits and review of an album (docs/album-page-plan.md, phase 2): fetched from
 -- Discogs (a physical release) or Tidal (a stream) when first asked for, then from the
@@ -227,6 +243,25 @@ type API16 =
   "api"
     :> "albumdrop"
     :> Capture "aid" AlbumKey
+    :> Get '[JSON] ReqJ
+
+-- make a file album a version of an album, or take that off (docs/jellyfin-plan.md):
+-- /api/albumlink/D1365907?version=J32aa…&op=link|unlink, appended to the collection log
+type API18 =
+  "api"
+    :> "albumlink"
+    :> Capture "aid" AlbumKey
+    :> QueryParam "version" AlbumKey
+    :> QueryParam "op" Text
+    :> Get '[JSON] ReqJ
+
+-- the keep mark of an album (docs/jellyfin-plan.md): value = yes | no | unset, appended to
+-- clutter's collection log; the collection.* tags and the Collection and Inbox lists follow
+type API17 =
+  "api"
+    :> "albumkeep"
+    :> Capture "aid" AlbumKey
+    :> QueryParam "value" Text
     :> Get '[JSON] ReqJ
 
 data AlbumJ = AlbumJ
@@ -287,6 +322,8 @@ type ClutterAPI =
     :<|> API14
     :<|> API15
     :<|> API16
+    :<|> API17
+    :<|> API18
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -359,6 +396,8 @@ clutterServer sd =
     :<|> serveAlbumxq
     :<|> serveAlbumtq
     :<|> serveAlbumdrop
+    :<|> serveAlbumkeep
+    :<|> serveAlbumlink
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -480,10 +519,11 @@ clutterServer sd =
     am <- asks albumsR >>= readIORef
     facts <- asks albumFactsR >>= readIORef
     lcs <- asks locsR >>= readIORef
+    links <- asks linksR >>= readIORef
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs}
+      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing}
+      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = []}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do
@@ -514,6 +554,74 @@ clutterServer sd =
       (T _, Nothing) -> pure $ answer False "Not in clutter"
       -- a Discogs release leaves clutter when it leaves the Discogs collection
       _ -> pure $ answer False "Only a stream album can be removed here"
+
+  -- the file versions of an album, as far as clutter holds them; none for a file album
+  filesOf :: Map Text AlbumKey -> Map AlbumKey Album -> Album -> [FileV]
+  filesOf links am a = case albumID a of
+    J _ -> []
+    _ ->
+      [ FileV{fvKey = J j, fvTitle = albumTitle f, fvArtist = albumArtist f, fvStorage = storage f, fvUrl = albumURL f, fvLogged = M.lookup j links == Just (albumID a)}
+      | j <- albumFiles a
+      , Just f <- [M.lookup (J j) am]
+      ]
+   where
+    storage f = fromMaybe "" (viaNonEmpty head (mapMaybe (T.stripPrefix "storage.") (albumTags f)))
+
+  serveAlbumlink :: AlbumKey -> Maybe AlbumKey -> Maybe Text -> AppM ReqJ
+  serveAlbumlink i mversion mop = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        answer ok info = ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+        logged act done = do
+          wrote <- liftIO . try $ collectionFile >>= act
+          case wrote :: Either SomeException () of
+            Left _ -> pure $ answer False "Could not write the collection log (nothing changed)"
+            Right () -> done
+    am <- asks albumsR >>= readIORef
+    links <- asks linksR >>= readIORef
+    case (i, M.lookup i am, mversion, mop) of
+      (J _, _, _, _) -> pure $ answer False "A file album cannot stand for another album"
+      (_, Nothing, _, _) -> pure $ answer False "Not in clutter"
+      (_, Just a, Just (J j), Just "link")
+        | M.member (J j) am ->
+            logged (\fn -> appendLink fn now j (Just a)) $ do
+              envSetLink j (Just i)
+              pure $ answer True ("Linked the files to “" <> albumTitle a <> "”")
+        | otherwise -> pure $ answer False "No such file album"
+      (_, Just a, Just (J j), Just "unlink")
+        -- a file album the Discogs Location field names comes back with the next read of
+        -- the release: that link is changed in Discogs
+        | M.lookup j links /= Just i && j `elem` albumFiles a ->
+            pure $ answer False "These files are named in the release's Discogs Location field: change it there"
+        | j `elem` albumFiles a ->
+            logged (\fn -> appendLink fn now j Nothing) $ do
+              envSetLink j Nothing
+              pure $ answer True ("Took the files off “" <> albumTitle a <> "”")
+        | otherwise -> pure $ answer False "These files are not linked to this album"
+      _ -> pure $ answer False "version must be a file album (J…), op link or unlink"
+
+  serveAlbumkeep :: AlbumKey -> Maybe Text -> AppM ReqJ
+  serveAlbumkeep i mv = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        answer ok info = ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+        mark = case mv of
+          Just "yes" -> Just (Just True, "Kept")
+          Just "no" -> Just (Just False, "Marked as not for me")
+          Just "unset" -> Just (Nothing, "Mark taken off")
+          _ -> Nothing
+    am <- asks albumsR >>= readIORef
+    case (M.lookup i am, mark) of
+      (Nothing, _) -> pure $ answer False "Not in clutter"
+      (_, Nothing) -> pure $ answer False "value must be yes, no or unset"
+      (Just a, Just (m, said)) -> do
+        wrote <- liftIO . try $ collectionFile >>= \fn -> appendMark fn now a m
+        case wrote :: Either SomeException () of
+          Left _ -> pure $ answer False "Could not write the collection log (nothing changed)"
+          Right () -> do
+            envSetMark i m
+            liftIO $ hPutStrLn stderr ("keep mark: " <> show i <> " " <> fromMaybe "?" (toString <$> mv))
+            pure $ answer True (said <> ": “" <> albumTitle a <> "”")
 
   serveParamsq :: AppM ParamsJ
   serveParamsq = do

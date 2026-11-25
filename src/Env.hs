@@ -13,6 +13,8 @@ module Env (
   envUpdateSort,
   envUpdateMenuParams,
   envRefreshPlays,
+  envSetMark,
+  envSetLink,
 )
 where
 
@@ -22,7 +24,7 @@ import qualified Data.List as L (
  )
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
-import qualified Data.Text as T (all, find, length)
+import qualified Data.Text as T (all, find, length, stripPrefix)
 import Data.Vector (Vector)
 import qualified Data.Vector as V (
   empty,
@@ -45,12 +47,17 @@ import Provider (
   readTidalAlbums,
   readTidalDropped,
   linkTidalTags,
+  memberList,
+  serverList,
+  allList,
   updateAMusicFolderAids,
   updateTidalFolderAids,
  )
 
 import Wikidata (attachWiki, readWikiStore)
 import Details (attachLength, factsFor, readDetailStore)
+import Collection (attachCollection, attachLinks, collectionFile, readCollection, standInFolderTags)
+import Jellyfin (JellyfinStore (..), jellyfinAlbums, readJellyfinStore)
 import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
 import System.IO (hPutStrLn)
@@ -187,7 +194,13 @@ envUpdateMenuParams = do
         -- "YYYY Listened" lists stay loaded (reachable by URL) but are left out
         -- of the menu: "Listened YYYY" from the play log covers them.
         ("Listened" : map ("Listened " <>) (listenedYears (plays envr)))
+          -- read off the collection.* tags (Provider.memberList), not stored lists
+          <> ["Collection", "Inbox"]
+          -- the file server: everything, and one list per storage location
+          <> (if null storages then [] else "Server" : map ("Server " <>) storages)
           <> filter (\n -> not (pLocList n || discogsListenedList n)) (M.keys (listNames envr))
+
+      storages = mapMaybe (T.stripPrefix "storage.") (M.keys (tags envr))
 
       discogsListenedList :: Text -> Bool
       discogsListenedList n = case words n of
@@ -205,6 +218,7 @@ envUpdateMenuParams = do
           , msts = sts
           , mlistNames = sli
           , mlocNames = slo
+          , mjellyfin = jellyfinWeb env
           }
   pure ms
 
@@ -315,7 +329,7 @@ updateTags a m =
 -- get folder, list, release info from Discogs or cached JSON, depending on flag c
 -- we do not yet have the App Monad, so this is in the IO Monad instead
 --
-initInit :: Bool -> IO (Discogs, Map AlbumKey Album, Map Text Int, Map Text (Int, Vector AlbumKey))
+initInit :: Bool -> IO (Discogs, Map AlbumKey Album, Map Text Int, Map Text (Int, Vector AlbumKey), Text)
 initInit cached = do
   (tidal, tidalCached, aMusic, dci, dci_) <- getProviders
 
@@ -333,16 +347,19 @@ initInit cached = do
   vta <- readTidalAlbums t
   vma <- readAMusicAlbums aMusic
   vda <- liftIO $ readDiscogsAlbums dc fns
+  -- the albums on the file server, from clutter's Jellyfin album store
+  jstore <- readJellyfinStore
+  let vja = V.fromList (jellyfinAlbums jstore)
 
   let albums' :: Map AlbumKey Album
       albums' =
         M.fromList $
-          (\a -> (albumID a, a)) <$> V.toList (vda <> vta <> vma)
+          (\a -> (albumID a, a)) <$> V.toList (vda <> vta <> vma <> vja)
 
   -- read the map of Discogs lists (still empty album ids if from API)
   lm <- readDiscogsLists dc
 
-  pure (dci, albums', fns, lm)
+  pure (dci, albums', fns, lm, jsWeb jstore)
 
 envInit :: Bool -> IO Env
 envInit c = do
@@ -358,7 +375,7 @@ envInit c = do
   --  albums' :: Map AlbumKey Album          -- map of Albums indexed with their IDs
   --  fns :: Map Text Int               -- map of folder names with their IDs
   --  lm :: Map Text (Int, Vector AlbumKey)  -- map of list names with IDs and contents
-  (dc, albums'', fns, lm) <- initInit c
+  (dc, albums'', fns, lm, jweb) <- initInit c
 
   -- clutter's play log, attached to the albums before the tags index is built
   ldir <- listenedDir
@@ -368,7 +385,10 @@ envInit c = do
   wstore <- readWikiStore
   -- facts for the album page (docs/album-page-plan.md, phase 1)
   dstore <- readDetailStore
-  let albums' = attachLength (factsFor dstore) (attachWiki wstore (linkTidalTags (attachPlays plays' albums'')))
+  -- the keep marks (docs/jellyfin-plan.md, "Membership")
+  (marks', links') <- collectionFile >>= readCollection
+  sit <- standInFolderTags
+  let albums' = attachCollection sit marks' (attachLength (factsFor dstore) (attachWiki wstore (linkTidalTags (attachPlays plays' (attachLinks links' albums'')))))
 
   -- create the Tags index
   putTextLn "----------------------envInit: Updating Tags index"
@@ -400,6 +420,8 @@ envInit c = do
   fr <- newIORef []
   wlr <- newIORef (attachWiki wstore)
   afr <- newIORef (factsFor dstore)
+  mkr <- newIORef marks'
+  lkr <- newIORef links'
   -- define sort functions and map to names
   let sDef :: Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey
       sDef _ s l = case s of
@@ -453,6 +475,10 @@ envInit c = do
       , getSort = \am sn -> fromMaybe sDef (M.lookup sn sfs) am
       , wikiLinksR = wlr
       , albumFactsR = afr
+      , jellyfinWeb = jweb
+      , marksR = mkr
+      , linksR = lkr
+      , standInTags = sit
       }
 
 --
@@ -467,7 +493,13 @@ getList' ln = case listenedName ln of
     es <- readIORef (playsR env)
     am <- readIORef (albumsR env)
     pure . V.fromList . mapMaybe (fmap albumID . snd) $ listenedRows my es am
-  Nothing -> getDiscogsList ln
+  Nothing
+    | ln == "Collection" -> memberList "collection.in" <$> (asks albumsR >>= readIORef)
+    | ln == "Inbox" -> memberList "collection.inbox" <$> (asks albumsR >>= readIORef)
+    | ln == "All" -> allList <$> (asks albumsR >>= readIORef)
+    | ln == "Server" -> serverList Nothing <$> (asks albumsR >>= readIORef)
+    | Just s <- T.stripPrefix "Server " ln -> serverList (Just s) <$> (asks albumsR >>= readIORef)
+    | otherwise -> getDiscogsList ln
 
 getDiscogsList :: Text -> AppM (Vector AlbumKey)
 getDiscogsList ln = do
@@ -582,7 +614,33 @@ withPlays am = do
   wl <- asks wikiLinksR >>= readIORef
   -- the length.* tags, from the album facts as last read
   fa <- asks albumFactsR >>= readIORef
-  pure (attachLength fa (wl (linkTidalTags (attachPlays es am))))
+  -- the collection.* tags, from the keep marks and the plays
+  marks <- asks marksR >>= readIORef
+  sit <- asks standInTags
+  links <- asks linksR >>= readIORef
+  pure (attachCollection sit marks (attachLength fa (wl (linkTidalTags (attachPlays es (attachLinks links am))))))
+
+-- set or take off the keep mark of an album (the log line is written by the caller), and
+-- bring the collection.* tags up to date
+envSetMark :: AlbumKey -> Maybe Bool -> AppM ()
+envSetMark k m = do
+  mr <- asks marksR
+  modifyIORef' mr (M.alter (const m) k)
+  envRefreshPlays
+
+-- make a file album a version of an album (Just), or take the link off (Nothing); the log
+-- line is written by the caller. The file album leaves the album it was on before.
+envSetLink :: Text -> Maybe AlbumKey -> AppM ()
+envSetLink j mk = do
+  lr <- asks linksR
+  ar <- asks albumsR
+  modifyIORef' lr (M.alter (const mk) j)
+  let off a = case albumID a of
+        J _ -> a
+        _ | j `elem` albumFiles a -> let fs = filter (/= j) (albumFiles a) in a{albumFiles = fs, albumJellyfin = viaNonEmpty head fs}
+        _ -> a
+  modifyIORef' ar (M.map off)
+  envRefreshPlays
 
 -- re-attach the play dates to all albums, after a play was logged
 envRefreshPlays :: AppM ()

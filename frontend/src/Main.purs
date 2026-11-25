@@ -98,6 +98,7 @@ defaultMenuParams =
   , msts : [ ] -- sorted tags
   , mlistNames : [ ]
   , mlocNames : [ ]
+  , mjellyfin : ""
   }
 
 

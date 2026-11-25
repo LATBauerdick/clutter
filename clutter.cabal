@@ -27,11 +27,13 @@ source-repository head
 library
   exposed-modules:
       App
+      Collection
       Details
       Env
       FromAMusic
       FromDiscogs
       FromTidal
+      Jellyfin
       Listened
       Parse
       Provider

@@ -1,0 +1,126 @@
+{-# LANGUAGE LambdaCase #-}
+
+-- Albums on the file server, as Jellyfin knows them (docs/jellyfin-plan.md).
+--
+-- scripts/update-jellyfin-albums.py fills ~/Sync/clutter/jellyfin-albums.json
+-- (CLUTTER_JELLYFIN_ALBUMS overrides) from Jellyfin's API; the server only reads that
+-- snapshot. Every album in it becomes a J<id> album with the tags provider.jellyfin and
+-- storage.<name> (the storage location: the Jellyfin library, or a folder of it, as
+-- ~/Sync/clutter/storage-map.json says). A missing or unreadable store means no Jellyfin
+-- albums, no error.
+--
+-- The address a browser reaches Jellyfin at (covers, "Open in Jellyfin") is the store's
+-- "web", or CLUTTER_JELLYFIN; empty means there are no such links.
+module Jellyfin (
+  JellyfinStore (..),
+  readJellyfinStore,
+  jellyfinAlbums,
+  jellyfinSecs,
+) where
+
+import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.!=), (.:?))
+import qualified Data.Map.Strict as M
+import qualified Data.Text as T
+import Relude
+import System.Directory (doesFileExist)
+import System.FilePath ((</>))
+import System.IO (hPutStrLn)
+import Types (Album (..), AlbumKey (..), ArtistRef (..), TagFolder (..))
+
+data JAlbum = JAlbum
+  { jaTitle :: Text
+  , jaArtist :: Text
+  , jaArtists :: [Text]
+  , jaYear :: Int
+  , jaAdded :: Text
+  , jaSecs :: Int
+  , jaStorage :: Text
+  , jaImage :: Bool
+  }
+
+instance FromJSON JAlbum where
+  parseJSON = withObject "Jellyfin album" $ \o ->
+    JAlbum
+      <$> o .:? "title" .!= ""
+      <*> o .:? "artist" .!= ""
+      <*> o .:? "artists" .!= []
+      <*> o .:? "year" .!= 0
+      <*> o .:? "added" .!= ""
+      <*> o .:? "secs" .!= 0
+      <*> o .:? "storage" .!= ""
+      <*> o .:? "image" .!= False
+
+data JellyfinStore = JellyfinStore
+  { jsWeb :: Text -- Jellyfin as a browser reaches it, no trailing slash; "" if not known
+  , jsAlbums :: Map Text JAlbum -- by Jellyfin item id, 32 hex digits, lower case
+  }
+
+data StoreFile = StoreFile Text (Map Text JAlbum)
+instance FromJSON StoreFile where
+  parseJSON = withObject "Jellyfin album store" $ \o ->
+    StoreFile <$> o .:? "web" .!= "" <*> o .:? "albums" .!= M.empty
+
+storePath :: IO FilePath
+storePath =
+  lookupEnv "CLUTTER_JELLYFIN_ALBUMS" >>= \case
+    Just f | not (null f) -> pure f
+    _ -> do
+      home <- fromMaybe "." <$> lookupEnv "HOME"
+      pure $ home </> "Sync" </> "clutter" </> "jellyfin-albums.json"
+
+readJellyfinStore :: IO JellyfinStore
+readJellyfinStore = do
+  fn <- storePath
+  webEnv <- maybe "" toText <$> lookupEnv "CLUTTER_JELLYFIN"
+  let web w = T.dropWhileEnd (== '/') (if T.null webEnv then w else webEnv)
+  ok <- doesFileExist fn
+  if not ok
+    then hPutStrLn stderr ("no Jellyfin albums at " <> fn <> " -- run scripts/update-jellyfin-albums.py") $> JellyfinStore (web "") M.empty
+    else
+      eitherDecode <$> readFileLBS fn >>= \case
+        Left err -> hPutStrLn stderr ("Jellyfin albums " <> fn <> ": " <> err) $> JellyfinStore (web "") M.empty
+        Right (StoreFile w as) -> do
+          let as' = M.mapKeys T.toLower as
+          hPutStrLn stderr $ "read " <> show (M.size as') <> " Jellyfin albums from " <> fn
+          pure (JellyfinStore (web w) as')
+
+-- playing times in seconds, where Jellyfin has one
+jellyfinSecs :: JellyfinStore -> Map Text Int
+jellyfinSecs = M.filter (> 0) . M.map jaSecs . jsAlbums
+
+jellyfinAlbums :: JellyfinStore -> [Album]
+jellyfinAlbums (JellyfinStore web as) = uncurry toAlbum <$> M.toList as
+ where
+  have = not (T.null web)
+  toAlbum i a =
+    Album
+      { albumID = J i
+      , albumInst = 0
+      , albumTitle = jaTitle a
+      , albumArtist = jaArtist a
+      , albumReleased = if jaYear a > 0 then show (jaYear a) else ""
+      , albumCover = if have && jaImage a then web <> "/Items/" <> i <> "/Images/Primary?fillWidth=320&fillHeight=320&quality=90" else ""
+      , albumAdded = jaAdded a
+      , albumFolder = fromEnum TJellyfin
+      , albumURL = if have then web <> "/web/#/details?id=" <> i else ""
+      , albumFormat = "Jellyfin"
+      , albumTidal = Nothing
+      , albumAMusic = Nothing
+      , albumQobuz = Nothing
+      , albumJellyfin = Just i
+      , albumLocIdx = Nothing
+      , albumLocation = Nothing
+      , albumTags = "provider.jellyfin" : ["storage." <> jaStorage a | not (T.null (jaStorage a))]
+      , albumRating = 0
+      , albumPlays = 0
+      , albumListenedDates = []
+      , albumFavoriteUntil = Nothing
+      , albumWikiKeys = []
+      , albumWiki = Nothing
+      , albumAllMusic = Nothing
+      , albumArtists =
+          [ ArtistRef{arName = n, arKey = "", arWiki = Nothing, arAllMusic = Nothing}
+          | n <- if null (jaArtists a) then [jaArtist a | not (T.null (jaArtist a))] else jaArtists a
+          ]
+      , albumFiles = []
+      }

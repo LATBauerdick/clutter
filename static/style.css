@@ -1029,3 +1029,9 @@ body { margin: 0; }
   .av-cover { max-width: 420px; }
   .av-title { font-size: 30px; }
 }
+
+/* the keep mark on the album page (docs/jellyfin-plan.md) */
+.av-keep p { margin: 2px 0 6px; font-size: 13px; color: #55555a; }
+.av-tag.av-on { background: #dfe6ff; color: #2a3fb0; }
+.av-file { margin: 2px 0 6px; font-size: 13px; }
+.av-file .av-unlink { margin-left: 6px; }

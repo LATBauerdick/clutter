@@ -49,6 +49,7 @@ eventKey e = case peSrc e of
   "discogs" -> D <$> peDiscogs e
   "tidal" -> T <$> peTidal e
   "apple" -> A <$> peApple e
+  "jellyfin" -> J <$> peJellyfin e
   _ -> Nothing
 
 -- the event for pressing "Album Played" now, with every id clutter knows
@@ -62,6 +63,7 @@ playEvent now a =
     , peTidal = readId =<< albumTidal a
     , peApple = readId =<< albumAMusic a
     , peApplelib = case k of A _ | isNothing (readId =<< albumAMusic a) -> albumLocation a; _ -> Nothing
+    , peJellyfin = T.toLower <$> mfilter (not . T.null) (albumJellyfin a)
     , peArtist = albumArtist a
     , peTitle = albumTitle a
     , peVia = "clutter"
@@ -145,12 +147,16 @@ playAlbumId am = resolve
   viaField f = M.fromList [(i, k) | (k@(D _), a) <- M.toList am, Just i <- [readMaybe . toString =<< f a]]
   tidalToDiscogs = viaField albumTidal
   appleToDiscogs = viaField albumAMusic
+  -- a file album that is a version of another album: its plays are that album's
+  fileToAlbum = M.fromList [(j, k) | (k, a) <- M.toList am, notFile k, j <- albumFiles a]
+  notFile k = case k of J _ -> False; _ -> True
   known k = k <$ M.lookup k am
   resolve e =
     asum
       [ known . D =<< peDiscogs e
       , peTidal e >>= \t -> M.lookup t tidalToDiscogs <|> known (T t)
       , peApple e >>= \i -> M.lookup i appleToDiscogs <|> known (A i)
+      , peJellyfin e >>= \j -> M.lookup j fileToAlbum <|> known (J j)
       ]
 
 -- set albumListenedDates (newest first) and the played.* tags on every album
@@ -216,6 +222,7 @@ playAlbum e =
     , albumFolder = case peSrc e of
         "tidal" -> fromEnum TTidal
         "apple" -> fromEnum TAMusic
+        "jellyfin" -> fromEnum TJellyfin
         _ -> fromEnum TDiscogs
     , albumURL = case (peDiscogs e, peTidal e) of
         (Just d, _) -> "https://www.discogs.com/release/" <> show d
@@ -224,11 +231,12 @@ playAlbum e =
     , albumFormat = case peSrc e of
         "tidal" -> "Tidal"
         "apple" -> "AppleMusic"
+        "jellyfin" -> "Jellyfin"
         _ -> ""
     , albumTidal = show <$> peTidal e
     , albumAMusic = show <$> peApple e
     , albumQobuz = Nothing
-    , albumJellyfin = Nothing
+    , albumJellyfin = peJellyfin e
     , albumLocIdx = Nothing
     , albumLocation = Nothing
     , albumTags = []
@@ -240,4 +248,5 @@ playAlbum e =
     , albumWiki = Nothing
     , albumAllMusic = Nothing
     , albumArtists = [ArtistRef{arName = peArtist e, arKey = "", arWiki = Nothing, arAllMusic = Nothing}]
+    , albumFiles = []
     }

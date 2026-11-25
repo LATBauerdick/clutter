@@ -4,6 +4,7 @@ module Types  ( Album
               , AlbumRef
               , Related
               , AlbumXJ
+              , FileV
               , Track
               , Credit
               , AlbumTracks
@@ -112,6 +113,15 @@ type AlbumXJ =    { xid :: String
                   , xfacts :: AlbumFacts
                   , xrelated :: Related
                   , xloc :: Maybe (Tuple String Int) -- location list and position in it
+                  , xfiles :: Maybe (Array FileV) -- file albums on the server that are versions of this album
+                  }
+-- a file album (Jellyfin) as a version of another album
+type FileV =      { fvKey :: String
+                  , fvTitle :: String
+                  , fvArtist :: String
+                  , fvStorage :: String
+                  , fvUrl :: String
+                  , fvLogged :: Boolean -- linked in clutter's log (× takes it off); false: named in the Discogs Location field
                   }
 -- /api/albumtq: tracks, credits and review, fetched on demand and cached per album (backend Tracks.hs)
 type Track =      { tkDisc :: Int
@@ -197,6 +207,7 @@ type MenuParams = { muhq :: String
                   , msts :: Array String
                   , mlistNames :: Array String
                   , mlocNames :: Array String
+                  , mjellyfin :: String -- Jellyfin as the browser reaches it; "" if there is none
                   }
 type ParamsJ =    { timeStamp :: String
                   , params :: MenuParams
@@ -222,6 +233,8 @@ data Action = ToggleSortOrder
             | NodeCtl String -- toggle | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
+            | UnlinkFile String String -- album id, file album id (J…): these files are not this album
+            | KeepAlbum String String -- album id; yes | no | unset: the keep mark (docs/jellyfin-plan.md)
             | AskDrop Boolean -- "Remove from clutter": ask (true), or never mind (false)
             | DropAlbum String -- remove this stream album from clutter, then show the Tidal list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list

@@ -50,6 +50,7 @@ renderSide state =
     <> group "Discogs Lists" lists
     <> fold "Genre folders" genreFolders
     <> listenedFold
+    <> serverFold
     <> fold "Cubes" cubes
     <> fold "Shelves" shelves
     <> fold "Boxes and more" otherLocs
@@ -65,8 +66,12 @@ renderSide state =
   tags = state.menu.params.msts
   isFolder n = elem ("folder." <> S.toLower n) tags
   isMedium n = elem ("format." <> S.toLower n) tags
-  builtIn n = elem n [ "All", "Discogs", "Tidal", "Apple Music" ]
-  rest = filter (not <<< isListened) names
+  builtIn n = elem n [ "Collection", "Inbox", "All", "Discogs", "Tidal", "Apple Music" ]
+  -- the file albums on the server (Jellyfin): "Server" is all of them, "Server <name>" a
+  -- storage location
+  isServer n = n == "Server" || S.take 7 n == "Server "
+  server = filter isServer names
+  rest = filter (\n -> not (isListened n) && not (isServer n)) names
   library = filter (\n -> builtIn n || (isFolder n && isMedium n)) rest
   genreFolders = filter (\n -> isFolder n && not (isMedium n) && not (builtIn n)) rest
   lists = filter (\n -> not (isFolder n) && not (builtIn n)) rest
@@ -106,6 +111,12 @@ renderSide state =
     HH.button [ cls (if n == current then "nav-item nav-on" else "nav-item")
               , HE.onClick \_ -> ShowList (AlbumList (Just n)) ]
               [ HH.text label ]
+  serverFold =
+    if null server then [] else
+      [ HH.details (if elem current server then [ HP.attr (HH.AttrName "open") "" ] else [])
+          ([ HH.summary_ [ HH.text "On the server" ] ]
+           <> map (\n -> itemAs (if n == "Server" then "Everything" else S.drop 7 n) n) server)
+      ]
   -- folded; open when the list on show is in it
   fold title ns =
     if null ns then [] else

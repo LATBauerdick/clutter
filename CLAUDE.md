@@ -109,7 +109,11 @@ Frontend communicates with backend through JSON APIs under `/api/` routes.
 
 ### API Endpoints
 
-Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, `A…` Apple Music, `J…` Jellyfin (`Types.AlbumKey`). A bare number means a Discogs release.
+Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, `A…` Apple Music, `J…` Jellyfin (`Types.AlbumKey`). A bare number means a Discogs release. A Jellyfin key is `J` + the item id, 32 hex digits (`J Text`, since 2026-11-25).
+
+**File albums (Jellyfin), since 2026-11-25** — plan, model and status in `docs/jellyfin-plan.md`; read it before touching this. `scripts/update-jellyfin-albums.py` fills `~/Sync/clutter/jellyfin-albums.json` (`CLUTTER_JELLYFIN_ALBUMS`) from Jellyfin's API (key `jky` in `tok.json`; the store remembers the URLs, `CLUTTER_JELLYFIN` overrides the browser one); `src/Jellyfin.hs` reads it at start. Each album: `J` key, format `Jellyfin`, tags `provider.jellyfin` + `storage.<name>` (storage location, from `~/Sync/clutter/storage-map.json`, folder prefix → name). Lists `Server` and `Server <storage>` (sidebar "On the server"). `MenuParams.mjellyfin` gives the frontend Jellyfin's address. **Portability rule (LATB):** no host names or installation paths in code — configuration or stores.
+
+**Collection and keep mark, since 2026-11-25** (`src/Collection.hs`, `docs/jellyfin-plan.md` › Membership): an album is in the collection if it is marked keep, or is not marked and is a record on a shelf (a Discogs release outside the stand-in folders, `CLUTTER_STANDIN_FOLDERS`, default `Streaming,Files`) or has a play. Marks live in clutter's own append-only log `~/Sync/clutter/collection.jsonl` (`CLUTTER_COLLECTION`), written by `/api/albumkeep/:id?value=yes|no|unset`. Tags `collection.in|inbox|out`, `keep.yes|no` (`attachCollection`, in `Env.withPlays` — after `attachPlays`, it needs the `played.*` tags). Lists `Collection` and `Inbox` are computed from the tags (`Provider.memberList`); `All` is everything minus stand-ins. clutter-owned data = append-only `.jsonl`; fetched data = rebuildable JSON snapshots.
 
 **HTML Endpoints** (for direct browser access):
 - `/album/:id` - Single album view

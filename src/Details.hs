@@ -25,6 +25,7 @@ import Control.Exception (try)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn)
+import Jellyfin (jellyfinSecs, readJellyfinStore)
 import Tracks (cacheDir)
 import Types (Album (..), AlbumFacts (..), AlbumKey (..))
 import Wikidata (displayName)
@@ -52,10 +53,11 @@ data DetailStore = DetailStore
   , dsTidal :: Map Int TFacts -- by Tidal album id
   , dsCached :: Map Int Int -- by Discogs release id: seconds, summed from its cached tracks
   , dsLengths :: Map Int (Maybe Int, Maybe Int) -- by Discogs release id: seconds, tracks (album-lengths.json)
+  , dsJellyfin :: Map Text Int -- by Jellyfin album id: seconds (jellyfin-albums.json)
   }
 
 emptyDetailStore :: DetailStore
-emptyDetailStore = DetailStore M.empty M.empty M.empty M.empty
+emptyDetailStore = DetailStore M.empty M.empty M.empty M.empty M.empty
 
 -- Discogs ---------------------------------------------------------------------------------
 
@@ -196,7 +198,7 @@ readTidal = do
 -- store and lookup ------------------------------------------------------------------------
 
 readDetailStore :: IO DetailStore
-readDetailStore = DetailStore <$> readDiscogs <*> readTidal <*> readCached <*> readLengths
+readDetailStore = DetailStore <$> readDiscogs <*> readTidal <*> readCached <*> readLengths <*> (jellyfinSecs <$> readJellyfinStore)
 
 -- Playing times of the Discogs releases that the Tidal album store does not cover, looked up
 -- by scripts/update-lengths.py: ~/Sync/clutter/album-lengths.json (CLUTTER_ALBUM_LENGTHS
@@ -278,7 +280,7 @@ lengthTags = \case
 factsFor :: DetailStore -> Album -> AlbumFacts
 factsFor ds a =
   AlbumFacts
-    { afLength = (tf >>= tfLength) <|> (looked >>= fst) <|> cached
+    { afLength = (tf >>= tfLength) <|> (looked >>= fst) <|> cached <|> files
     , afTracks = (tf >>= tfTracks) <|> (looked >>= snd)
     , afQuality = tf >>= tfQuality
     , afLabel = (df >>= dfLabel) <|> (tf >>= tfCopyright)
@@ -302,3 +304,7 @@ factsFor ds a =
   looked = case albumID a of
     D n -> M.lookup n (dsLengths ds)
     _ -> Nothing
+  -- the files' playing time: the album's own, or that of the file album a release names
+  files = case albumID a of
+    J i -> M.lookup i (dsJellyfin ds)
+    _ -> albumJellyfin a >>= (`M.lookup` dsJellyfin ds) . T.toLower

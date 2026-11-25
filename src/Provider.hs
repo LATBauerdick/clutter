@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 -- {-# LANGUAGE OverloadedStrings #-}
 -- {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
@@ -22,6 +23,9 @@ module Provider (
   updateAMusicFolderAids,
   linkTidalTags,
   standIns,
+  memberList,
+  serverList,
+  allList,
 )
 where
 
@@ -96,6 +100,7 @@ dToAlbum r =
     Nothing -- albumWiki, from wikidata.json (Wikidata.attachWiki)
     Nothing -- albumAllMusic
     (artistRefs r) -- albumArtists
+    (maybe [] (one . T.toLower) (mfilter (not . T.null) (djellyfinid r))) -- albumFiles
  where
 
   makeDiscogsURL a = T.pack $ "https://www.discogs.com/release/" ++ show a
@@ -198,6 +203,35 @@ standIns am = S.fromList (concatMap twins (M.elems am))
   twins a =
     [T t | D _ <- [albumID a], Just t <- [tidalId a]]
       <> [A i | Just i <- [readMaybe . toString =<< albumAMusic a], albumID a /= A i]
+      <> [J j | notFile (albumID a), j <- albumFiles a]
+  notFile = \case J _ -> False; _ -> True
+
+-- the albums with a tag, newest first, without the stand-ins: the lists "Collection"
+-- (collection.in) and "Inbox" (collection.inbox), read off the tags when asked for, so
+-- they follow a play or a keep mark at once
+memberList :: Text -> Map AlbumKey Album -> Vector AlbumKey
+memberList tag am = V.fromList [albumID a | a <- sortOn (Down . albumAdded) (M.elems am), tag `elem` albumTags a, not (albumID a `S.member` hidden)]
+ where
+  hidden = standIns am
+
+-- "All": every album, newest first, without the stand-ins; read off the album map when
+-- asked for, since a link in the collection log changes who stands in for whom
+allList :: Map AlbumKey Album -> Vector AlbumKey
+allList am = V.fromList [albumID a | a <- sortOn (Down . albumAdded) (M.elems am), not (albumID a `S.member` hidden)]
+ where
+  hidden = standIns am
+
+-- the albums on the file server, newest first: every file album, or those of one storage
+-- location (tag storage.<name>). A file album that is a version of another album is shown
+-- as that album, which carries its storage tags (Collection.attachLinks). Read off the tags
+-- when asked for, like memberList.
+serverList :: Maybe Text -> Map AlbumKey Album -> Vector AlbumKey
+serverList mstorage am = V.fromList [albumID a | a <- sortOn (Down . albumAdded) (M.elems am), wanted a, not (albumID a `S.member` hidden)]
+ where
+  hidden = standIns am
+  wanted a = case mstorage of
+    Just s -> ("storage." <> s) `elem` albumTags a
+    Nothing -> any ("storage." `T.isPrefixOf`) (albumTags a)
 
 -- a Discogs release whose Tidal album is in the Tidal collection is tagged tidal.collection
 -- too, so #tidal.collection filters the whole Tidal list; likewise tidal.gone, when its
@@ -270,7 +304,7 @@ readFolderAids fm am = fam
   allDiscogs =
     sAdded
       . V.map fst
-      . V.filter (\(_, f) -> f /= fromEnum TTidal && f /= fromEnum TAMusic)
+      . V.filter (\(_, f) -> f /= fromEnum TTidal && f /= fromEnum TAMusic && f /= fromEnum TJellyfin)
       . V.map (\a -> (albumID a, albumFolder a))
       . V.fromList
       $ M.elems am
@@ -347,6 +381,7 @@ readTidalAlbums p = do
         Nothing -- albumWiki, from wikidata.json (Wikidata.attachWiki)
         Nothing -- albumAllMusic
         (artistRefs r) -- albumArtists
+        [] -- albumFiles, from the collection log
   -- clutter's Tidal album store holds every album that was ever a favourite or was played;
   -- without it, the favourites dump as before
   store <- FT.tidalStorePath
@@ -392,6 +427,7 @@ readAMusicAlbums p = do
         Nothing -- albumWiki, from wikidata.json (Wikidata.attachWiki)
         Nothing -- albumAllMusic
         (artistRefs r) -- albumArtists
+        [] -- albumFiles, from the collection log
   ds <- FA.readAMusicReleases (getAMusic p)
   let as = toAlbum <$> ds
   -- print as

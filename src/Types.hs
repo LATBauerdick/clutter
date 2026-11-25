@@ -28,7 +28,7 @@ module Types (
   envGetListName,
 ) where
 
-import Data.Char (toLower)
+import Data.Char (isHexDigit, toLower)
 import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import Relude
@@ -42,7 +42,8 @@ import Servant (FromHttpApiData (..))
 -- album identity, typed by catalogue: the same number means different albums in
 -- Discogs, Tidal, Apple Music and Jellyfin. Written with a prefix, as in the Discogs
 -- Location field ("T12571482 A206349046"): D6715388, T283130328, A1556465220, J…
-data AlbumKey = D Int | T Int | A Int | J Int
+-- A Jellyfin id is its item id, 32 hex digits (kept in lower case), not a number.
+data AlbumKey = D Int | T Int | A Int | J Text
   deriving (Eq, Ord, Generic)
 
 keyText :: AlbumKey -> Text
@@ -50,15 +51,16 @@ keyText k = case k of
   D i -> "D" <> show i
   T i -> "T" <> show i
   A i -> "A" <> show i
-  J i -> "J" <> show i
+  J i -> "J" <> i
 
--- "D123", "T123", "A123", "J123"; a bare number is a Discogs release (old links)
+-- "D123", "T123", "A123", "J<32 hex digits>"; a bare number is a Discogs release (old links)
 parseKey :: Text -> Maybe AlbumKey
 parseKey t = case T.uncons t of
   Just ('D', n) -> D <$> num n
   Just ('T', n) -> T <$> num n
   Just ('A', n) -> A <$> num n
-  Just ('J', n) -> J <$> num n
+  Just ('J', n) | T.length n == 32 && T.all isHexDigit n -> Just (J (T.toLower n))
+  Just ('J', _) -> Nothing
   _ -> D <$> num t
  where
   num = readMaybe . toString
@@ -79,7 +81,7 @@ data AMusicInfo = AMusicSession Text Text
 data Discogs = DiscogsFile FilePath | DiscogsSession Text Text
   deriving (Show)
 
-data TagFolder = TDiscogs | TNotUsed | TTidal | TAll | TAMusic
+data TagFolder = TDiscogs | TNotUsed | TTidal | TAll | TAMusic | TJellyfin
   deriving (Enum, Read, Show, Eq, Ord)
 
 -- class ATags f where toInt :: f -> Int
@@ -95,6 +97,7 @@ data MenuParams = MenuParams
   , msts :: [Text]
   , mlistNames :: [Text]
   , mlocNames :: [Text]
+  , mjellyfin :: Text -- Jellyfin as a browser reaches it; "" if there is none
   }
   deriving (Eq, Show, Generic)
 instance ToJSON MenuParams
@@ -135,6 +138,10 @@ data Env = Env
     -- again by "Update from Tidal" (Env.envTidalReload), which may have extended them
     wikiLinksR :: IORef (Map AlbumKey Album -> Map AlbumKey Album)
   , albumFactsR :: IORef (Album -> AlbumFacts)
+  , jellyfinWeb :: Text -- Jellyfin as a browser reaches it (Jellyfin.jsWeb); "" if there is none
+  , marksR :: IORef (Map AlbumKey Bool) -- the keep marks (Collection.Marks): True keep, False not for me
+  , linksR :: IORef (Map Text AlbumKey) -- file album (Jellyfin id) -> the album it is a version of (Collection.Links)
+  , standInTags :: Set Text -- folder tags of the Discogs stand-in folders (Collection.standInFolderTags)
   }
 instance Show Env where
   show :: Env -> String
@@ -228,6 +235,8 @@ data Album = Album
   , albumWiki :: Maybe Text -- Wikipedia page (English, else German), from wikidata.json
   , albumAllMusic :: Maybe Text -- AllMusic page
   , albumArtists :: [ArtistRef] -- one per artist, with its links
+  , albumFiles :: [Text] -- Jellyfin ids of the file albums that are versions of this album: named in the
+  -- Discogs Location field, or linked in the collection log (Collection.attachLinks)
   }
   deriving (Show, Generic)
 
@@ -270,6 +279,7 @@ data PlayEvent = PlayEvent
   , peTidal :: Maybe Int
   , peApple :: Maybe Int
   , peApplelib :: Maybe Text -- Apple Music library id, for albums without a catalog id
+  , peJellyfin :: Maybe Text -- Jellyfin item id; it changes when the files move, artist and title stay
   , peArtist :: Text
   , peTitle :: Text
   , peVia :: Text -- clutter | import:discogs-list | import:want | import:albumsplayed | manual

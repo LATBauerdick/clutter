@@ -161,7 +161,7 @@ render state =
       , chipsView
       , HH.div [ cls "av-body" ]
         [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> [ playsView ])
-        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView, removeView ]
+        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView, filesView, keepView, removeView ]
         ]
       , HH.div_ stripsView
       ]
@@ -169,6 +169,7 @@ render state =
     cls :: forall r i. String -> HP.IProp ( class :: String | r ) i
     cls = HP.class_ <<< HH.ClassName
     isDiscogs = S.take 1 a.albumID == "D"
+    jellyfin = state.menu.params.mjellyfin
     -- the album, or the Tidal album of this release, is off Tidal
     isGone = elem "tidal.gone" a.albumTags
     -- the details from /api/albumxq, once they are there and belong to this album
@@ -242,7 +243,7 @@ render state =
     genres = mapMaybe (S.stripPrefix (Pattern "genre.")) a.albumTags
     -- the other tags, without those the facts already show (provider, rating, plays)
     -- and without the Discogs styles once those are chips
-    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal.", "length." ])
+    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal.", "length.", "collection.", "keep." ])
                               && not (elem t (map S.toLower styles)) && not (elem t genres)) a.albumTags
     chipsView =
       HH.div [ cls "av-chips" ] $
@@ -336,6 +337,56 @@ render state =
         <<< replaceAll (Pattern "+") (Replacement "%2B")
         <<< replaceAll (Pattern "%") (Replacement "%25")
 
+    -- the file albums on the server that are versions of this album (docs/jellyfin-plan.md):
+    -- where they are stored (a click shows that storage location), a link into Jellyfin,
+    -- and × for a wrong match
+    filesView =
+      let files = fromMaybe [] (detail >>= _.xfiles)
+          one f =
+            HH.p [ cls "av-file" ] $
+              (if f.fvStorage == "" then [] else
+                 [ HH.button [ cls "av-tag", HE.onClick \_ -> ShowList (AlbumList (Just ("Server " <> f.fvStorage)))
+                             , HP.title ("On the server: " <> f.fvStorage) ]
+                             [ HH.text f.fvStorage ] ])
+              <> [ if f.fvUrl == "" then HH.text f.fvTitle
+                   else HH.a [ HP.href f.fvUrl, HP.target "_blank", HP.title (f.fvArtist <> " — open in Jellyfin") ] [ HH.text f.fvTitle ] ]
+              <> (if not f.fvLogged then [] else
+                    [ HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> UnlinkFile a.albumID f.fvKey
+                                , HP.title "Not this album: take these files off it" ]
+                                [ HH.text "×" ] ])
+      in
+      if null files then HH.text "" else
+        HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "On the server" ] ] <> map one files)
+
+    -- in the collection or not, why, and the keep mark (docs/jellyfin-plan.md, "Membership"):
+    -- a record on a shelf and anything played is in; "Keep" puts an album in, "Not for me"
+    -- takes it out; a click on the mark that is set takes it off again
+    keepView =
+      let has t = elem t a.albumTags
+          kept = has "keep.yes"
+          refused = has "keep.no"
+          played = not (has "played.never")
+          status
+            | refused = "Not in the collection — marked “not for me”"
+            | has "collection.in" =
+                "In the collection — " <> (if kept then "kept" else if isPhysical then "on the shelf" else if played then "played" else "a record")
+                <> (if kept && played then ", played" else "")
+            | has "collection.inbox" = "In the inbox — not judged yet"
+            | otherwise = ""
+          btn on label value tip =
+            HH.button [ cls (if on then "av-tag av-on" else "av-tag"), HE.onClick \_ -> KeepAlbum a.albumID value, HP.title tip ]
+                      [ HH.text label ]
+      in
+      if status == "" then HH.text "" else
+        HH.div [ cls "av-keep" ]
+          [ HH.h3_ [ HH.text "Collection" ]
+          , HH.p_ [ HH.text status ]
+          , if kept then btn true "✓ Kept" "unset" "Take the mark off: back to the rule (a record on a shelf, or played)"
+                    else btn false "Keep" "yes" "Put this album in the collection"
+          , if refused then btn true "✓ Not for me" "unset" "Take the mark off: back to the rule (a record on a shelf, or played)"
+                       else btn false "Not for me" "no" "Leave this album out of the collection, whatever the rule says"
+          ]
+
     -- a stream album can be removed from clutter: asked once more, then marked in the store
     removeView =
       if S.take 1 a.albumID /= "T" then HH.text "" else
@@ -371,7 +422,7 @@ render state =
               Just am | am /= "" -> apple am
               _ -> [])
         <> (case a.albumJellyfin of
-              Just j | j /= "" -> ext ("http://usrv.local:8096/web/#/details?id=" <> j) "Jellyfin"
+              Just j | j /= "" && jellyfin /= "" -> ext (jellyfin <> "/web/#/details?id=" <> j) "Jellyfin"
               _ -> [])
 
     -- tracks, credits and review from /api/albumtq, once they are there and belong to this album
@@ -583,6 +634,7 @@ render state =
           | "Hybrid" `isInfixOf` f = 'c'
           | f == "Streaming" = 's'
           | f == "Files" = 'f'
+          | f == "Jellyfin" = 'f'
           | f == "Tidal" = 't'
           | f == "AppleMusic" = 'a'
           | otherwise = 'x'
@@ -684,10 +736,10 @@ render state =
   rbJellyfin :: forall m. Album -> H.ComponentHTML Action () m
   rbJellyfin a = case a.albumJellyfin of
     Nothing -> HH.div_ []
-    Just jid -> if a.albumFormat == "Jellyfin" then HH.div_ [] else -- don't show if just Jellyfin
+    Just jid -> if a.albumFormat == "Jellyfin" || state.menu.params.mjellyfin == "" then HH.div_ [] else -- don't show if just Jellyfin
       HH.div [ HP.class_ $ HH.ClassName "cover-obackground4"]
       [ HH.a
-        [ HP.href ("http://usrv.local:8096/web/#/details?id=" <> jid)]
+        [ HP.href (state.menu.params.mjellyfin <> "/web/#/details?id=" <> jid)]
         [ HH.img
             [ HP.src (state.menu.params.muhq <> "icons/jellyfin-icon.png"), HP.alt "J"
             , HP.class_ $ HH.ClassName "cover-oimage"
