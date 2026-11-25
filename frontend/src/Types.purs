@@ -5,6 +5,7 @@ module Types  ( Album
               , Related
               , AlbumXJ
               , FileV
+              , CandV
               , Track
               , Credit
               , AlbumTracks
@@ -113,7 +114,15 @@ type AlbumXJ =    { xid :: String
                   , xfacts :: AlbumFacts
                   , xrelated :: Related
                   , xloc :: Maybe (Tuple String Int) -- location list and position in it
+                  , xcandidates :: Maybe (Array CandV) -- for a file album: albums it may be a version of
                   , xfiles :: Maybe (Array FileV) -- file albums on the server that are versions of this album
+                  }
+-- an album a file album may be a version of
+type CandV =      { cvKey :: String
+                  , cvTitle :: String
+                  , cvArtist :: String
+                  , cvFormat :: String
+                  , cvReleased :: String
                   }
 -- a file album (Jellyfin) as a version of another album
 type FileV =      { fvKey :: String
@@ -233,6 +242,7 @@ data Action = ToggleSortOrder
             | NodeCtl String -- toggle | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
+            | LinkFile String String -- album id (D…, T…), file album id (J…): the files are a version of that album
             | UnlinkFile String String -- album id, file album id (J…): these files are not this album
             | KeepAlbum String String -- album id; yes | no | unset: the keep mark (docs/jellyfin-plan.md)
             | AskDrop Boolean -- "Remove from clutter": ask (true), or never mind (false)

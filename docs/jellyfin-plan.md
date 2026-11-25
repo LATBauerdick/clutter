@@ -4,6 +4,28 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 4 — linking by hand (built 2026-11-25, evening)
+
+Sources in the working tree, uncommitted; bundle installed. **Live after a
+restart.** Slices 1–3 are committed (`d8e89c0`) and live.
+
+- `/api/albumxq` of a file album carries `xcandidates`: up to 8 releases and
+  stream albums it may be a version of, by title — the same; one title inside
+  the other (a one-word title only with a shared artist word); or most words
+  shared plus a shared artist word (`App.candidatesFor`).
+- A file album's page shows them under **Same album as…**: "Link" makes the
+  files a version of that album (the existing `/api/albumlink`, `via:
+  clutter`) and shows it; the name opens the album first.
+- Sample on the test server: 42 of 150 unlinked file albums get candidates;
+  pop/rock ones are mostly right (Zappa *One Size Fits All*, Hendrix *Live At
+  Berkeley*, Black Keys *Brothers* ↔ its anniversary edition), classical ones
+  with generic titles ("Piano Sonatas", "Symphonie Nr. …") are noisy.
+- First link by hand, through the API on the live server: the *Mind Maps 6*
+  files → CD D34897583 (the names differ too much for the import).
+- **Not tested:** the block in a browser. No free search yet for an album the
+  title rule does not find — open the release and use its id is not possible
+  from the page either; to add if it is missed.
+
 ## Slice 3 — links between versions (built 2026-11-25)
 
 Sources in the working tree, uncommitted; bundle installed (it works with an

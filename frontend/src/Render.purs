@@ -161,7 +161,7 @@ render state =
       , chipsView
       , HH.div [ cls "av-body" ]
         [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> [ playsView ])
-        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView, filesView, keepView, removeView ]
+        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView, filesView, sameAsView, keepView, removeView ]
         ]
       , HH.div_ stripsView
       ]
@@ -357,6 +357,23 @@ render state =
       in
       if null files then HH.text "" else
         HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "On the server" ] ] <> map one files)
+
+    -- on a file album's page: the albums it may be a version of (same or similar title);
+    -- a click links the files to that album and shows it; the name opens it first
+    sameAsView =
+      let cands = fromMaybe [] (detail >>= _.xcandidates)
+          one c =
+            HH.p [ cls "av-file" ]
+              [ HH.button [ cls "av-tag", HE.onClick \_ -> LinkFile c.cvKey a.albumID
+                          , HP.title "These files are a version of this album: link them" ]
+                          [ HH.text "Link" ]
+              , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum c.cvKey, HP.title "Open this album" ]
+                     [ HH.text (c.cvTitle <> " — " <> c.cvArtist) ]
+              , HH.small_ [ HH.text (" " <> c.cvFormat <> (if c.cvReleased == "" then "" else " · " <> S.take 4 c.cvReleased)) ]
+              ]
+      in
+      if null cands then HH.text "" else
+        HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "Same album as…" ] ] <> map one cands)
 
     -- in the collection or not, why, and the keep mark (docs/jellyfin-plan.md, "Membership"):
     -- a record on a shelf and anything played is in; "Keep" puts an album in, "Not for me"

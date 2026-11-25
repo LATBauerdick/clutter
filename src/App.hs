@@ -19,6 +19,9 @@ import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 
 import Control.Exception (try)
 import Control.Monad (foldM)
+import qualified Data.Char as Ch
+import qualified Data.List as L (isInfixOf)
+import qualified Data.Text as T (length, map, null, strip, unwords, words)
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as M
 import Data.Text as T (breakOn, isInfixOf, isSuffixOf, stripPrefix, takeWhile, unlines, unpack)
@@ -202,9 +205,21 @@ data AlbumXJ = AlbumXJ
   , xrelated :: Related
   , xloc :: Maybe (Text, Int) -- where the physical album is: location list and position in it
   , xfiles :: [FileV] -- the file albums on the server that are versions of this album
+  , xcandidates :: [CandV] -- for a file album: the albums it may be a version of, best first
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
+
+-- an album a file album may be a version of (docs/jellyfin-plan.md, linking by hand)
+data CandV = CandV
+  { cvKey :: AlbumKey
+  , cvTitle :: Text
+  , cvArtist :: Text
+  , cvFormat :: Text
+  , cvReleased :: Text
+  }
+  deriving (Show, Generic)
+instance ToJSON CandV
 
 -- a file album as a version of another album (docs/jellyfin-plan.md)
 data FileV = FileV
@@ -521,9 +536,9 @@ clutterServer sd =
     lcs <- asks locsR >>= readIORef
     links <- asks linksR >>= readIORef
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a}
+      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = []}
+      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = []}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do
@@ -566,6 +581,48 @@ clutterServer sd =
       ]
    where
     storage f = fromMaybe "" (viaNonEmpty head (mapMaybe (T.stripPrefix "storage.") (albumTags f)))
+
+  -- For a file album: the releases and stream albums it may be a version of, by title --
+  -- the same, or one title inside the other ("Mind Maps 6" in "FSOLdigital Presents Mind
+  -- Maps 6"), or most words shared -- with a shared artist word breaking ties. The automatic
+  -- import (scripts/import-inventory-links.py) only takes exact pairs; these are for a click.
+  candidatesFor :: Map AlbumKey Album -> Album -> [CandV]
+  candidatesFor am a = case albumID a of
+    J _ ->
+      [ CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b}
+      | (_, b) <- take 8 (sortOn (Down . fst) scored)
+      ]
+    _ -> []
+   where
+    hidden = standIns am
+    ws = filter ((> 1) . T.length) . T.words . T.map (\c -> if Ch.isAlphaNum c then Ch.toLower c else ' ') . dropBrackets
+    dropBrackets t = case T.breakOn "(" t of
+      (x, r) | not (T.null r), not (T.null (T.strip x)) -> x
+      _ -> t
+    ta = ws (albumTitle a)
+    aa = Set.fromList (ws (albumArtist a))
+    scored =
+      [ (s * 2 + (if shared then 1 else 0), b)
+      | b <- M.elems am
+      , notFile (albumID b)
+      , not (albumID b `Set.member` hidden)
+      , let tb = ws (albumTitle b)
+      , let s = titleScore ta tb
+      , let shared = not (Set.null (aa `Set.intersection` Set.fromList (ws (albumArtist b))))
+      -- a one-word title inside a longer one ("Chopin", "Blues") says little without the artist
+      , s == 3 || (s == 2 && (shared || min (length ta) (length tb) >= 2)) || (s == 1 && shared)
+      ]
+    notFile k = case k of J _ -> False; _ -> True
+    titleScore :: [Text] -> [Text] -> Int
+    titleScore x y
+      | null x || null y = 0
+      | x == y = 3
+      | (x `L.isInfixOf` y || y `L.isInfixOf` x) && T.length (T.unwords (if length x < length y then x else y)) >= 5 = 2
+      | 5 * Set.size (sx `Set.intersection` sy) >= 3 * Set.size (sx `Set.union` sy) = 1
+      | otherwise = 0
+     where
+      sx = Set.fromList x
+      sy = Set.fromList y
 
   serveAlbumlink :: AlbumKey -> Maybe AlbumKey -> Maybe Text -> AppM ReqJ
   serveAlbumlink i mversion mop = do

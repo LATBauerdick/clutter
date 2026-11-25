@@ -214,6 +214,18 @@ handleAction = case _ of
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
 
+  -- the file album is a version of that album: link them (appended to the collection
+  -- log), then show the album, which now stands for the files
+  LinkFile aid version -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumlink/" <> aid <> "?version=" <> version <> "&op=link")
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: i, reqResult: 1 } -> do
+        pushView
+        showAlbum aid
+        H.modify_ _ { notice = Just i }
+      Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Link: no answer" }
   -- a wrong match: take the file album off this album (appended to the collection log)
   UnlinkFile aid version -> do
     api <- H.gets _.apiUrl
