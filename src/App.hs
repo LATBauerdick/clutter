@@ -21,7 +21,7 @@ import Control.Exception (try)
 import Control.Monad (foldM)
 import qualified Data.Char as Ch
 import qualified Data.List as L (isInfixOf)
-import qualified Data.Text as T (length, map, null, strip, unwords, words)
+import qualified Data.Text as T (length, map, null, strip, words)
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as M
 import Data.Text as T (breakOn, isInfixOf, isSuffixOf, stripPrefix, takeWhile, unlines, unpack)
@@ -219,6 +219,7 @@ data CandV = CandV
   , cvArtist :: Text
   , cvFormat :: Text
   , cvReleased :: Text
+  , cvHas :: Text -- for a stream album: the album of that service the release has now ("T235035298"), "" if none
   }
   deriving (Show, Generic)
 instance ToJSON CandV
@@ -554,7 +555,7 @@ clutterServer sd =
     links <- asks linksR >>= readIORef
     streams <- asks streamsR >>= readIORef
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a, xstreams = [s | (s, k) <- M.toList streams, k == i]}
+      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a, xstreams = M.findWithDefault [] i streams}
       -- not in the collection (an album made up from a play): no details
       Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = []}
 
@@ -623,13 +624,32 @@ clutterServer sd =
   -- Maps 6"), or most words shared -- with a shared artist word breaking ties. The automatic
   -- import (scripts/import-inventory-links.py) only takes exact pairs; these are for a click.
   candidatesFor :: Map AlbumKey Album -> Album -> [CandV]
-  candidatesFor am a = case albumID a of
-    J _ ->
-      [ CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b}
-      | (_, b) <- take 8 (sortOn (Down . fst) scored)
-      ]
-    _ -> []
+  --
+  -- Likewise for a Tidal or Apple Music album that stands alone: the Discogs releases
+  -- that have no album of that service yet -- it may be the stream of one of them.
+  candidatesFor am a
+    | albumID a `Set.member` hidden = []
+    | otherwise = case albumID a of
+        D _ -> []
+        _ ->
+          [ CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = has b}
+          | (_, b) <- take 8 (sortOn (Down . fst) scored)
+          ]
    where
+    has b = case albumID a of
+      T _ -> maybe "" ("T" <>) (mfilter (not . T.null) (albumTidal b))
+      A _ -> maybe "" ("A" <>) (mfilter (not . T.null) (albumAMusic b))
+      _ -> ""
+    -- what the album can be linked to
+    fits b = case (albumID a, albumID b) of
+      (J _, k) -> notFile k
+      -- also a release that has another edition of the stream: this one can take its place
+      (T n, D _) -> albumTidal b /= Just (show n)
+      (A n, D _) -> albumAMusic b /= Just (show n)
+      -- or of a file album that stands for itself
+      (T n, J _) -> albumTidal b /= Just (show n)
+      (A n, J _) -> albumAMusic b /= Just (show n)
+      _ -> False
     hidden = standIns am
     ws = filter ((> 1) . T.length) . T.words . T.map (\c -> if Ch.isAlphaNum c then Ch.toLower c else ' ') . dropBrackets
     dropBrackets t = case T.breakOn "(" t of
@@ -640,7 +660,7 @@ clutterServer sd =
     scored =
       [ (s * 2 + (if shared then 1 else 0), b)
       | b <- M.elems am
-      , notFile (albumID b)
+      , fits b
       , not (albumID b `Set.member` hidden)
       , let tb = ws (albumTitle b)
       , let s = titleScore ta tb
@@ -653,7 +673,8 @@ clutterServer sd =
     titleScore x y
       | null x || null y = 0
       | x == y = 3
-      | (x `L.isInfixOf` y || y `L.isInfixOf` x) && T.length (T.unwords (if length x < length y then x else y)) >= 5 = 2
+      -- (a short or one-word title inside a longer one counts only with a shared artist word: see scored)
+      | x `L.isInfixOf` y || y `L.isInfixOf` x = 2
       | 5 * Set.size (sx `Set.intersection` sy) >= 3 * Set.size (sx `Set.union` sy) = 1
       | otherwise = 0
      where
@@ -673,37 +694,38 @@ clutterServer sd =
         name s = case s of
           T n -> "Tidal album " <> show n
           A n -> "Apple Music album " <> show n
+          Q q -> "Qobuz album " <> q
           _ -> "stream"
-        fromDiscogs a s = case s of
-          T n -> albumTidal a == Just (show n)
-          A n -> albumAMusic a == Just (show n)
-          _ -> False
-        taken a s = case s of
-          T _ -> maybe False (not . T.null) (albumTidal a)
-          A _ -> maybe False (not . T.null) (albumAMusic a)
-          _ -> False
     am <- asks albumsR >>= readIORef
     streams <- asks streamsR >>= readIORef
-    case (i, M.lookup i am, mref >>= parseStreamRef, mop) of
-      (D _, Just a, Just s, Just "link")
-        | M.lookup s streams == Just i -> pure $ answer False ("Already linked: " <> name s)
-        -- the stream the release has is from its Location field unless the log gave it
-        | taken a s && null [() | (s', k) <- M.toList streams, k == i, sameKind s s', fromDiscogs a s'] ->
-            pure $ answer False "This release has one from its Discogs Location field: change it there"
+    let mine = M.findWithDefault [] i streams
+    links <- asks linksR >>= readIORef
+    let holder = case i of
+          D _ -> True
+          J _ -> True
+          _ -> False
+        -- a file album that is a version of another album has its streams there
+        versionOf = case i of
+          J j -> M.lookup j links
+          _ -> Nothing
+    case (M.lookup i am, mref >>= parseStreamRef, mop) of
+      _ | not holder -> pure $ answer False "Only a Discogs release or a file album gets a stream linked here"
+      _ | isJust versionOf -> pure $ answer False "These files are a version of another album: link the stream there"
+      (Nothing, _, _) -> pure $ answer False "Not in clutter"
+      (Just a, Just s, Just "link")
+        | s `elem` mine -> pure $ answer False ("Already linked: " <> name s)
         | otherwise ->
-            logged (\fn -> appendStream fn now s (Just a)) $ do
-              envSetStream s (Just i)
-              pure $ answer True ("Linked " <> name s <> " to “" <> albumTitle a <> "”")
-      (D _, Just a, Just s, Just "unlink")
-        | M.lookup s streams == Just i ->
-            logged (\fn -> appendStream fn now s Nothing) $ do
-              envSetStream s Nothing
+            logged (\fn -> appendStream fn now s a True) $ do
+              envSetStream i s True
+              pure $ answer True ("Linked " <> name s <> " to “" <> albumTitle a <> "”" <> if any (sameKind s) mine then ", in place of the one it had" else "")
+      (Just a, Just s, Just "unlink")
+        | s `elem` mine ->
+            logged (\fn -> appendStream fn now s a False) $ do
+              envSetStream i s False
               pure $ answer True ("Took " <> name s <> " off “" <> albumTitle a <> "”")
-        | otherwise -> pure $ answer False "That stream is not linked to this release here"
-      (D _, Just _, Nothing, _) -> pure $ answer False "Not a Tidal or Apple Music album: paste T<id>, A<id> or a share link"
-      (D _, Nothing, _, _) -> pure $ answer False "Not in clutter"
-      (D _, _, _, _) -> pure $ answer False "op must be link or unlink"
-      _ -> pure $ answer False "Only a Discogs release gets a stream linked here"
+        | otherwise -> pure $ answer False "That stream is not linked to this album"
+      (Just _, Nothing, _) -> pure $ answer False "Not a Tidal, Apple Music or Qobuz album: paste T<id>, A<id>, Q<id> or a share link"
+      _ -> pure $ answer False "op must be link or unlink"
 
   serveAlbumlink :: AlbumKey -> Maybe AlbumKey -> Maybe Text -> AppM ReqJ
   serveAlbumlink i mversion mop = do
@@ -716,10 +738,12 @@ clutterServer sd =
             Left _ -> pure $ answer False "Could not write the collection log (nothing changed)"
             Right () -> done
     am <- asks albumsR >>= readIORef
-    links <- asks linksR >>= readIORef
+    streams <- asks streamsR >>= readIORef
     case (i, M.lookup i am, mversion, mop) of
       (J _, _, _, _) -> pure $ answer False "A file album cannot stand for another album"
       (_, Nothing, _, _) -> pure $ answer False "Not in clutter"
+      (_, Just _, Just (J j), Just "link")
+        | M.member (J j) streams -> pure $ answer False "The file album has a stream of its own: take that off first (on its page)"
       (_, Just a, Just (J j), Just "link")
         | M.member (J j) am ->
             logged (\fn -> appendLink fn now j (Just a)) $ do
@@ -727,10 +751,6 @@ clutterServer sd =
               pure $ answer True ("Linked the files to “" <> albumTitle a <> "”")
         | otherwise -> pure $ answer False "No such file album"
       (_, Just a, Just (J j), Just "unlink")
-        -- a file album the Discogs Location field names comes back with the next read of
-        -- the release: that link is changed in Discogs
-        | M.lookup j links /= Just i && j `elem` albumFiles a ->
-            pure $ answer False "These files are named in the release's Discogs Location field: change it there"
         | j `elem` albumFiles a ->
             logged (\fn -> appendLink fn now j Nothing) $ do
               envSetLink j Nothing

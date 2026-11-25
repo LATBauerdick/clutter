@@ -180,7 +180,9 @@ readDiscogsFolders di = FD.readDiscogsFolders di
 updateTidalFolderAids :: Map AlbumKey Album -> Map Text (Int, Vector AlbumKey) -> Map Text (Int, Vector AlbumKey)
 updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
  where
-  linkedD = [k | (k@(D _), a) <- M.toList am, isJust (tidalId a)]
+  -- releases and file albums that have a Tidal album
+  linkedD = [k | (k, a) <- M.toList am, owned k, isJust (tidalId a)]
+  owned k = case k of D _ -> True; J _ -> True; _ -> False
   linkedT = standIns am
   tidalOnly = [k | k@(T _) <- M.keys am, not (k `S.member` linkedT)]
   allTidal = sAdded (V.fromList (linkedD <> tidalOnly))
@@ -201,10 +203,12 @@ standIns :: Map AlbumKey Album -> Set AlbumKey
 standIns am = S.fromList (concatMap twins (M.elems am))
  where
   twins a =
-    [T t | D _ <- [albumID a], Just t <- [tidalId a]]
+    [T t | owned (albumID a), Just t <- [tidalId a]]
       <> [A i | Just i <- [readMaybe . toString =<< albumAMusic a], albumID a /= A i]
       <> [J j | notFile (albumID a), j <- albumFiles a]
   notFile = \case J _ -> False; _ -> True
+  -- a release, or a file album: what has a stream rather than being one
+  owned = \case D _ -> True; J _ -> True; _ -> False
 
 -- the albums with a tag, newest first, without the stand-ins: the lists "Collection"
 -- (collection.in) and "Inbox" (collection.inbox), read off the tags when asked for, so

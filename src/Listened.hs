@@ -42,6 +42,7 @@ keySource k = case k of
   T _ -> "tidal"
   A _ -> "apple"
   J _ -> "jellyfin"
+  Q _ -> "qobuz"
 
 -- the album a play was logged against, in its own catalogue
 eventKey :: PlayEvent -> Maybe AlbumKey
@@ -144,7 +145,9 @@ readPlays dir = do
 playAlbumId :: Map AlbumKey Album -> PlayEvent -> Maybe AlbumKey
 playAlbumId am = resolve
  where
-  viaField f = M.fromList [(i, k) | (k@(D _), a) <- M.toList am, Just i <- [readMaybe . toString =<< f a]]
+  -- the release -- or the file album standing for itself -- that has the stream
+  viaField f = M.fromList [(i, k) | (k, a) <- M.toList am, owned k, Just i <- [readMaybe . toString =<< f a]]
+  owned k = case k of D _ -> True; J _ -> True; _ -> False
   tidalToDiscogs = viaField albumTidal
   appleToDiscogs = viaField albumAMusic
   -- a file album that is a version of another album: its plays are that album's

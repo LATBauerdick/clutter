@@ -1036,3 +1036,10 @@ body { margin: 0; }
 .av-file { margin: 2px 0 6px; font-size: 13px; }
 .av-file .av-unlink { margin-left: 6px; }
 .av-streambox input { width: 170px; border: 1px solid #dcd8d0; border-radius: 6px; padding: 5px 8px; margin-right: 6px; font-family: inherit; font-size: 13px; }
+.av-trk-n { white-space: nowrap; }
+.av-file .pill { margin-right: 8px; }
+.pill:disabled { opacity: .45; cursor: default; }
+.pill:disabled:hover { border-color: #dcd8d0; }
+.pill.av-on { background: #dfe6ff; border-color: #b9c4f5; color: #2a3fb0; }
+.av-keep .pill { margin-right: 6px; }
+.av-files, .av-keep { margin-top: 16px; }

@@ -124,6 +124,7 @@ type CandV =      { cvKey :: String
                   , cvArtist :: String
                   , cvFormat :: String
                   , cvReleased :: String
+                  , cvHas :: Maybe String -- the release's present album of that service, "" if none
                   }
 -- a file album (Jellyfin) as a version of another album
 type FileV =      { fvKey :: String
@@ -248,6 +249,7 @@ data Action = ToggleSortOrder
             | UpdateDiscogs
             | SetStreamRef String
             | LinkStream String -- release id: link the stream named in the box
+            | LinkStreamTo String String -- release id, stream key (T…, A…): from the stream album's page
             | UnlinkStream String String -- release id, stream key (T…, A…)
             | LinkFile String String -- album id (D…, T…), file album id (J…): the files are a version of that album
             | UnlinkFile String String -- album id, file album id (J…): these files are not this album

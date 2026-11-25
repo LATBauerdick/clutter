@@ -23,6 +23,8 @@ The API key comes from $JELLYFIN_API_KEY, else "jky" in tok.json; the URL from
 """
 
 import argparse
+
+import collection_log
 import csv
 import glob
 import json
@@ -102,6 +104,13 @@ def library_of(path: str, libraries: list) -> str:
 # ------------------------------------------------------------------ clutter
 
 
+# release key -> its file albums, from clutter's collection log (until 2026-11-25: J ids in
+# the Discogs Location field)
+FILES_OF: dict = {}
+for _jid, _key in collection_log.read()["files"].items():
+    FILES_OF.setdefault(_key, []).append(_jid)
+
+
 def load_discogs(cache: str) -> tuple[list, dict]:
     folders = {}
     try:
@@ -123,7 +132,8 @@ def load_discogs(cache: str) -> tuple[list, dict]:
                         "year": b.get("year") or 0,
                         "format": "+".join(dict.fromkeys(x["name"] for x in b.get("formats", []))),
                         "folder": folders.get(r.get("folder_id"), str(r.get("folder_id"))),
-                        "jids": [w[1:].lower() for w in loc.split() if re.fullmatch(r"J[0-9a-fA-F]{32}", w)],
+                        # the file albums linked to the release, from clutter's collection log
+                        "jids": FILES_OF.get(f"D{r['id']}", []),
                     }
                 )
     return releases, folders

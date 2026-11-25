@@ -28,7 +28,7 @@ module Types (
   envGetListName,
 ) where
 
-import Data.Char (isHexDigit, toLower)
+import Data.Char (isAlphaNum, isHexDigit, toLower)
 import qualified Data.Map.Strict as M
 import Data.Vector (Vector)
 import Relude
@@ -43,7 +43,8 @@ import Servant (FromHttpApiData (..))
 -- Discogs, Tidal, Apple Music and Jellyfin. Written with a prefix, as in the Discogs
 -- Location field ("T12571482 A206349046"): D6715388, T283130328, A1556465220, J…
 -- A Jellyfin id is its item id, 32 hex digits (kept in lower case), not a number.
-data AlbumKey = D Int | T Int | A Int | J Text
+-- Q is a Qobuz album id (letters and digits): a stream a release can have, not an album clutter lists.
+data AlbumKey = D Int | T Int | A Int | J Text | Q Text
   deriving (Eq, Ord, Generic)
 
 keyText :: AlbumKey -> Text
@@ -52,6 +53,7 @@ keyText k = case k of
   T i -> "T" <> show i
   A i -> "A" <> show i
   J i -> "J" <> i
+  Q i -> "Q" <> i
 
 -- "D123", "T123", "A123", "J<32 hex digits>"; a bare number is a Discogs release (old links)
 parseKey :: Text -> Maybe AlbumKey
@@ -61,6 +63,8 @@ parseKey t = case T.uncons t of
   Just ('A', n) -> A <$> num n
   Just ('J', n) | T.length n == 32 && T.all isHexDigit n -> Just (J (T.toLower n))
   Just ('J', _) -> Nothing
+  Just ('Q', n) | not (T.null n) && T.all (\c -> isAlphaNum c || c == '-' || c == '_') n -> Just (Q n)
+  Just ('Q', _) -> Nothing
   _ -> D <$> num t
  where
   num = readMaybe . toString
@@ -141,7 +145,7 @@ data Env = Env
   , jellyfinWeb :: Text -- Jellyfin as a browser reaches it (Jellyfin.jsWeb); "" if there is none
   , marksR :: IORef (Map AlbumKey Bool) -- the keep marks (Collection.Marks): True keep, False not for me
   , linksR :: IORef (Map Text AlbumKey) -- file album (Jellyfin id) -> the album it is a version of (Collection.Links)
-  , streamsR :: IORef (Map AlbumKey AlbumKey) -- stream album (T…, A…) -> the release it is linked to in the log (Collection.Streams)
+  , streamsR :: IORef (Map AlbumKey [AlbumKey]) -- release -> its Tidal / Apple / Qobuz album from the log, one of each at most (Collection.Streams)
   , standInTags :: Set Text -- folder tags of the Discogs stand-in folders (Collection.standInFolderTags)
   }
 instance Show Env where

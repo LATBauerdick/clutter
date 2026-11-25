@@ -646,24 +646,23 @@ envSetLink j mk = do
   modifyIORef' ar (M.map off)
   envRefreshPlays
 
--- give a release a Tidal or Apple Music album (Just the release), or take that off
--- (Nothing); the log line is written by the caller. The release that had this stream, or
--- another stream of the same kind from the log, loses it.
-envSetStream :: AlbumKey -> Maybe AlbumKey -> AppM ()
-envSetStream s mk = do
+-- give a release a stream (True) or take it off (False); the log line is written by the
+-- caller. A stream of the same kind that the release had is replaced.
+envSetStream :: AlbumKey -> AlbumKey -> Bool -> AppM ()
+envSetStream k s linked = do
   sr <- asks streamsR
   ar <- asks albumsR
   old <- readIORef sr
-  let replaced = [(s', k') | Just k <- [mk], (s', k') <- M.toList old, k' == k, sameKind s s']
-      gone = [(s, k) | Just k <- [M.lookup s old]] <> replaced
-      new = maybe id (M.insert s) mk (foldr (M.delete . fst) old gone)
-      sid = case s of T n -> show n; A n -> show n; _ -> ""
-      clear s' a = case s' of
-        T n | albumTidal a == Just (show n) -> a{albumTidal = Nothing, albumTags = filter (/= "provider.tidal") (albumTags a)}
-        A n | albumAMusic a == Just (show n) -> a{albumAMusic = Nothing, albumTags = filter (/= "provider.applemusic") (albumTags a)}
+  let had = M.findWithDefault [] k old
+      gone = if linked then filter (sameKind s) had else [s]
+      now' = (if linked then (s :) else id) (filter (`notElem` gone) had)
+      clear st a = case st of
+        T n | albumTidal a == Just (show n) -> a{albumTidal = Nothing, albumTags = filter (/= "provider.tidal") (albumTags a), albumWikiKeys = filter (/= ("t:" <> show n)) (albumWikiKeys a)}
+        A n | albumAMusic a == Just (show n) -> a{albumAMusic = Nothing, albumTags = filter (/= "provider.applemusic") (albumTags a), albumWikiKeys = filter (/= ("a:" <> show n)) (albumWikiKeys a)}
+        Q q | albumQobuz a == Just q -> a{albumQobuz = Nothing, albumTags = filter (/= "provider.qobuz") (albumTags a)}
         _ -> a
-  writeIORef sr new
-  unless (sid == ("" :: Text)) $ modifyIORef' ar (\am -> foldr (\(s', k') -> M.adjust (clear s') k') am gone)
+  writeIORef sr (if null now' then M.delete k old else M.insert k now' old)
+  modifyIORef' ar (M.adjust (\a -> foldr clear a gone) k)
   envRefreshPlays
 
 -- re-attach the play dates to all albums, after a play was logged

@@ -20,6 +20,7 @@
 #
 #   scripts/update-lengths.py [--dry-run] [--limit N] [--recheck] [--tidal-only | --discogs-only]
 #
+import collection_log
 import argparse
 import datetime as dt
 import glob
@@ -51,14 +52,16 @@ def read_collection():
     return coll
 
 
+_TIDAL_OF = None
+
+
 def tidal_of(release):
-    """the Tidal album id in the release's Location field (T<id>), if any"""
-    for n in release.get("notes") or []:
-        if n.get("field_id") == 4:
-            m = re.search(r"\bT(\d+)", n.get("value", ""))
-            if m:
-                return int(m.group(1))
-    return None
+    """the Tidal album of the release, from clutter's collection log (until 2026-11-25:
+    from the Location field in Discogs), if any"""
+    global _TIDAL_OF
+    if _TIDAL_OF is None:
+        _TIDAL_OF = collection_log.tidal_of_release(collection_log.read())
+    return _TIDAL_OF.get(release.get("id"))
 
 
 def tidal_store_lengths():

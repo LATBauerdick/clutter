@@ -21,9 +21,12 @@
 -- album stands for the file album in the lists, shows it under "On the server", and
 -- carries its storage.* tags.
 --
--- The same two lines with a Tidal or Apple Music album as "version" ("T5201052",
--- "A399275146") give a Discogs release its stream, for a release whose Location field in
--- Discogs names none: one Tidal and one Apple album per release, the last line counts.
+-- The same two lines with a Tidal, Apple Music or Qobuz album as "version" ("T5201052",
+-- "A399275146", "Q0060254728436") give a Discogs release its stream: one of each kind per
+-- release, the last line counts; an unlink names the release too ("key"), since several
+-- releases may have the same stream. This log is the only place these links are kept: the
+-- ids once written into the Discogs Location field were brought over by
+-- scripts/import-location-links.py (via "discogs-location") and are not read any more.
 -- Lines with another "op" are left alone.
 --
 -- The rule: an album is in the collection if it is marked yes; or it is not marked and is
@@ -47,7 +50,7 @@ module Collection (
   standInFolderTags,
 ) where
 
-import Data.Aeson (Value, eitherDecodeStrict, encode, object, withObject, (.:), (.=))
+import Data.Aeson (Value, eitherDecodeStrict, encode, object, withObject, (.:), (.:?), (.=))
 import Data.Aeson.Types (Parser, parseEither)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
@@ -84,25 +87,38 @@ standInFolderTags = do
 -- file album (Jellyfin id) -> the album it is a version of
 type Links = Map Text AlbumKey
 
--- stream album (T…, A…) -> the Discogs release it is the stream of
-type Streams = Map AlbumKey AlbumKey
+-- Discogs release (or a file album that stands for itself) -> its streams: one Tidal,
+-- one Apple Music, one Qobuz album at most.
+-- Several releases may have the same stream (the vinyl and the CD of an album).
+type Streams = Map AlbumKey [AlbumKey]
 
 data Event
   = Keep AlbumKey (Maybe Bool)
   | Link Text AlbumKey
   | Unlink Text
   | LinkStream AlbumKey AlbumKey -- stream, release
-  | UnlinkStream AlbumKey
+  | UnlinkStream AlbumKey (Maybe AlbumKey) -- stream, release (every release, if none is named)
 
--- both Tidal albums, or both Apple albums
+-- what can have a stream: a Discogs release, a file album
+holds :: AlbumKey -> Bool
+holds = \case D _ -> True; J _ -> True; _ -> False
+
+isStream :: AlbumKey -> Bool
+isStream = \case T _ -> True; A _ -> True; Q _ -> True; _ -> False
+
+-- both Tidal albums, both Apple albums, or both Qobuz albums
 sameKind :: AlbumKey -> AlbumKey -> Bool
 sameKind (T _) (T _) = True
 sameKind (A _) (A _) = True
+sameKind (Q _) (Q _) = True
 sameKind _ _ = False
 
 -- one stream of a kind per release: a new one takes the place of the old
 insertStream :: AlbumKey -> AlbumKey -> Streams -> Streams
-insertStream v k = M.insert v k . M.filterWithKey (\v' k' -> not (k' == k && sameKind v v'))
+insertStream s k = M.alter (\ms -> Just (s : filter (not . sameKind s) (fromMaybe [] ms))) k
+
+deleteStream :: AlbumKey -> Maybe AlbumKey -> Streams -> Streams
+deleteStream s mk = M.filter (not . null) . maybe (M.map (filter (/= s))) (M.adjust (filter (/= s))) mk
 
 -- What LATB pastes to name a stream album: "T5201052", "A399275146", or a share link --
 -- https://tidal.com/album/5201052?u, https://listen.tidal.com/album/5201052,
@@ -111,6 +127,8 @@ parseStreamRef :: Text -> Maybe AlbumKey
 parseStreamRef raw
   | Just k@(T _) <- parseKey t = Just k
   | Just k@(A _) <- parseKey t = Just k
+  | Just k@(Q _) <- parseKey t = Just k
+  | "qobuz.com" `T.isInfixOf` low = viaNonEmpty last (filter (not . T.null) (T.splitOn "/" path)) >>= parseKey . ("Q" <>)
   | "tidal" `T.isInfixOf` low = T <$> (after "album/" >>= number)
   | "music.apple.com" `T.isInfixOf` low || "music://" `T.isPrefixOf` low || "itunes.apple.com" `T.isInfixOf` low =
       A <$> (viaNonEmpty last (filter isId (T.splitOn "/" path)) >>= number . T.dropWhile (not . isDigit))
@@ -144,17 +162,18 @@ logLine = withObject "collection event" $ \o -> do
       k <- o .: "key"
       v <- o .: "version"
       case (parseKey k, parseKey v) of
+        -- a stream of a release, or of a file album that stands for itself
+        (Just key, Just st) | isStream st, holds key -> pure (Just (LinkStream st key))
         (Just (J _), _) -> fail "a file album cannot stand for another"
         (Just key, Just (J j)) -> pure (Just (Link j key))
-        (Just key@(D _), Just s@(T _)) -> pure (Just (LinkStream s key))
-        (Just key@(D _), Just s@(A _)) -> pure (Just (LinkStream s key))
         _ -> fail "not a link"
     "unlink" -> do
       v <- o .: "version"
       case parseKey v of
         Just (J j) -> pure (Just (Unlink j))
-        Just s@(T _) -> pure (Just (UnlinkStream s))
-        Just s@(A _) -> pure (Just (UnlinkStream s))
+        Just st | isStream st -> do
+          mk <- o .:? "key"
+          pure (Just (UnlinkStream st (mk >>= parseKey)))
         _ -> fail "not an unlink"
     _ -> pure Nothing
 
@@ -180,9 +199,9 @@ readCollection fn = do
             Link j k -> (ms, M.insert j k lk, st)
             Unlink j -> (ms, M.delete j lk, st)
             LinkStream s k -> (ms, lk, insertStream s k st)
-            UnlinkStream s -> (ms, lk, M.delete s st)
+            UnlinkStream s mk -> (ms, lk, deleteStream s mk st)
           (marks, links, streams) = foldl' step (M.empty, M.empty, M.empty) es
-      hPutStrLn stderr $ "read " <> show (M.size marks) <> " keep marks and " <> show (M.size links) <> " file links, " <> show (M.size streams) <> " stream links from " <> fn
+      hPutStrLn stderr $ "read " <> show (M.size marks) <> " keep marks and " <> show (M.size links) <> " file links, " <> show (sum (length <$> streams)) <> " stream links from " <> fn
       pure (marks, links, streams)
 
 -- append one line; never rewrites what is already there
@@ -238,21 +257,17 @@ appendLink fn now j = \case
         ]
   Nothing -> appendLine fn $ object ["ts" .= stamp now, "op" .= ("unlink" :: Text), "version" .= J j]
 
--- append a stream link (Just the release) or its unlink (Nothing)
-appendStream :: FilePath -> ZonedTime -> AlbumKey -> Maybe Album -> IO ()
-appendStream fn now s = \case
-  Just a ->
-    appendLine fn $
-      object
-        [ "ts" .= stamp now
-        , "op" .= ("link" :: Text)
-        , "key" .= albumID a
-        , "version" .= s
-        , "via" .= ("clutter" :: Text)
-        , "artist" .= albumArtist a
-        , "title" .= albumTitle a
-        ]
-  Nothing -> appendLine fn $ object ["ts" .= stamp now, "op" .= ("unlink" :: Text), "version" .= s]
+-- append a stream link of a release (True), or its unlink (False)
+appendStream :: FilePath -> ZonedTime -> AlbumKey -> Album -> Bool -> IO ()
+appendStream fn now s a linked =
+  appendLine fn . object $
+    [ "ts" .= stamp now
+    , "op" .= (if linked then "link" else "unlink" :: Text)
+    , "key" .= albumID a
+    , "version" .= s
+    ]
+      <> ["via" .= ("clutter" :: Text) | linked]
+      <> ["artist" .= albumArtist a, "title" .= albumTitle a]
 
 -- put the linked file albums on the albums they are versions of: albumFiles (after those
 -- the Discogs Location field names), albumJellyfin (the first), and the tags
@@ -266,19 +281,21 @@ appendStream fn now s = \case
 -- holds the link. albumFiles stays with that release (stand-in, plays); the album page
 -- shows the files on the others too (App.filesOf).
 --
--- And the streams from the log: a release without a Tidal (Apple) album from its Location
--- field gets the one linked here, with the provider tag. Location wins where both name one.
+-- And the streams from the log: a release gets the Tidal, Apple Music and Qobuz album
+-- linked there, with the provider tag. The log is the only source since 2026-11-25 (the
+-- ids in the Discogs Location field were brought over once and are not read any more).
 attachLinks :: Links -> Streams -> Map AlbumKey Album -> Map AlbumKey Album
 attachLinks links streams am = M.mapWithKey (\k -> withStreams k . attach k) am
  where
-  streamsOf = M.fromListWith (<>) [(k, [s]) | (s, k) <- M.toList streams]
-  blank = maybe True T.null
-  withStreams k a =
-    let mine = M.findWithDefault [] k streamsOf
-        tidal = viaNonEmpty head [show n | T n <- mine]
-        apple = viaNonEmpty head [show n | A n <- mine]
-        a1 = if blank (albumTidal a) && isJust tidal then a{albumTidal = tidal, albumTags = albumTags a <> ["provider.tidal" | "provider.tidal" `notElem` albumTags a]} else a
-     in if blank (albumAMusic a1) && isJust apple then a1{albumAMusic = apple, albumTags = albumTags a1 <> ["provider.applemusic" | "provider.applemusic" `notElem` albumTags a1]} else a1
+  withStreams k a = foldr putStream a (M.findWithDefault [] k streams)
+  -- the id field, the provider tag, and the Wikidata store key the id gives (Provider.wikiKeys)
+  putStream st a = case st of
+    T n -> (tagged "provider.tidal" . wikiKeyed ("t:" <> show n)) a{albumTidal = Just (show n)}
+    A n -> (tagged "provider.applemusic" . wikiKeyed ("a:" <> show n)) a{albumAMusic = Just (show n)}
+    Q q -> tagged "provider.qobuz" a{albumQobuz = Just q}
+    _ -> a
+  tagged t a = if t `elem` albumTags a then a else a{albumTags = albumTags a <> [t]}
+  wikiKeyed w a = if w `elem` albumWikiKeys a then a else a{albumWikiKeys = albumWikiKeys a <> [w]}
   byAlbum = M.fromListWith (flip (<>)) [(k, [j]) | (j, k) <- M.toList links, M.member (J j) am]
   ownFiles k a = case k of
     J _ -> []

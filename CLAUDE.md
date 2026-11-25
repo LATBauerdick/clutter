@@ -206,6 +206,8 @@ Known defects: Tidal-only albums have a Tidal id in `albumID`, so their plays go
 
 ## Streaming IDs on Discogs releases
 
+**Superseded 2026-11-25 (LATB): the Location field is no longer read for ids.** A release's Tidal / Apple Music / Qobuz album and its file albums are links in clutter's own log, `~/Sync/clutter/collection.jsonl` (`src/Collection.hs`; `{"op":"link","key":"D…","version":"T…|A…|Q…|J…"}`), set on the album page ("Link a stream", "Same album as…") or through `/api/albumstream` and `/api/albumlink`. The ids that were in Discogs were brought over once by `scripts/import-location-links.py` (`via: discogs-location`; 895 Tidal, 860 Apple, 28 Qobuz, 28 file albums; Apple library ids `Al.…` and old file paths dropped). Discogs is left untouched and LATB will not write ids there any more. Scripts read the log through `scripts/collection_log.py`. What follows in this section is history, except the matching hints. **Do not write to field 4.**
+
 A Discogs release links to its streaming versions through the collection **Location** field (field **4**), value `T<tidal album id> A<apple album id>`. clutter parses it (`albumTidal`/`albumAMusic`), and `updateTidalFolderAids` then shows the Discogs release instead of the Tidal favourite.
 - Write: `POST /users/LATB/collection/folders/{folder}/releases/{release}/instances/{instance}/fields/4` with body `{"value": "T… A…"}`.
 - Releases bought only to anchor a stream go in the folder **Streaming** (3292597). Add one with `POST /users/LATB/collection/folders/3292597/releases/{id}`, which returns the `instance_id`.

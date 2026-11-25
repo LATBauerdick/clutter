@@ -235,6 +235,17 @@ handleAction = case _ of
         H.modify_ _ { notice = Just i, streamRef = "" }
       Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
       Left _ -> H.modify_ _ { notice = Just "Link: no answer" }
+  -- from a Tidal / Apple album's page: it is the stream of that release; then show the release
+  LinkStreamTo aid s -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumstream/" <> aid <> "?ref=" <> s <> "&op=link")
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: i, reqResult: 1 } -> do
+        pushView
+        showAlbum aid
+        H.modify_ _ { notice = Just i }
+      Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Link: no answer" }
   UnlinkStream aid s -> do
     api <- H.gets _.apiUrl
     r <- H.liftAff $ getUrl (api <> "albumstream/" <> aid <> "?ref=" <> s <> "&op=unlink")

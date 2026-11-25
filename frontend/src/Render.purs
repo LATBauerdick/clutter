@@ -372,7 +372,11 @@ render state =
           lacks f = case f a of
             Just v | v /= "" -> false
             _ -> true
-          label s = (if S.take 1 s == "T" then "Tidal " else "Apple Music ") <> S.drop 1 s
+          label s = (case S.take 1 s of
+                       "T" -> "Tidal "
+                       "A" -> "Apple Music "
+                       "Q" -> "Qobuz "
+                       _ -> "") <> S.drop 1 s
           one s =
             HH.p [ cls "av-file" ]
               [ HH.text (label s)
@@ -380,13 +384,17 @@ render state =
                           , HP.title "Not this album's stream: take it off" ] [ HH.text "×" ] ]
           box =
             HH.div [ cls "av-streambox" ]
-              [ HH.input [ HP.value state.streamRef, HP.placeholder "T<id>, A<id> or a share link", HE.onValueInput SetStreamRef ]
-              , HH.button [ HP.type_ HP.ButtonButton, HE.onClick \_ -> LinkStream a.albumID, HP.disabled (S.trim state.streamRef == "") ]
+              [ HH.input [ HP.value state.streamRef, HP.placeholder "T<id>, A<id>, Q<id> or a share link", HE.onValueInput SetStreamRef
+                         , HP.title (if lacks _.albumTidal && lacks _.albumAMusic then "Give this release its Tidal, Apple Music or Qobuz album"
+                                     else "Add a stream, or put another edition in place of the one it has") ]
+              , HH.button [ cls "pill", HP.type_ HP.ButtonButton, HE.onClick \_ -> LinkStream a.albumID, HP.disabled (S.trim state.streamRef == "") ]
                           [ HH.text "Link" ]
               ]
-          wanting = lacks _.albumTidal || lacks _.albumAMusic
+          -- always there: a stream can also take the place of the one the release has
+          wanting = true
       in
-      if not isDiscogs || detail == Nothing || (null linked && not wanting) then HH.text "" else
+      -- a release, or a file album (which may stand for itself)
+      if not (isDiscogs || S.take 1 a.albumID == "J") || detail == Nothing || (null linked && not wanting) then HH.text "" else
         HH.div [ cls "av-files" ] $
           [ HH.h3_ [ HH.text "Link a stream" ] ] <> map one linked <> (if wanting then [ box ] else [])
 
@@ -396,12 +404,17 @@ render state =
       let cands = fromMaybe [] (detail >>= _.xcandidates)
           one c =
             HH.p [ cls "av-file" ]
-              [ HH.button [ cls "av-tag", HE.onClick \_ -> LinkFile c.cvKey a.albumID
-                          , HP.title "These files are a version of this album: link them" ]
+              [ HH.button [ cls "pill"
+                          , HE.onClick \_ -> if S.take 1 a.albumID == "J" then LinkFile c.cvKey a.albumID else LinkStreamTo c.cvKey a.albumID
+                          , HP.title (if S.take 1 a.albumID == "J" then "These files are a version of this album: link them"
+                                      else "This is the stream of that release: link them") ]
                           [ HH.text "Link" ]
               , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum c.cvKey, HP.title "Open this album" ]
                      [ HH.text (c.cvTitle <> " — " <> c.cvArtist) ]
-              , HH.small_ [ HH.text (" " <> c.cvFormat <> (if c.cvReleased == "" then "" else " · " <> S.take 4 c.cvReleased)) ]
+              , HH.small_ [ HH.text (" " <> c.cvFormat <> (if c.cvReleased == "" then "" else " · " <> S.take 4 c.cvReleased)
+                                     <> (case c.cvHas of
+                                           Just h | h /= "" -> " · has " <> h <> ", to be replaced"
+                                           _ -> "")) ]
               ]
       in
       if null cands then HH.text "" else
@@ -423,7 +436,7 @@ render state =
             | has "collection.inbox" = "In the inbox — not judged yet"
             | otherwise = ""
           btn on label value tip =
-            HH.button [ cls (if on then "av-tag av-on" else "av-tag"), HE.onClick \_ -> KeepAlbum a.albumID value, HP.title tip ]
+            HH.button [ cls (if on then "pill av-on" else "pill"), HE.onClick \_ -> KeepAlbum a.albumID value, HP.title tip ]
                       [ HH.text label ]
       in
       if status == "" then HH.text "" else
@@ -534,6 +547,10 @@ render state =
     trackRows ts =
       let discs = nub (map _.tkDisc ts)
           multi = length discs > 1
+          -- the position column is as wide as the longest position ("CD-12", "DVD-3"), so
+          -- that none wraps and the titles stay in line
+          posLen = fromMaybe 2 (maximum (map (S.length <<< _.tkPos) ts))
+          rowStyle = "grid-template-columns: max(34px, " <> show posLen <> "ch) minmax(0, 1fr) auto"
           -- other artists than the album's on some track: show them (compilations)
           showArtists = any (\t -> not (null t.tkArtists) && S.joinWith ", " t.tkArtists /= artistNames) ts
                         && S.contains (Pattern "Various") a.albumArtist
@@ -544,7 +561,7 @@ render state =
                   Just w | (prev >>= _.tkWork) /= Just w || map _.tkDisc prev /= Just t.tkDisc ->
                     [ HH.div [ cls "av-work" ] [ HH.text w ] ]
                   _ -> [])
-            <> [ HH.div [ cls (if t.tkWork == Nothing then "av-trk" else "av-trk av-mov") ]
+            <> [ HH.div [ cls (if t.tkWork == Nothing then "av-trk" else "av-trk av-mov"), HP.style rowStyle ]
                  [ HH.span [ cls "av-trk-n" ] [ HH.text t.tkPos ]
                  , HH.span [ cls "av-trk-t" ] $
                      [ HH.text t.tkTitle ]

@@ -31,6 +31,7 @@
 #   --apple 'https://tidal.com/album/283130328=https://music.apple.com/us/album/x/1556465220'
 # The Apple genre comes along; the next regular run keeps the entry.
 #
+import collection_log
 import argparse
 import datetime as dt
 import glob
@@ -192,14 +193,9 @@ def read_collection():
 
 
 def linked_tidal(coll):
-    """Tidal id -> Discogs release id, from the Location field (T<id>)"""
-    out = {}
-    for r in coll.values():
-        for n in r.get("notes") or []:
-            if n.get("field_id") == 4:
-                for t in re.findall(r"\bT(\d+)", n.get("value", "")):
-                    out[int(t)] = r["id"]
-    return out
+    """Tidal id -> Discogs release id, from clutter's collection log (until 2026-11-25:
+    from the Location field in Discogs); only releases still in the collection"""
+    return {t: rid for rid, t in collection_log.tidal_of_release(collection_log.read()).items() if rid in coll}
 
 
 def played_tidal():

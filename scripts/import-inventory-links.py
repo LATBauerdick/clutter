@@ -20,6 +20,8 @@ A wrong link is taken off on the album page (×), which appends an "unlink".
 """
 
 import argparse
+
+import collection_log
 import csv
 import datetime
 import glob
@@ -48,32 +50,12 @@ def main() -> None:
         print(f"import-inventory-links: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # file albums the log links already (or unlinked by hand: not to be linked again)
-    seen = set()
-    try:
-        with open(args.log) as f:
-            for line in f:
-                try:
-                    e = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if e.get("op") in ("link", "unlink") and e.get("version"):
-                    seen.add(e["version"][1:].lower())
-    except OSError:
-        pass
-
-    # Tidal album -> the Discogs release that names it; file albums named in Location
-    tidal_to_release, in_location = {}, set()
-    for p in sorted(glob.glob(os.path.join(args.cache, "draw*.json"))):
-        with open(p) as f:
-            for r in json.load(f).get("releases", []):
-                for n in r.get("notes") or []:
-                    if n.get("field_id") == 4:
-                        for w in n["value"].split():
-                            if w[:1] == "T" and w[1:].isdigit():
-                                tidal_to_release[w] = f"D{r['id']}"
-                            elif w[:1] == "J" and len(w) == 33:
-                                in_location.add(w[1:].lower())
+    # file albums the log has linked or unlinked already (never linked again), and the
+    # Tidal album -> release map, both from clutter's collection log
+    log = collection_log.read(args.log)
+    seen = set(log["touched"])
+    tidal_to_release = {"T" + v["T"]: k for k, v in log["streams"].items() if "T" in v}
+    in_location: set = set()
 
     now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     out, skipped = [], {"not sure": 0, "several albums": 0, "not in the store": 0, "linked already": 0}

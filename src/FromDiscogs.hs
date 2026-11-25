@@ -402,9 +402,9 @@ getR lns dr = r
     loct = case listToMaybe . mapMaybe (\WNote {field_id = i, value = v} -> if i /= 4 then Nothing else Just v) $ notes of
       Just a -> if a /= "" then Just a else Nothing
       _ -> Nothing
-    tidalid :: Maybe Text -- T<number>
+    tidalidLoc :: Maybe Text -- T<number>
     -- or https://tidal.com/album/<id>
-    tidalid =
+    tidalidLoc =
       viaNonEmpty
         head
         ( ( mapMaybe (\t -> if T.null (T.filter (not . Ch.isDigit) t) then Just t else Nothing)
@@ -418,11 +418,11 @@ getR lns dr = r
                    $ fromMaybe "" loct
                )
         )
-    amid :: Maybe Text
+    amidLoc :: Maybe Text
     -- A<number> -> https://music.apple.com/us/album/<number>
     -- or Al.<string> -> https://music.apple.com/library/albums/l.<string>
     -- or https://music.apple.com/us/album/<...>/<id>
-    amid =
+    amidLoc =
       viaNonEmpty
         head
         ( ( mapMaybe (fmap (snd . T.breakOnEnd "/") . T.stripPrefix "https://music.apple.com/us/album/")
@@ -440,9 +440,9 @@ getR lns dr = r
                    $ fromMaybe "" loct
                )
         )
-    qobuzid :: Maybe Text -- Q<string>
+    qobuzidLoc :: Maybe Text -- Q<string>
     -- or https://play.qobuz.com/album/<string>
-    qobuzid =
+    qobuzidLoc =
       viaNonEmpty
         head
         ( ( mapMaybe (fmap (snd . T.breakOnEnd "/") . T.stripPrefix "https://play.qobuz.com/album/")
@@ -451,11 +451,20 @@ getR lns dr = r
           )
             <> (mapMaybe (T.stripPrefix "Q") . words $ fromMaybe "" loct)
         )
-    jellyfinid =
+    jellyfinidLoc =
       viaNonEmpty
         head
         ( mapMaybe (T.stripPrefix "J") . words $ fromMaybe "" loct
         )
+    -- Since 2026-11-25 the streams and file albums of a release are in clutter's collection
+    -- log (Collection.attachLinks), brought over once by scripts/import-location-links.py;
+    -- the T/A/Q/J ids in the Location field are not read any more (the *Loc parsers above
+    -- are what they were). Discogs is left as it is.
+    tidalid, amid, qobuzid, jellyfinid :: Maybe Text
+    tidalid = Nothing
+    amid = Nothing
+    qobuzid = Nothing
+    jellyfinid = Nothing
     cdboxid :: Maybe Int
     cdboxid =
       viaNonEmpty head
@@ -503,6 +512,9 @@ getR lns dr = r
                         Nothing -> Just t
                         Just _ -> Nothing
                     )
+                  -- an old file-server path ("/Music/Metallica/Metallica - Metallica (1991)"),
+                  -- always the end of the field: no longer of use
+                  . takeWhile ((/= "/") . T.take 1)
                   . words
                   $ a
               )

@@ -4,6 +4,89 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 9 — a file album and its stream (built 2026-11-25)
+
+Uncommitted (with slices 7 and 8), bundle installed; **live after a restart.**
+
+- LATB's case: Moby *18*, files in Music, no Discogs release; Tidal has
+  *18 & 18 B-Sides* (T246075966, in the store). Nothing on the file album's
+  page let him add the Tidal id.
+- Two ways now, either one, not both (each refuses while the other holds):
+  - **Same album as…** on either page — the title rule now also takes a short
+    title inside a longer one when an artist word is shared ("18" in "18 & 18
+    B-Sides"): the files become a version of the Tidal album, which stands.
+  - **Link a stream** on the file album's page (as on a release): the file
+    album stands and has the Tidal album — for a stream that is not in
+    clutter, or when the files are what LATB thinks of as the album.
+- For that a file album can hold streams like a release (`Collection.holds`;
+  stand-ins, the Tidal list and the plays follow: `Provider.standIns`,
+  `updateTidalFolderAids`, `Listened.playAlbumId`).
+- Tested on 8083 with exactly this pair, both ways and back.
+
+## Slice 8 — the log is the only source of links (built 2026-11-25)
+
+Uncommitted (with slice 7), bundle installed; **live after a restart — and the
+import below has already run, which the restart needs.**
+
+- LATB: become independent of the `T<id>` / `A<id>` info in Discogs — parse it
+  once, from then on only what is on disk; no more Location info in Discogs
+  (inconsistent, missing on most releases). Scrap the 18 Apple library ids
+  (never worked) and the old file paths; keep Qobuz for a later extension;
+  leave Discogs untouched, just unused.
+- **Import done**: `scripts/import-location-links.py` appended 1,811 links
+  (`via: discogs-location`) to `~/Sync/clutter/collection.jsonl`: 895 Tidal,
+  860 Apple Music, 28 Qobuz, 28 file albums. Backup of the log from before:
+  `collection.jsonl.before-location-import`. Repeatable; a release added to
+  Discogs later with ids in Location is not picked up unless it is run again.
+- `FromDiscogs` no longer reads T/A/Q/J from field 4 (the old parsers stay as
+  `…Loc`, unused); the rest of the field (box numbers `C…`, free text) is read
+  as before, an old file path at its end is cut off.
+- Log model: streams are kept **per release** (`Streams = release → [stream]`,
+  one Tidal, one Apple, one Qobuz), so the vinyl and the CD of an album can
+  have the same stream (38 Tidal ids were on more than one release). An
+  `unlink` line names the release. New key `Q<id>` (`AlbumKey` `Q Text`).
+- `attachLinks` sets `albumTidal` / `albumAMusic` / `albumQobuz`, the provider
+  tag and the Wikidata key (`t:`, `a:`) from the log.
+- Every link has its × now; taking a replaced edition off leaves the release
+  without that stream (there is no Discogs value to fall back to any more).
+- Scripts read the log (`scripts/collection_log.py`): `update-lengths.py`,
+  `update-tidal-albums.py`, `jellyfin-inventory.py`,
+  `import-inventory-links.py`. **Not run** after the change — compiled only.
+- Tested on 8083 against the live server (which still reads Discogs), release
+  by release, 2,033 releases: same lists (Collection, Inbox, All, Discogs,
+  Server); Tidal list +1 (D4157426, a tidal.com link the old parser missed);
+  differences only where intended — 18 Apple library ids gone, 43 path texts
+  gone, 2 bogus Qobuz values gone ("Q1234", "Quartet…"), 6 releases show a
+  different first file album. Link / replace / unlink of Tidal and Qobuz on a
+  release; test suite.
+
+## Slice 7 — from the stream album's page; the log goes before Location (built 2026-11-25)
+
+*(The "log goes before Location" rule and the undo that restored the Location
+id lasted an hour: slice 8 makes the log the only source.)*
+
+Uncommitted, bundle installed; **live after a restart.** Slice 6 is committed
+(`902a400`).
+
+- LATB's case: Tidal album *Dead Meat* (T533112642, a favourite since 11-15)
+  in the Inbox, the vinyl D29080564 on the shelf — whose Location names an
+  older Tidal edition, T235035298, not in the album store.
+- **Same album as…** now also on a Tidal / Apple album that stands alone: the
+  releases with a fitting title, also those that have another edition of the
+  stream ("has T235035298, to be replaced"). Link → the release's page.
+- **The log goes before Location** (changes slice 6): a stream linked in
+  clutter takes the place of the one the Location field names. The box "Link
+  a stream" is on every release. Taking the link off brings the Location id
+  back (`envSetStream` clears it; the next read of the release restores it —
+  at once with a live Discogs session, as the album page re-reads the
+  release).
+- Tested on 8083 with exactly this pair: offered, linked ("in place of the
+  one it had"), the Tidal album leaves the Inbox, unlink restores
+  T235035298. Sample: 21 of 200 inbox Tidal albums get a release offered;
+  classical ones with generic titles are noisy, as for files.
+- Open: several editions of a stream per album (old and new Tidal id both
+  kept, as versions) — part of the album layer.
+
 ## Slice 6 — a release's stream, linked by hand (built 2026-11-25)
 
 Uncommitted, bundle installed; **live after a restart.** Slice 5 is committed
