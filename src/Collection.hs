@@ -33,6 +33,7 @@ module Collection (
   appendMark,
   appendLink,
   attachLinks,
+  masterKey,
   attachCollection,
   standInFolderTags,
 ) where
@@ -187,25 +188,38 @@ appendLink fn now j = \case
 -- album clutter does not hold is left out. Idempotent; an unlinked file has to be taken
 -- off albumFiles by the caller (Env.envSetLink), since a Location id looks the same.
 -- Runs before attachPlays (a file album's plays are its album's) and attachLength.
+--
+-- Releases of one Discogs master (the vinyl and the CD of an album) share the storage
+-- tags: the files linked to one of them are a version of the album, whichever release
+-- holds the link. albumFiles stays with that release (stand-in, plays); the album page
+-- shows the files on the others too (App.filesOf).
 attachLinks :: Links -> Map AlbumKey Album -> Map AlbumKey Album
 attachLinks links am = M.mapWithKey attach am
  where
   byAlbum = M.fromListWith (flip (<>)) [(k, [j]) | (j, k) <- M.toList links, M.member (J j) am]
+  ownFiles k a = case k of
+    J _ -> []
+    _ -> ordNub (albumFiles a <> M.findWithDefault [] k byAlbum)
+  byMaster = M.fromListWith (<>) [(m, fs) | (k, a) <- M.toList am, Just m <- [masterKey a], let fs = ownFiles k a, not (null fs)]
   storageOf j = [t | Just f <- [M.lookup (J j) am], t <- albumTags f, "storage." `T.isPrefixOf` t]
   attach k a = case k of
     J _ -> a
     _ ->
-      let files = ordNub (albumFiles a <> M.findWithDefault [] k byAlbum)
+      let files = ownFiles k a
+          shared = maybe [] (\m -> M.findWithDefault [] m byMaster) (masterKey a)
           own = filter (\t -> not ("storage." `T.isPrefixOf` t)) (albumTags a)
-          fileTags = ordNub (concatMap storageOf files)
+          fileTags = ordNub (concatMap storageOf (files <> shared))
+          tags = own <> ["provider.jellyfin" | "provider.jellyfin" `notElem` own, not (null fileTags)] <> fileTags
        in if null files
-            then a{albumTags = own}
-            else
-              a
-                { albumFiles = files
-                , albumJellyfin = viaNonEmpty head files
-                , albumTags = own <> ["provider.jellyfin" | "provider.jellyfin" `notElem` own, not (null fileTags)] <> fileTags
-                }
+            then a{albumTags = tags}
+            else a{albumFiles = files, albumJellyfin = viaNonEmpty head files, albumTags = tags}
+
+-- the Discogs master of a release, as its Wikidata store key ("dm:<id>"): releases with
+-- the same one are versions of one album
+masterKey :: Album -> Maybe Text
+masterKey a = case albumID a of
+  D _ -> find ("dm:" `T.isPrefixOf`) (albumWikiKeys a)
+  _ -> Nothing
 
 -- set the collection.* and keep.* tags on every album. Needs the played.* tags, so it
 -- runs after Listened.attachPlays. Idempotent.

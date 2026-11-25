@@ -44,7 +44,7 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Collection (appendLink, appendMark, collectionFile)
+import Collection (appendLink, appendMark, collectionFile, masterKey)
 import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
 import Tracks (AlbumTracks, albumTracks)
@@ -229,6 +229,8 @@ data FileV = FileV
   , fvStorage :: Text -- storage location, "" if none
   , fvUrl :: Text -- the album in Jellyfin, "" if Jellyfin's address is not known
   , fvLogged :: Bool -- linked in the collection log (can be taken off here); False: named in the Discogs Location field
+  , fvOwner :: Maybe AlbumKey -- the other release of this album that holds the link (same Discogs master); Nothing: this one
+  , fvOwnerFormat :: Text -- that release's format, "Vinyl"
   }
   deriving (Show, Generic)
 instance ToJSON FileV
@@ -570,17 +572,35 @@ clutterServer sd =
       -- a Discogs release leaves clutter when it leaves the Discogs collection
       _ -> pure $ answer False "Only a stream album can be removed here"
 
-  -- the file versions of an album, as far as clutter holds them; none for a file album
+  -- the file versions of an album, as far as clutter holds them: its own, then those
+  -- linked to another release of the same Discogs master (the CD, when this is the
+  -- vinyl); none for a file album
   filesOf :: Map Text AlbumKey -> Map AlbumKey Album -> Album -> [FileV]
   filesOf links am a = case albumID a of
     J _ -> []
-    _ ->
-      [ FileV{fvKey = J j, fvTitle = albumTitle f, fvArtist = albumArtist f, fvStorage = storage f, fvUrl = albumURL f, fvLogged = M.lookup j links == Just (albumID a)}
-      | j <- albumFiles a
+    _ -> [fileV Nothing a j f | j <- albumFiles a, Just f <- [M.lookup (J j) am]] <> shared
+   where
+    shared =
+      [ fileV (Just (albumID b)) b j f
+      | Just m <- [masterKey a]
+      , b <- M.elems am
+      , albumID b /= albumID a
+      , masterKey b == Just m
+      , j <- albumFiles b
+      , j `notElem` albumFiles a
       , Just f <- [M.lookup (J j) am]
       ]
-   where
-    storage f = fromMaybe "" (viaNonEmpty head (mapMaybe (T.stripPrefix "storage.") (albumTags f)))
+    fileV owner holder j f =
+      FileV
+        { fvKey = J j
+        , fvTitle = albumTitle f
+        , fvArtist = albumArtist f
+        , fvStorage = fromMaybe "" (viaNonEmpty head (mapMaybe (T.stripPrefix "storage.") (albumTags f)))
+        , fvUrl = albumURL f
+        , fvLogged = isNothing owner && M.lookup j links == Just (albumID holder)
+        , fvOwner = owner
+        , fvOwnerFormat = if isJust owner then T.strip (fst (T.breakOn "," (albumFormat holder))) else "" -- "Vinyl", not the whole format line
+        }
 
   -- For a file album: the releases and stream albums it may be a version of, by title --
   -- the same, or one title inside the other ("Mind Maps 6" in "FSOLdigital Presents Mind

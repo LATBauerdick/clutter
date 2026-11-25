@@ -4,6 +4,25 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 5 — files shared across releases of one master (built 2026-11-25)
+
+Uncommitted, bundle installed; **live after a restart.** Also uncommitted:
+the Keep button is hidden on an album that is in by the rule (frontend only).
+
+- LATB's case: *Before The Flood* as vinyl (D375065) and CD (D2691592), same
+  Discogs master, files in Music and in HiRez. A file album still links to
+  **one** release (stand-in, plays). But releases of one master
+  (`Collection.masterKey`, the `dm:<id>` key) now share the **storage tags**
+  (`attachLinks`), and the page of each shows the files of the others under
+  "On the server" as "… on the Vinyl" (click opens that release; no × there —
+  the link is taken off on the release that holds it) (`App.filesOf`,
+  `fvOwner`).
+- Tested on 8083: both releases before and after linking the hi-res files to
+  the CD; test suite. **Not tested** in a browser.
+- This is the stop-gap for the album layer of the model. The full step — one
+  row per album in the lists, with its versions (records, streams, files)
+  underneath, plays and locations per version — is still to design.
+
 ## Slice 4 — linking by hand (built 2026-11-25, evening)
 
 Sources in the working tree, uncommitted; bundle installed. **Live after a

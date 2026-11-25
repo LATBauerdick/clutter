@@ -350,6 +350,12 @@ render state =
                              [ HH.text f.fvStorage ] ])
               <> [ if f.fvUrl == "" then HH.text f.fvTitle
                    else HH.a [ HP.href f.fvUrl, HP.target "_blank", HP.title (f.fvArtist <> " — open in Jellyfin") ] [ HH.text f.fvTitle ] ]
+              -- linked to another release of this album: say which, a click opens it
+              <> (case f.fvOwner of
+                    Just o -> [ HH.small_ [ HH.text " on the " ]
+                              , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum o, HP.title "The release these files are linked to" ]
+                                     [ HH.text (fromMaybe "other release" f.fvOwnerFormat) ] ]
+                    Nothing -> [])
               <> (if not f.fvLogged then [] else
                     [ HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> UnlinkFile a.albumID f.fvKey
                                 , HP.title "Not this album: take these files off it" ]
@@ -398,8 +404,10 @@ render state =
         HH.div [ cls "av-keep" ]
           [ HH.h3_ [ HH.text "Collection" ]
           , HH.p_ [ HH.text status ]
+          -- an album the rule has in already (on the shelf, played) needs no Keep
           , if kept then btn true "✓ Kept" "unset" "Take the mark off: back to the rule (a record on a shelf, or played)"
-                    else btn false "Keep" "yes" "Put this album in the collection"
+            else if has "collection.in" then HH.text ""
+            else btn false "Keep" "yes" "Put this album in the collection"
           , if refused then btn true "✓ Not for me" "unset" "Take the mark off: back to the rule (a record on a shelf, or played)"
                        else btn false "Not for me" "no" "Leave this album out of the collection, whatever the rule says"
           ]

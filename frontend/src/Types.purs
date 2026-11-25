@@ -131,6 +131,8 @@ type FileV =      { fvKey :: String
                   , fvStorage :: String
                   , fvUrl :: String
                   , fvLogged :: Boolean -- linked in clutter's log (× takes it off); false: named in the Discogs Location field
+                  , fvOwner :: Maybe String -- another release of this album holds the link (same Discogs master)
+                  , fvOwnerFormat :: Maybe String
                   }
 -- /api/albumtq: tracks, credits and review, fetched on demand and cached per album (backend Tracks.hs)
 type Track =      { tkDisc :: Int
