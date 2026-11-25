@@ -19,7 +19,12 @@
 --
 -- A file album is a version of one album at most; the last line for it counts. The linked
 -- album stands for the file album in the lists, shows it under "On the server", and
--- carries its storage.* tags. Lines with another "op" are left alone.
+-- carries its storage.* tags.
+--
+-- The same two lines with a Tidal or Apple Music album as "version" ("T5201052",
+-- "A399275146") give a Discogs release its stream, for a release whose Location field in
+-- Discogs names none: one Tidal and one Apple album per release, the last line counts.
+-- Lines with another "op" are left alone.
 --
 -- The rule: an album is in the collection if it is marked yes; or it is not marked and is
 -- a record on a shelf (a Discogs release outside the stand-in folders) or has been played.
@@ -28,6 +33,10 @@
 module Collection (
   Marks,
   Links,
+  Streams,
+  sameKind,
+  parseStreamRef,
+  appendStream,
   collectionFile,
   readCollection,
   appendMark,
@@ -75,7 +84,48 @@ standInFolderTags = do
 -- file album (Jellyfin id) -> the album it is a version of
 type Links = Map Text AlbumKey
 
-data Event = Keep AlbumKey (Maybe Bool) | Link Text AlbumKey | Unlink Text
+-- stream album (T…, A…) -> the Discogs release it is the stream of
+type Streams = Map AlbumKey AlbumKey
+
+data Event
+  = Keep AlbumKey (Maybe Bool)
+  | Link Text AlbumKey
+  | Unlink Text
+  | LinkStream AlbumKey AlbumKey -- stream, release
+  | UnlinkStream AlbumKey
+
+-- both Tidal albums, or both Apple albums
+sameKind :: AlbumKey -> AlbumKey -> Bool
+sameKind (T _) (T _) = True
+sameKind (A _) (A _) = True
+sameKind _ _ = False
+
+-- one stream of a kind per release: a new one takes the place of the old
+insertStream :: AlbumKey -> AlbumKey -> Streams -> Streams
+insertStream v k = M.insert v k . M.filterWithKey (\v' k' -> not (k' == k && sameKind v v'))
+
+-- What LATB pastes to name a stream album: "T5201052", "A399275146", or a share link --
+-- https://tidal.com/album/5201052?u, https://listen.tidal.com/album/5201052,
+-- tidal://album/5201052, https://music.apple.com/us/album/before-the-flood/399275146?i=…
+parseStreamRef :: Text -> Maybe AlbumKey
+parseStreamRef raw
+  | Just k@(T _) <- parseKey t = Just k
+  | Just k@(A _) <- parseKey t = Just k
+  | "tidal" `T.isInfixOf` low = T <$> (after "album/" >>= number)
+  | "music.apple.com" `T.isInfixOf` low || "music://" `T.isPrefixOf` low || "itunes.apple.com" `T.isInfixOf` low =
+      A <$> (viaNonEmpty last (filter isId (T.splitOn "/" path)) >>= number . T.dropWhile (not . isDigit))
+  | otherwise = Nothing
+ where
+  t = T.strip raw
+  low = T.toLower t
+  path = T.takeWhile (\c -> c /= '?' && c /= '#') t
+  after marker = case T.breakOnEnd marker path of
+    (pre, rest) | not (T.null pre) -> Just rest
+    _ -> Nothing
+  isDigit c = c >= '0' && c <= '9'
+  number x = let ds = T.takeWhile isDigit x in if T.null ds then Nothing else readMaybe (toString ds)
+  -- an Apple album id is the last path piece: digits, or "id" + digits
+  isId p = let q = fromMaybe p (T.stripPrefix "id" p) in not (T.null q) && T.all isDigit q
 
 -- Nothing for a line with an "op" this version does not know
 logLine :: Value -> Parser (Maybe Event)
@@ -96,21 +146,25 @@ logLine = withObject "collection event" $ \o -> do
       case (parseKey k, parseKey v) of
         (Just (J _), _) -> fail "a file album cannot stand for another"
         (Just key, Just (J j)) -> pure (Just (Link j key))
+        (Just key@(D _), Just s@(T _)) -> pure (Just (LinkStream s key))
+        (Just key@(D _), Just s@(A _)) -> pure (Just (LinkStream s key))
         _ -> fail "not a link"
     "unlink" -> do
       v <- o .: "version"
       case parseKey v of
         Just (J j) -> pure (Just (Unlink j))
+        Just s@(T _) -> pure (Just (UnlinkStream s))
+        Just s@(A _) -> pure (Just (UnlinkStream s))
         _ -> fail "not an unlink"
     _ -> pure Nothing
 
 -- the marks and links as the log leaves them; a missing file is none of either, an
 -- undecodable line is skipped with a warning
-readCollection :: FilePath -> IO (Marks, Links)
+readCollection :: FilePath -> IO (Marks, Links, Streams)
 readCollection fn = do
   exists <- doesFileExist fn
   if not exists
-    then pure (M.empty, M.empty)
+    then pure (M.empty, M.empty, M.empty)
     else do
       ls <- BS8.lines <$> readFileBS fn
       es <- fmap catMaybes . forM (zip [1 :: Int ..] ls) $ \(n, l) ->
@@ -121,13 +175,15 @@ readCollection fn = do
             Left err -> do
               hPutStrLn stderr $ "WARNING: skipping " <> fn <> ":" <> show n <> ": " <> err
               pure Nothing
-      let step (ms, lk) = \case
-            Keep k v -> (M.alter (const v) k ms, lk)
-            Link j k -> (ms, M.insert j k lk)
-            Unlink j -> (ms, M.delete j lk)
-          (marks, links) = foldl' step (M.empty, M.empty) es
-      hPutStrLn stderr $ "read " <> show (M.size marks) <> " keep marks and " <> show (M.size links) <> " links from " <> fn
-      pure (marks, links)
+      let step (ms, lk, st) = \case
+            Keep k v -> (M.alter (const v) k ms, lk, st)
+            Link j k -> (ms, M.insert j k lk, st)
+            Unlink j -> (ms, M.delete j lk, st)
+            LinkStream s k -> (ms, lk, insertStream s k st)
+            UnlinkStream s -> (ms, lk, M.delete s st)
+          (marks, links, streams) = foldl' step (M.empty, M.empty, M.empty) es
+      hPutStrLn stderr $ "read " <> show (M.size marks) <> " keep marks and " <> show (M.size links) <> " file links, " <> show (M.size streams) <> " stream links from " <> fn
+      pure (marks, links, streams)
 
 -- append one line; never rewrites what is already there
 appendLine :: FilePath -> Value -> IO ()
@@ -182,6 +238,22 @@ appendLink fn now j = \case
         ]
   Nothing -> appendLine fn $ object ["ts" .= stamp now, "op" .= ("unlink" :: Text), "version" .= J j]
 
+-- append a stream link (Just the release) or its unlink (Nothing)
+appendStream :: FilePath -> ZonedTime -> AlbumKey -> Maybe Album -> IO ()
+appendStream fn now s = \case
+  Just a ->
+    appendLine fn $
+      object
+        [ "ts" .= stamp now
+        , "op" .= ("link" :: Text)
+        , "key" .= albumID a
+        , "version" .= s
+        , "via" .= ("clutter" :: Text)
+        , "artist" .= albumArtist a
+        , "title" .= albumTitle a
+        ]
+  Nothing -> appendLine fn $ object ["ts" .= stamp now, "op" .= ("unlink" :: Text), "version" .= s]
+
 -- put the linked file albums on the albums they are versions of: albumFiles (after those
 -- the Discogs Location field names), albumJellyfin (the first), and the tags
 -- provider.jellyfin and storage.* of those file albums. A link to an album or from a file
@@ -193,9 +265,20 @@ appendLink fn now j = \case
 -- tags: the files linked to one of them are a version of the album, whichever release
 -- holds the link. albumFiles stays with that release (stand-in, plays); the album page
 -- shows the files on the others too (App.filesOf).
-attachLinks :: Links -> Map AlbumKey Album -> Map AlbumKey Album
-attachLinks links am = M.mapWithKey attach am
+--
+-- And the streams from the log: a release without a Tidal (Apple) album from its Location
+-- field gets the one linked here, with the provider tag. Location wins where both name one.
+attachLinks :: Links -> Streams -> Map AlbumKey Album -> Map AlbumKey Album
+attachLinks links streams am = M.mapWithKey (\k -> withStreams k . attach k) am
  where
+  streamsOf = M.fromListWith (<>) [(k, [s]) | (s, k) <- M.toList streams]
+  blank = maybe True T.null
+  withStreams k a =
+    let mine = M.findWithDefault [] k streamsOf
+        tidal = viaNonEmpty head [show n | T n <- mine]
+        apple = viaNonEmpty head [show n | A n <- mine]
+        a1 = if blank (albumTidal a) && isJust tidal then a{albumTidal = tidal, albumTags = albumTags a <> ["provider.tidal" | "provider.tidal" `notElem` albumTags a]} else a
+     in if blank (albumAMusic a1) && isJust apple then a1{albumAMusic = apple, albumTags = albumTags a1 <> ["provider.applemusic" | "provider.applemusic" `notElem` albumTags a1]} else a1
   byAlbum = M.fromListWith (flip (<>)) [(k, [j]) | (j, k) <- M.toList links, M.member (J j) am]
   ownFiles k a = case k of
     J _ -> []

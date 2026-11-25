@@ -141,6 +141,7 @@ data Env = Env
   , jellyfinWeb :: Text -- Jellyfin as a browser reaches it (Jellyfin.jsWeb); "" if there is none
   , marksR :: IORef (Map AlbumKey Bool) -- the keep marks (Collection.Marks): True keep, False not for me
   , linksR :: IORef (Map Text AlbumKey) -- file album (Jellyfin id) -> the album it is a version of (Collection.Links)
+  , streamsR :: IORef (Map AlbumKey AlbumKey) -- stream album (T…, A…) -> the release it is linked to in the log (Collection.Streams)
   , standInTags :: Set Text -- folder tags of the Discogs stand-in folders (Collection.standInFolderTags)
   }
 instance Show Env where

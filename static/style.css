@@ -1035,3 +1035,4 @@ body { margin: 0; }
 .av-tag.av-on { background: #dfe6ff; color: #2a3fb0; }
 .av-file { margin: 2px 0 6px; font-size: 13px; }
 .av-file .av-unlink { margin-left: 6px; }
+.av-streambox input { width: 170px; border: 1px solid #dcd8d0; border-radius: 6px; padding: 5px 8px; margin-right: 6px; font-family: inherit; font-size: 13px; }

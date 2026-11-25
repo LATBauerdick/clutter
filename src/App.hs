@@ -37,6 +37,7 @@ import Env (
   envRefreshPlays,
   envSetLink,
   envSetMark,
+  envSetStream,
   envTidalConnect,
   envTidalReload,
   envUpdate,
@@ -44,7 +45,7 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Collection (appendLink, appendMark, collectionFile, masterKey)
+import Collection (appendLink, appendMark, appendStream, collectionFile, masterKey, parseStreamRef, sameKind)
 import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
 import Tracks (AlbumTracks, albumTracks)
@@ -206,6 +207,7 @@ data AlbumXJ = AlbumXJ
   , xloc :: Maybe (Text, Int) -- where the physical album is: location list and position in it
   , xfiles :: [FileV] -- the file albums on the server that are versions of this album
   , xcandidates :: [CandV] -- for a file album: the albums it may be a version of, best first
+  , xstreams :: [AlbumKey] -- the Tidal / Apple albums this release has from the collection log (they can be taken off here)
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
@@ -260,6 +262,17 @@ type API16 =
   "api"
     :> "albumdrop"
     :> Capture "aid" AlbumKey
+    :> Get '[JSON] ReqJ
+
+-- give a Discogs release its Tidal or Apple Music album by hand, or take that off again
+-- (docs/jellyfin-plan.md): /api/albumstream/D375065?ref=<T…, A… or a share link>&op=link|unlink,
+-- appended to the collection log. Not a write to Discogs: the Location field stays as it is.
+type API19 =
+  "api"
+    :> "albumstream"
+    :> Capture "aid" AlbumKey
+    :> QueryParam "ref" Text
+    :> QueryParam "op" Text
     :> Get '[JSON] ReqJ
 
 -- make a file album a version of an album, or take that off (docs/jellyfin-plan.md):
@@ -341,6 +354,7 @@ type ClutterAPI =
     :<|> API16
     :<|> API17
     :<|> API18
+    :<|> API19
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -415,6 +429,7 @@ clutterServer sd =
     :<|> serveAlbumdrop
     :<|> serveAlbumkeep
     :<|> serveAlbumlink
+    :<|> serveAlbumstream
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -537,10 +552,11 @@ clutterServer sd =
     facts <- asks albumFactsR >>= readIORef
     lcs <- asks locsR >>= readIORef
     links <- asks linksR >>= readIORef
+    streams <- asks streamsR >>= readIORef
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a}
+      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a, xstreams = [s | (s, k) <- M.toList streams, k == i]}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = []}
+      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = []}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do
@@ -643,6 +659,51 @@ clutterServer sd =
      where
       sx = Set.fromList x
       sy = Set.fromList y
+
+  serveAlbumstream :: AlbumKey -> Maybe Text -> Maybe Text -> AppM ReqJ
+  serveAlbumstream i mref mop = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        answer ok info = ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+        logged act done = do
+          wrote <- liftIO . try $ collectionFile >>= act
+          case wrote :: Either SomeException () of
+            Left _ -> pure $ answer False "Could not write the collection log (nothing changed)"
+            Right () -> done
+        name s = case s of
+          T n -> "Tidal album " <> show n
+          A n -> "Apple Music album " <> show n
+          _ -> "stream"
+        fromDiscogs a s = case s of
+          T n -> albumTidal a == Just (show n)
+          A n -> albumAMusic a == Just (show n)
+          _ -> False
+        taken a s = case s of
+          T _ -> maybe False (not . T.null) (albumTidal a)
+          A _ -> maybe False (not . T.null) (albumAMusic a)
+          _ -> False
+    am <- asks albumsR >>= readIORef
+    streams <- asks streamsR >>= readIORef
+    case (i, M.lookup i am, mref >>= parseStreamRef, mop) of
+      (D _, Just a, Just s, Just "link")
+        | M.lookup s streams == Just i -> pure $ answer False ("Already linked: " <> name s)
+        -- the stream the release has is from its Location field unless the log gave it
+        | taken a s && null [() | (s', k) <- M.toList streams, k == i, sameKind s s', fromDiscogs a s'] ->
+            pure $ answer False "This release has one from its Discogs Location field: change it there"
+        | otherwise ->
+            logged (\fn -> appendStream fn now s (Just a)) $ do
+              envSetStream s (Just i)
+              pure $ answer True ("Linked " <> name s <> " to “" <> albumTitle a <> "”")
+      (D _, Just a, Just s, Just "unlink")
+        | M.lookup s streams == Just i ->
+            logged (\fn -> appendStream fn now s Nothing) $ do
+              envSetStream s Nothing
+              pure $ answer True ("Took " <> name s <> " off “" <> albumTitle a <> "”")
+        | otherwise -> pure $ answer False "That stream is not linked to this release here"
+      (D _, Just _, Nothing, _) -> pure $ answer False "Not a Tidal or Apple Music album: paste T<id>, A<id> or a share link"
+      (D _, Nothing, _, _) -> pure $ answer False "Not in clutter"
+      (D _, _, _, _) -> pure $ answer False "op must be link or unlink"
+      _ -> pure $ answer False "Only a Discogs release gets a stream linked here"
 
   serveAlbumlink :: AlbumKey -> Maybe AlbumKey -> Maybe Text -> AppM ReqJ
   serveAlbumlink i mversion mop = do

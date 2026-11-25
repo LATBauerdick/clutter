@@ -15,6 +15,7 @@ module Env (
   envRefreshPlays,
   envSetMark,
   envSetLink,
+  envSetStream,
 )
 where
 
@@ -56,7 +57,7 @@ import Provider (
 
 import Wikidata (attachWiki, readWikiStore)
 import Details (attachLength, factsFor, readDetailStore)
-import Collection (attachCollection, attachLinks, collectionFile, readCollection, standInFolderTags)
+import Collection (attachCollection, attachLinks, collectionFile, readCollection, sameKind, standInFolderTags)
 import Jellyfin (JellyfinStore (..), jellyfinAlbums, readJellyfinStore)
 import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
@@ -386,9 +387,9 @@ envInit c = do
   -- facts for the album page (docs/album-page-plan.md, phase 1)
   dstore <- readDetailStore
   -- the keep marks (docs/jellyfin-plan.md, "Membership")
-  (marks', links') <- collectionFile >>= readCollection
+  (marks', links', streams') <- collectionFile >>= readCollection
   sit <- standInFolderTags
-  let albums' = attachCollection sit marks' (attachLength (factsFor dstore) (attachWiki wstore (linkTidalTags (attachPlays plays' (attachLinks links' albums'')))))
+  let albums' = attachCollection sit marks' (attachLength (factsFor dstore) (attachWiki wstore (linkTidalTags (attachPlays plays' (attachLinks links' streams' albums'')))))
 
   -- create the Tags index
   putTextLn "----------------------envInit: Updating Tags index"
@@ -422,6 +423,7 @@ envInit c = do
   afr <- newIORef (factsFor dstore)
   mkr <- newIORef marks'
   lkr <- newIORef links'
+  skr <- newIORef streams'
   -- define sort functions and map to names
   let sDef :: Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey
       sDef _ s l = case s of
@@ -478,6 +480,7 @@ envInit c = do
       , jellyfinWeb = jweb
       , marksR = mkr
       , linksR = lkr
+      , streamsR = skr
       , standInTags = sit
       }
 
@@ -618,7 +621,8 @@ withPlays am = do
   marks <- asks marksR >>= readIORef
   sit <- asks standInTags
   links <- asks linksR >>= readIORef
-  pure (attachCollection sit marks (attachLength fa (wl (linkTidalTags (attachPlays es (attachLinks links am))))))
+  streams <- asks streamsR >>= readIORef
+  pure (attachCollection sit marks (attachLength fa (wl (linkTidalTags (attachPlays es (attachLinks links streams am))))))
 
 -- set or take off the keep mark of an album (the log line is written by the caller), and
 -- bring the collection.* tags up to date
@@ -640,6 +644,26 @@ envSetLink j mk = do
         _ | j `elem` albumFiles a -> let fs = filter (/= j) (albumFiles a) in a{albumFiles = fs, albumJellyfin = viaNonEmpty head fs}
         _ -> a
   modifyIORef' ar (M.map off)
+  envRefreshPlays
+
+-- give a release a Tidal or Apple Music album (Just the release), or take that off
+-- (Nothing); the log line is written by the caller. The release that had this stream, or
+-- another stream of the same kind from the log, loses it.
+envSetStream :: AlbumKey -> Maybe AlbumKey -> AppM ()
+envSetStream s mk = do
+  sr <- asks streamsR
+  ar <- asks albumsR
+  old <- readIORef sr
+  let replaced = [(s', k') | Just k <- [mk], (s', k') <- M.toList old, k' == k, sameKind s s']
+      gone = [(s, k) | Just k <- [M.lookup s old]] <> replaced
+      new = maybe id (M.insert s) mk (foldr (M.delete . fst) old gone)
+      sid = case s of T n -> show n; A n -> show n; _ -> ""
+      clear s' a = case s' of
+        T n | albumTidal a == Just (show n) -> a{albumTidal = Nothing, albumTags = filter (/= "provider.tidal") (albumTags a)}
+        A n | albumAMusic a == Just (show n) -> a{albumAMusic = Nothing, albumTags = filter (/= "provider.applemusic") (albumTags a)}
+        _ -> a
+  writeIORef sr new
+  unless (sid == ("" :: Text)) $ modifyIORef' ar (\am -> foldr (\(s', k') -> M.adjust (clear s') k') am gone)
   envRefreshPlays
 
 -- re-attach the play dates to all albums, after a play was logged

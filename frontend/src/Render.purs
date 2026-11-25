@@ -23,7 +23,7 @@ import Halogen.HTML.Events as HE
 
 import Data.DateTime (DateTime)
 import Data.Formatter.DateTime (formatDateTime)
-import Data.String (take, drop, length, indexOf, contains, stripPrefix, joinWith, toLower, split) as S
+import Data.String (take, drop, length, indexOf, contains, stripPrefix, joinWith, toLower, split, trim) as S
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
@@ -161,7 +161,7 @@ render state =
       , chipsView
       , HH.div [ cls "av-body" ]
         [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> [ playsView ])
-        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView, filesView, sameAsView, keepView, removeView ]
+        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView, streamView, filesView, sameAsView, keepView, removeView ]
         ]
       , HH.div_ stripsView
       ]
@@ -363,6 +363,32 @@ render state =
       in
       if null files then HH.text "" else
         HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "On the server" ] ] <> map one files)
+
+    -- a Discogs release: give it its Tidal / Apple Music album by hand -- paste T<id>, A<id>
+    -- or a share link -- where it has none yet; streams linked this way can be taken off
+    -- (×). Kept in clutter's log, not written to Discogs.
+    streamView =
+      let linked = fromMaybe [] (detail >>= _.xstreams)
+          lacks f = case f a of
+            Just v | v /= "" -> false
+            _ -> true
+          label s = (if S.take 1 s == "T" then "Tidal " else "Apple Music ") <> S.drop 1 s
+          one s =
+            HH.p [ cls "av-file" ]
+              [ HH.text (label s)
+              , HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> UnlinkStream a.albumID s
+                          , HP.title "Not this album's stream: take it off" ] [ HH.text "×" ] ]
+          box =
+            HH.div [ cls "av-streambox" ]
+              [ HH.input [ HP.value state.streamRef, HP.placeholder "T<id>, A<id> or a share link", HE.onValueInput SetStreamRef ]
+              , HH.button [ HP.type_ HP.ButtonButton, HE.onClick \_ -> LinkStream a.albumID, HP.disabled (S.trim state.streamRef == "") ]
+                          [ HH.text "Link" ]
+              ]
+          wanting = lacks _.albumTidal || lacks _.albumAMusic
+      in
+      if not isDiscogs || detail == Nothing || (null linked && not wanting) then HH.text "" else
+        HH.div [ cls "av-files" ] $
+          [ HH.h3_ [ HH.text "Link a stream" ] ] <> map one linked <> (if wanting then [ box ] else [])
 
     -- on a file album's page: the albums it may be a version of (same or similar title);
     -- a click links the files to that album and shows it; the name opens it first

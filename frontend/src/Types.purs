@@ -114,6 +114,7 @@ type AlbumXJ =    { xid :: String
                   , xfacts :: AlbumFacts
                   , xrelated :: Related
                   , xloc :: Maybe (Tuple String Int) -- location list and position in it
+                  , xstreams :: Maybe (Array String) -- Tidal / Apple albums linked to this release in clutter's log (T…, A…)
                   , xcandidates :: Maybe (Array CandV) -- for a file album: albums it may be a version of
                   , xfiles :: Maybe (Array FileV) -- file albums on the server that are versions of this album
                   }
@@ -187,6 +188,7 @@ type State =      { apiUrl :: String
                   , listenedOpen :: Boolean -- the sidebar's Listened fold, while a Listened list is on show
                   , search :: String
                   , tagFilter :: String
+                  , streamRef :: String -- the album page's "link a stream" box: T<id>, A<id> or a share link
                   , views :: Array View
                   , pos :: Int
                   , album :: Maybe Album
@@ -244,6 +246,9 @@ data Action = ToggleSortOrder
             | NodeCtl String -- toggle | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
+            | SetStreamRef String
+            | LinkStream String -- release id: link the stream named in the box
+            | UnlinkStream String String -- release id, stream key (T…, A…)
             | LinkFile String String -- album id (D…, T…), file album id (J…): the files are a version of that album
             | UnlinkFile String String -- album id, file album id (J…): these files are not this album
             | KeepAlbum String String -- album id; yes | no | unset: the keep mark (docs/jellyfin-plan.md)

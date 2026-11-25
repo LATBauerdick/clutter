@@ -4,6 +4,33 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 6 — a release's stream, linked by hand (built 2026-11-25)
+
+Uncommitted, bundle installed; **live after a restart.** Slice 5 is committed
+(`a744773`) and live.
+
+- LATB: a way to add a Tidal and/or Apple Music link by hand — paste a share
+  link or `T<id>` / `A<id>`.
+- Kept in clutter's log, **not written to Discogs**: the same `link` /
+  `unlink` lines, with a `T…` or `A…` key as `version` and the release as
+  `key`. One Tidal and one Apple album per release; a new one replaces the
+  old. The Location field wins where it names one (then the page offers no
+  box for that kind, and the endpoint refuses).
+- `Collection.parseStreamRef` reads `T…`, `A…`, `tidal://album/…`,
+  `tidal.com/album/…`, `listen.tidal.com/album/…[/track/…]`,
+  `music.apple.com/<cc>/album/<name>/<id>[?i=…]`.
+- `attachLinks` sets `albumTidal` / `albumAMusic` and the provider tag from
+  the log, so everything that follows from those ids follows: ▶ on the Node,
+  the Tidal list, stand-in for the Tidal album, plays, length.
+- `/api/albumstream/:id?ref=…&op=link|unlink`; album page of a release, block
+  **Link a stream**: the box where a Tidal or Apple album is missing, and the
+  log-linked ones with ×.
+- Tested on 8083: all six link forms, replacement, refusals (junk, a release
+  with Location streams, a Tidal album as target), unlink, restart reads the
+  links back. **Not tested:** the box in a browser. The id is not checked
+  against Tidal or Apple — a wrong number links a wrong album (the page then
+  shows it; × takes it off).
+
 ## Slice 5 — files shared across releases of one master (built 2026-11-25)
 
 Uncommitted, bundle installed; **live after a restart.** Also uncommitted:

@@ -10,7 +10,8 @@ import Data.Either (Either(..))
 import Data.Map as M
 import Data.String (contains, stripPrefix, length, joinWith)
 import Data.String (take) as S
-import Data.String.Pattern (Pattern(..))
+import Data.String.Pattern (Pattern(..), Replacement(..))
+import Data.String.Common (replaceAll)
 import Effect.Class.Console as Console
 import Data.Array (foldMap, zipWith, snoc, take, index, updateAt)
 import Halogen as H
@@ -214,6 +215,35 @@ handleAction = case _ of
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
 
+  SetStreamRef s -> H.modify_ _ { streamRef = s }
+  -- give the release the Tidal / Apple Music album named in the box (T<id>, A<id> or a
+  -- share link; the backend parses it and appends the link to the collection log)
+  LinkStream aid -> do
+    api <- H.gets _.apiUrl
+    ref <- H.gets _.streamRef
+    let enc = replaceAll (Pattern " ") (Replacement "%20")
+          <<< replaceAll (Pattern "+") (Replacement "%2B")
+          <<< replaceAll (Pattern "=") (Replacement "%3D")
+          <<< replaceAll (Pattern "&") (Replacement "%26")
+          <<< replaceAll (Pattern "#") (Replacement "%23")
+          <<< replaceAll (Pattern "?") (Replacement "%3F")
+          <<< replaceAll (Pattern "%") (Replacement "%25")
+    r <- H.liftAff $ getUrl (api <> "albumstream/" <> aid <> "?ref=" <> enc ref <> "&op=link")
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: i, reqResult: 1 } -> do
+        showAlbum aid
+        H.modify_ _ { notice = Just i, streamRef = "" }
+      Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Link: no answer" }
+  UnlinkStream aid s -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumstream/" <> aid <> "?ref=" <> s <> "&op=unlink")
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: i, reqResult: 1 } -> do
+        showAlbum aid
+        H.modify_ _ { notice = Just i }
+      Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Unlink: no answer" }
   -- the file album is a version of that album: link them (appended to the collection
   -- log), then show the album, which now stands for the files
   LinkFile aid version -> do

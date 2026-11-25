@@ -73,6 +73,7 @@ initialState = do -- should eventually be saved in preferences
         , sortKept: Nothing
         , search: ""
         , tagFilter: ""
+        , streamRef: ""
         , views: []
         , pos: 0
         , album: Nothing
