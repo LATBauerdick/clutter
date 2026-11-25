@@ -78,12 +78,52 @@ What is actually next lives in the project hub (`~/Notes/Claude/ws/clutter.md`
 
 ## Jellyfin
 
-- 2026-11-22 · **Bring the files on umini into clutter.** A longer project of
-  its own. First step: an inventory of disk vs Jellyfin vs clutter. Then
-  (a) hundreds of albums on disk that are nowhere in clutter → Jellyfin
-  albums (`J` keys); (b) about a hundred physical albums that are in Discogs
-  and have a FLAC rip on disk that is not linked → add the `J<id>` to the
-  Discogs Location field.
+- 2026-11-22 · ~~**Bring the files on umini into clutter.**~~ Done 2026-11-25,
+  and more: file albums, storage locations, the collection with its keep mark,
+  links between versions in clutter's own log, the Discogs Location ids
+  brought over. What was built, slice by slice, with its test status:
+  `docs/jellyfin-plan.md`.
+
+## Collection and versions — next steps (2026-11-25)
+
+In the order proposed to LATB; the first is the recommendation.
+
+- **Review page for the unsure matches.** 234 file albums in
+  `cache/jellyfin-inventory/link-candidates.tsv` were not linked by the
+  import: 186 where the artist differs slightly, 48 where several clutter
+  albums fit (vinyl and CD). A list in clutter, Link / Skip per row.
+- **Bulk Keep in a list.** The Inbox has about 6,400 albums; select several,
+  or "keep everything in this focus".
+- **Tracks for file albums** from Jellyfin's API (the page says "no source
+  for tracks"); needs the key at request time, as Tidal's token is read.
+- **Classical and Music Johannes** as Jellyfin libraries (LATB adds them),
+  then `scripts/update-jellyfin-albums.py`, an entry each in
+  `~/Sync/clutter/storage-map.json` if wanted, and the inventory again. Also a
+  library scan in Jellyfin for the 272 ghost albums under
+  `/media/z1/music/Music`.
+- **The album layer.** One row per album in the lists, its records, streams
+  and files underneath as versions; several editions of a stream kept side by
+  side; plays and locations per version. The end state of LATB's model and
+  the largest step — after some days of use. Today's stop-gaps: releases of
+  one Discogs master share their files; one stream of a kind per release.
+- Smaller:
+  - Playing files: which player, through what (BluOS, Roon, Jellyfin).
+  - Retire the Discogs *Streaming* folder (219 stand-in releases): plays and
+    list memberships move to the Tidal album first — a migration.
+  - Show a stream's title (Tidal / Apple lookup) before linking; today the id
+    is taken as pasted.
+  - Free search in "Same album as…" for what the title rule does not find.
+  - A "Kept" list in the sidebar (today: focus `keep.yes` in Collection).
+  - Collection as the start list.
+  - Storage tags for records (the shelf) and streams (`storage.tidal`).
+  - Re-read the Jellyfin store without a restart; find a file album again
+    after its files moved (the link keeps artist and title for that).
+  - A keep mark takes ~3 s (all tags are recomputed) — speed up if it annoys.
+  - First real run of the scripts that now read the log
+    (`update-lengths.py`, `update-tidal-albums.py`, the inventory, the
+    inventory-links import): watch the next `./update-json`.
+  - The disk cross-check of the inventory (what did Jellyfin not pick up?)
+    was never run.
 
 ## Clean-up
 
