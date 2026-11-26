@@ -43,6 +43,7 @@ keySource k = case k of
   A _ -> "apple"
   J _ -> "jellyfin"
   Q _ -> "qobuz"
+  C _ -> "clutter" -- not a version: a play is logged against a version's key
 
 -- the album a play was logged against, in its own catalogue
 eventKey :: PlayEvent -> Maybe AlbumKey

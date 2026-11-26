@@ -168,9 +168,12 @@ read back; `via` says who wrote the line (`clutter`, `migration`,
 | `{"op":"format","format":2}` | From here the log is in the album format: `link` and `unlink` lines, wherever they are, are no longer read. Written once by the migration. (Was `"version":2` until slice 0 found that today's readers take any `version` field for a key — `collection_log.read` crashed on it.) |
 | `{"op":"version","album":"C…","key":"D123"}` | `key` is a version of that album. The last `version` or `split` line for a key counts. |
 | `{"op":"split","key":"D123"}` | `key` is its own album again. |
-| `{"op":"merge","from":"C…","into":"C…"}` | Album `from` is now `into`: its versions, and everything recorded against its id. Followed like `moved` lines (chains followed, a loop stops where it closes, a merge back takes the earlier one off). |
+| `{"op":"merge","from":"C…","into":"C…"}` | Album `from` is now `into`: its versions, and everything recorded against its id. Chains followed (merge b into c, then a into b: a ends in c); a loop stops where it closes; a later merge from the same id replaces the earlier; only the exact reverse line (b into a after a into b) takes the earlier one off. Unlike `moved` lines, a merge into an id does not undo a merge from it. |
 | `{"op":"lead","album":…,"key":"D123"}` | That version leads; without `key`: back to the rule. Last line for the album counts. |
-| `{"op":"alias","from":"D9340172","to":"T184781700"}` | `from` is a key clutter no longer holds (a stand-in release); everything recorded against it — plays, marks — is read as `to`. Chains followed. |
+| `{"op":"alias","from":"D9340172","to":"T184781700"}` | `from` is a key clutter no longer holds (a stand-in release); everything recorded against it — plays, marks — is read as `to`. Chains followed as for `merge`: only the exact reverse line takes an earlier alias off. |
+
+Where a version key is meant — `key` of `version`, `split` and `lead`, both ends of
+`alias` — a `C` id is not read (it would make an album a version of an album).
 | `{"op":"keep","key":…,"value":…}` | As today; `key` may be a `C` id. Last line for the album counts. |
 | `{"op":"tag","album":…,"tag":"piano","value":true}` | Put a curated tag on the album, or take it off (`false`). Folded in order. |
 | `{"op":"rate","album":…,"stars":4}` | The album's rating, 1–5; 0 takes it off. Last line counts. |
@@ -278,15 +281,50 @@ append, counted by `op`.
 | — | LATB reads the report; oddities fixed by hand or by rule | | LATB, Fable if a rule changes |
 | 1 | Readers of the new lines: `Collection.hs` (and a new pure module for membership and lead) and `scripts/collection_log.py` for the scripts | Checks on a scratch log, in `cabal repl` and Python, give the same answers: last line wins, merge chain, merge back, split, alias chain, a loop ends, names by `C` id and by version key, `format` switches the old lines off | Opus |
 | 2 | Server on the album layer, same pages as before | On a scratch copy of the log, migrated, server on 8085: every list has the same rows as the live server except the joined ones (a script compares, the differences are exactly the report's joins and aliases); a record's shelf row and an album's row match the focuses stated under Tags; plays in total per album equal today's sum; Versions block lists every version. `standIns`, the master sharing in `attachLinks` and `masterKey` are gone | Opus builds, **Fable reviews the diff before the commit** |
+| 4 | The scripts read the log through `collection_log.album_log()` (`update-lengths.py`, `update-tidal-albums.py`, `jellyfin-inventory.py`, `import-inventory-links.py`, `update-jellyfin-albums.py`'s moved-folder search) | `./update-json` runs clean against the migrated scratch log | Opus |
 | — | LATB runs `--write` on the real log, restarts | | LATB |
 | 3 | Join, split and lead on the album page | "Same album as…" joins any two albums (a file album to anything, a second edition of a stream); × on a version splits it off; "lead" on a version; each writes the lines above; Doggystyle's second copy joined on a scratch log, then split, plays unchanged | Opus |
-| 4 | The scripts read the log through `collection_log.py` (`update-lengths.py`, `update-tidal-albums.py`, the inventory, `update-jellyfin-albums.py`'s moved-folder search) | `./update-json` runs clean against the scratch log | Opus |
+
+Slice 4 comes before `--write` (moved there after the review of 2026-11-26): once the
+log has its format line, `collection_log.read()` returns no links, so scripts still on
+it would see none.
 | 5 | Curated tags and rating: `tag` and `rate` lines; `scripts/import-discogs-curation.py` (genre folders, Petra, Darko/Lavorgna → `my.*`; ratings), dry run first; on the album page tags to add and take off, stars; a fixed view per `my.*` tag in the sidebar | Import counts equal the inventory above (1,313 + 48 tags less albums joined, 410 ratings); a tag set on a record's page shows on its Tidal version's page | Opus |
 | 6 | Stand-ins retired | No play and no mark resolves to a release in Streaming or Files; then LATB deletes the two folders at Discogs; `CLUTTER_STANDIN_FOLDERS` and its code go | Opus, LATB |
 | 7 | Later: record data into clutter (condition, notes, acquisition number, shelf and position), shelves edited in clutter, a view editor | own plan | — |
 
 Build and test recipe (scratch copy, sandbox, ports, headless Chrome): the
 hub `~/Notes/Claude/ws/clutter.md` › Now, last bullet.
+
+Status:
+
+- Slice 0 — committed `45e833c` (2026-11-26).
+- Slice 1 — built 2026-11-26. `src/AlbumLayer.hs` (pure: events, membership,
+  merges, aliases, keep/tag/rate/lead per album, the lead rule, a play's
+  version), `Types.AlbumKey` gains `C`, `Collection.readAlbumLog` reads the
+  file, `Collection.readCollection` drops link/unlink lines once a format
+  line is in the log; `collection_log.py` gets `album_log()` with the same
+  answers, and `read()` returns nothing after a format line. Check:
+  `python3 test/album-layer-check.py` (both readers against answers worked
+  out by hand, 36 each, OK). Also on a migrated scratch copy of the live log:
+  1,296 albums with ids, 3,883 versions, 262 aliases, the same in both
+  readers; no key in two albums; Doggystyle still two albums; old readers
+  read no links. Not yet used by the server (slice 2).
+  Found while testing: a move J1 → J2 plus an alias J2 → J1 looped forever in
+  the first version of `canonical`; fixed, and the check covers it.
+  Review by Fable, 2026-11-26, four points fixed: (1) a later merge or alias
+  into an id undid an earlier one from it (merge b → c, then a → b left a's
+  versions in b) — merges and aliases now drop an earlier line only for its
+  exact reverse (`foldLinks`; moves keep `foldChain`); (2) a `C` id where a
+  version key is meant is not read; (3) the album table is computed once in
+  the fold (`alAlbums`; Python `self.albums`) — 1,296 `lead_of` + `versions`
+  on the migrated copy take 1 ms; (4) slice 4 moved before `--write`. The
+  check now has 59 answers, both orders of merge and alias and the five
+  refused lines; both readers OK, and with the old rules put back the Python
+  half fails on exactly those cases.
+- For slice 2 (not built): `Collection.reviewedFiles` counts only link /
+  unlink / skip lines; once slice 3 writes `version` lines, a file album
+  joined that way would be offered for review again — count `version` lines
+  (and the C-id membership) there too.
 
 ### Questions for LATB — answered 2026-11-26: OK to all five
 

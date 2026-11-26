@@ -44,7 +44,10 @@ import Servant (FromHttpApiData (..))
 -- Location field ("T12571482 A206349046"): D6715388, T283130328, A1556465220, J…
 -- A Jellyfin id is its item id, 32 hex digits (kept in lower case), not a number.
 -- Q is a Qobuz album id (letters and digits): a stream a release can have, not an album clutter lists.
-data AlbumKey = D Int | T Int | A Int | J Text | Q Text
+-- C is an album's own id once it has two or more versions (docs/album-layer-plan.md ›
+-- Ids): 6 characters from 0-9 and a-z without i l o u. It lives in the log and the
+-- server only; pages and lists name an album by a version key (AlbumLayer).
+data AlbumKey = D Int | T Int | A Int | J Text | Q Text | C Text
   deriving (Eq, Ord, Generic)
 
 keyText :: AlbumKey -> Text
@@ -54,10 +57,14 @@ keyText k = case k of
   A i -> "A" <> show i
   J i -> "J" <> i
   Q i -> "Q" <> i
+  C i -> "C" <> i
 
--- "D123", "T123", "A123", "J<32 hex digits>"; a bare number is a Discogs release (old links)
+-- "D123", "T123", "A123", "J<32 hex digits>", "C<6 id characters>"; a bare number is a
+-- Discogs release (old links)
 parseKey :: Text -> Maybe AlbumKey
 parseKey t = case T.uncons t of
+  Just ('C', n) | T.length n == 6 && T.all (`elem` ("0123456789abcdefghjkmnpqrstvwxyz" :: String)) n -> Just (C n)
+  Just ('C', _) -> Nothing
   Just ('D', n) -> D <$> num n
   Just ('T', n) -> T <$> num n
   Just ('A', n) -> A <$> num n

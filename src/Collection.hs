@@ -69,6 +69,7 @@ module Collection (
   appendStream,
   collectionFile,
   readCollection,
+  readAlbumLog,
   appendMark,
   appendLink,
   appendSkip,
@@ -82,6 +83,7 @@ module Collection (
   standInFolderTags,
 ) where
 
+import qualified AlbumLayer as AL
 import Data.Aeson (Value, eitherDecodeStrict, encode, object, withObject, (.!=), (.:), (.:?), (.=))
 import Data.Aeson.Types (Parser, parseEither)
 import qualified Data.ByteString as BS
@@ -147,6 +149,7 @@ data Event
   | LinkStream AlbumKey AlbumKey -- stream, release
   | UnlinkStream AlbumKey (Maybe AlbumKey) -- stream, release (every release, if none is named)
   | Moved Text Text -- old Jellyfin id, new one
+  | FormatLine -- the log is in the album format: link and unlink lines are not read
 
 -- what can have a stream: a Discogs release, a file album
 holds :: AlbumKey -> Bool
@@ -230,6 +233,7 @@ logLine = withObject "collection event" $ \o -> do
       case (parseKey f, parseKey t) of
         (Just (J a), Just (J b)) -> pure (Just (Moved (T.toLower a) (T.toLower b)))
         _ -> fail "not a move of a file album"
+    "format" -> pure (Just FormatLine)
     _ -> pure Nothing
 
 -- the moves in the order of the log: a move to an id takes off a move from it (a folder
@@ -256,6 +260,10 @@ readCollection fn = do
               hPutStrLn stderr $ "WARNING: skipping " <> fn <> ":" <> show n <> ": " <> err
               pure Nothing
       let moves = foldMoves [(a, b) | Moved a b <- es]
+          -- a format line anywhere switches every link and unlink line off (AlbumLayer)
+          inAlbumFormat = any (\case FormatLine -> True; _ -> False) es
+          isLink = \case Link _ _ -> True; Unlink _ -> True; LinkStream _ _ -> True; UnlinkStream _ _ -> True; _ -> False
+          es' = if inAlbumFormat then filter (not . isLink) es else es
           j = followMove moves
           k = movedKey moves
           step (ms, lk, st) = \case
@@ -265,7 +273,8 @@ readCollection fn = do
             LinkStream s a -> (ms, lk, insertStream s (k a) st)
             UnlinkStream s ma -> (ms, lk, deleteStream s (k <$> ma) st)
             Moved _ _ -> (ms, lk, st)
-          (marks, links, streams) = foldl' step (M.empty, M.empty, M.empty) es
+            FormatLine -> (ms, lk, st)
+          (marks, links, streams) = foldl' step (M.empty, M.empty, M.empty) es'
       hPutStrLn stderr $ "read " <> show (M.size marks) <> " keep marks and " <> show (M.size links) <> " file links, " <> show (sum (length <$> streams)) <> " stream links, " <> show (M.size moves) <> " moved file albums from " <> fn
       pure (marks, links, streams, moves)
 
@@ -346,6 +355,23 @@ readMoves fn = do
     else do
       ls <- BS8.lines <$> readFileBS fn
       pure $ foldMoves [(a, b) | l <- ls, "\"moved\"" `BS.isInfixOf` l, Right (Just (Moved a b)) <- [eitherDecodeStrict l >>= parseEither logLine]]
+
+-- the album layer as the log leaves it (AlbumLayer): versions, merges, aliases, keep
+-- marks, tags, ratings, lead lines. A line this reader knows but cannot read is skipped
+-- with a warning; lines it does not know (link, skip, notsame, …) are left to the others.
+readAlbumLog :: FilePath -> IO AL.AlbumLog
+readAlbumLog fn = do
+  exists <- doesFileExist fn
+  ls <- if exists then BS8.lines <$> readFileBS fn else pure []
+  es <- fmap catMaybes . forM (zip [1 :: Int ..] ls) $ \(n, l) ->
+    if BS8.all (`elem` [' ', '\t', '\r']) l
+      then pure Nothing
+      else case eitherDecodeStrict l >>= parseEither AL.logEvent of
+        Right e -> pure e
+        Left err -> do
+          hPutStrLn stderr $ "WARNING: album layer skips " <> fn <> ":" <> show n <> ": " <> err
+          pure Nothing
+  pure (AL.foldLog es)
 
 -- append that a suggestion is not the same album as this one (True), or take that back
 appendNotSame :: FilePath -> ZonedTime -> AlbumKey -> Album -> Bool -> IO ()
