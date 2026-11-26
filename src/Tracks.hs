@@ -1,16 +1,19 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 -- Track list, credits and review for the album page, fetched on demand the first time a page
 -- is opened and then kept per album in ~/Sync/clutter/album-details/<key>.json
 -- (CLUTTER_ALBUM_DETAILS overrides). Tidal when the album has a Tidal id (tracks, credits,
--- review), else Discogs for a Discogs release (tracks, credits). Where Tidal has no review, the
+-- review), else Discogs for a Discogs release (tracks, credits); a file album's from Jellyfin
+-- (tracks and the files' quality; no credits: asking Jellyfin for people triples its time),
+-- with the review of its Tidal album if it has one. Where Tidal has no review, the
 -- lead of the Wikipedia article takes its place: the album's page if it has one, else that of
 -- its first artist with one. Tokens come from tok.json in
 -- the working directory, read at fetch time because the Tidal token lives only 4 hours; no
 -- part of a token is ever logged or returned.
-module Tracks (Track (..), Credit (..), AlbumTracks (..), albumTracks, cacheDir) where
+module Tracks (Track (..), Credit (..), AlbumTracks (..), Want (..), albumTracks, cacheDir, jellyfinItems, fileQuality) where
 
 import Control.Exception (SomeAsyncException, onException, throwIO, try)
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, eitherDecode, encode, withObject, (.!=), (.:), (.:?))
@@ -42,6 +45,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath (takeFileName, (</>))
 import System.IO (hClose, hPutStrLn, openTempFileWithDefaultPermissions)
 import System.Process (readProcessWithExitCode)
+import Jellyfin (jellyfinApi)
 import Types (Album (..), AlbumKey (..), ArtistRef (..), keyText)
 import Wikidata (displayName)
 
@@ -75,6 +79,7 @@ data AlbumTracks = AlbumTracks
   , atReviewUrl :: Maybe Text -- the Wikipedia article the text is from
   , atReviewAbout :: Maybe Text -- the artist the text is about; Nothing: about the album
   , atAboutChecked :: Maybe Bool -- Wikipedia was asked (found or not): not again until a refresh
+  , atQuality :: Maybe Text -- the files' format, "FLAC 24/96", "DSD64", "MP3 320"; Jellyfin only
   }
   deriving (Show, Generic)
 instance ToJSON AlbumTracks
@@ -82,27 +87,35 @@ instance FromJSON AlbumTracks
 
 -- entry point ---------------------------------------------------------------------------
 
--- FromDiscogs carries the linked Tidal album, if any, for the review
-data Source = FromTidal Int | FromDiscogs Int (Maybe Int)
+-- FromDiscogs and FromJellyfin carry the linked Tidal album, if any, for the review
+data Source = FromTidal Int | FromDiscogs Int (Maybe Int) | FromJellyfin Text (Maybe Int)
+
+-- which tracks the page asks for: the album's own, its Tidal version's, its files'
+data Want = Own | WantTidal | WantFiles
+  deriving (Eq)
 
 -- A physical release (a Discogs key) shows the tracks of that release, from Discogs, unless
--- its Tidal version is asked for; a stream shows Tidal's.
-sourceOf :: Bool -> Album -> Maybe Source
-sourceOf wantTidal a = case (albumID a, tidalTwin) of
+-- its Tidal version or its files are asked for; a stream shows Tidal's; a file album its
+-- own, from Jellyfin.
+sourceOf :: Want -> Album -> Maybe Source
+sourceOf want a = case (albumID a, tidalTwin) of
+  (J j, t) -> Just (FromJellyfin j t)
+  (_, t) | want == WantFiles, Just f <- files -> Just (FromJellyfin f t)
   (T n, _) -> Just (FromTidal n)
-  (D _, Just t) | wantTidal -> Just (FromTidal t)
+  (D _, Just t) | want == WantTidal -> Just (FromTidal t)
   (D n, t) -> Just (FromDiscogs n t)
   (_, Just t) -> Just (FromTidal t)
   _ -> Nothing
  where
   tidalTwin = albumTidal a >>= readMaybe . toString . T.strip
+  files = mfilter (not . T.null) (albumJellyfin a)
 
 -- refresh = True skips the cache. Left is a short human-readable reason. Never throws
 -- (asynchronous exceptions excepted: a cancelled request thread must stay cancellable).
--- wantTidal: for a Discogs release with a linked Tidal album, the Tidal version's tracks.
-albumTracks :: Bool -> Bool -> Album -> IO (Either Text AlbumTracks)
-albumTracks refresh wantTidal a =
-  tryAll (albumTracks' refresh wantTidal a) >>= \case
+-- want: for a Discogs release with a linked Tidal album or files, the tracks of those.
+albumTracks :: Bool -> Want -> Album -> IO (Either Text AlbumTracks)
+albumTracks refresh want a =
+  tryAll (albumTracks' refresh want a) >>= \case
     Right r -> pure r
     Left e
       | isAsync e -> throwIO e
@@ -111,14 +124,16 @@ albumTracks refresh wantTidal a =
           logLine (keyText (albumID a) <> ": failed unexpectedly")
           pure (Left "tracks: unexpected error")
 
-albumTracks' :: Bool -> Bool -> Album -> IO (Either Text AlbumTracks)
-albumTracks' refresh wantTidal a = do
+albumTracks' :: Bool -> Want -> Album -> IO (Either Text AlbumTracks)
+albumTracks' refresh want a = do
   dir <- cacheDir
   let key = keyText (albumID a)
-      msrc = sourceOf wantTidal a
-      -- the Tidal version of a Discogs release is cached next to the release's own tracks
+      msrc = sourceOf want a
+      -- the Tidal version or the files of an album are cached next to its own tracks
       suffix = case (albumID a, msrc) of
         (D _, Just (FromTidal _)) -> "-tidal"
+        (J _, _) -> ""
+        (_, Just (FromJellyfin _ _)) -> "-files"
         _ -> ""
       fn = dir </> (toString key <> suffix <> ".json")
   cached <- if refresh then pure Nothing else readCache fn
@@ -131,23 +146,25 @@ albumTracks' refresh wantTidal a = do
         let srcName = case src of
               FromTidal _ -> "tidal"
               FromDiscogs _ _ -> "discogs"
-        r <- case src of
-          FromTidal n -> fetchTidal mgr n
-          FromDiscogs n twin ->
-            fetchDiscogs mgr n >>= \case
-              -- the review is about the album, whatever the pressing: from the Tidal twin
-              Right (ts, cs, _, _) | Just t <- twin -> do
+              FromJellyfin _ _ -> "files"
+            -- the review is about the album, whatever the pressing: from the Tidal twin
+            withReview twin = \case
+              Right ((ts, cs, _, _), q) | Just t <- twin -> do
                 rv <- fetchTidalReview mgr t
-                pure (Right (ts, cs, fst <$> rv, rv >>= snd))
+                pure (Right ((ts, cs, fst <$> rv, rv >>= snd), q))
               other -> pure other
+        r <- case src of
+          FromTidal n -> fmap (,Nothing) <$> fetchTidal mgr n
+          FromDiscogs n twin -> fetchDiscogs mgr n >>= withReview twin . fmap (,Nothing)
+          FromJellyfin j twin -> fetchJellyfin j >>= withReview twin
         case r of
           Left err -> do
             logLine (key <> ": " <> srcName <> " failed: " <> err)
             pure (Left err)
-          Right (ts, cs, rv, rvs) -> do
+          Right ((ts, cs, rv, rvs), q) -> do
             now <- toText . formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" <$> getZonedTime
-            let at = AlbumTracks srcName now ts cs rv rvs Nothing Nothing Nothing
-            logLine (key <> ": " <> srcName <> ", " <> show (length ts) <> " tracks")
+            let at = AlbumTracks srcName now ts cs rv rvs Nothing Nothing Nothing q
+            logLine (key <> ": " <> srcName <> ", " <> show (length ts) <> " tracks" <> maybe "" (", " <>) q)
             writeCache dir fn at
             Right <$> withAbout dir fn a at
 
@@ -323,6 +340,108 @@ fetchTidal mgr n = do
           , rv >>= snd
           )
 
+-- Jellyfin ------------------------------------------------------------------------------
+
+-- A file album's tracks: the album item's children, with their audio streams. About 50 ms a
+-- track (a 296-track box: 16 s), three times that with People, which is why there are no
+-- credits from here. Address from the store ("api"), key "jky" from tok.json.
+fetchJellyfin :: Text -> IO (Either Text (Fetched, Maybe Text))
+fetchJellyfin j = do
+  api <- jellyfinApi
+  key <- readToken "jky"
+  case (api, key) of
+    ("", _) -> pure (Left "Jellyfin: no address in the album store")
+    (_, Nothing) -> pure (Left "Jellyfin: no key (jky) in tok.json")
+    (_, Just k) -> do
+      -- a big box takes long; the rest of the page does not wait for this
+      mgr <- newTlsManagerWith tlsManagerSettings{managerResponseTimeout = responseTimeoutMicro 120000000}
+      httpGet
+        mgr
+        "Jellyfin"
+        (toString api <> "/Items")
+        [ ("ParentId", Just (encodeUtf8 j))
+        , ("Fields", Just "MediaStreams,Path")
+        , ("EnableImages", Just "false")
+        , ("EnableUserData", Just "false")
+        , ("EnableTotalRecordCount", Just "false")
+        ]
+        [("Authorization", "MediaBrowser Token=\"" <> encodeUtf8 k <> "\"")]
+        <&> \case
+          Left e -> Left e
+          Right (200, b) -> case rightToMaybe (eitherDecode b) >>= jellyfinItems of
+            Nothing -> Left "Jellyfin: unexpected response"
+            Just [] -> Left "Jellyfin: no tracks (the folder may have moved: update from the server)"
+            Just ts -> Right ((groupFileWorks (fst <$> ts), [], Nothing, Nothing), albumQuality (snd <$> ts))
+          Right (401, _) -> Left "Jellyfin: key refused"
+          Right (st, _) -> Left ("Jellyfin: HTTP " <> show st)
+
+-- the tracks in order (disc, number, file), each with its file's quality; anything that is
+-- not a track is dropped. A track without a number is numbered by its place.
+jellyfinItems :: Value -> Maybe [(Track, Maybe Text)]
+jellyfinItems = parseMaybe $ withObject "jellyfin items" $ \o -> do
+  items <- o .:? "Items" .!= []
+  let track = withObject "item" $ \i -> do
+        ty <- i .:? "Type" .!= ("" :: Text)
+        guard (ty == "Audio")
+        name <- i .:? "Name" .!= ""
+        disc <- i .:? "ParentIndexNumber"
+        idx <- i .:? "IndexNumber"
+        ticks <- i .:? "RunTimeTicks"
+        artists <- i .:? "Artists" .!= []
+        path <- i .:? "Path" .!= ("" :: Text)
+        top <- i .:? "MediaStreams"
+        sources <- i .:? "MediaSources" .!= []
+        inner <- case sources of
+          (s : _) -> withObject "source" (\so -> so .:? "MediaStreams" .!= []) s
+          [] -> pure []
+        let streams = fromMaybe inner top :: [Value]
+            q = viaNonEmpty head (mapMaybe (parseMaybe audioQuality) streams)
+            secs = (\t -> (t :: Integer) `div` 10000000) <$> ticks
+        pure ((fromMaybe 1 disc, fromMaybe maxBound (idx :: Maybe Int), path), Track (fromMaybe 1 disc) "" Nothing name (fromInteger <$> secs) artists, q)
+      ts = sortOn (\(k, _, _) -> k) (mapMaybe (parseMaybe track) items)
+      numbered = zipWith (\n ((_, i, _), t, q) -> (t{tkPos = show (if i == maxBound then n else i)}, q)) [1 :: Int ..] ts
+  pure numbered
+ where
+  audioQuality = withObject "stream" $ \s -> do
+    ty <- s .: "Type"
+    guard (ty == ("Audio" :: Text))
+    codec <- s .:? "Codec" .!= ""
+    rate <- s .:? "SampleRate"
+    bits <- s .:? "BitDepth"
+    br <- s .:? "BitRate"
+    ch <- s .:? "Channels"
+    pure (fileQuality codec rate bits br ch)
+
+-- "FLAC 24/96", "ALAC 16/44.1", "DSD64", "MP3 320"
+fileQuality :: Text -> Maybe Int -> Maybe Int -> Maybe Int -> Maybe Int -> Text
+fileQuality codec rate bits br ch
+  | "dsd" `T.isPrefixOf` c = "DSD" <> maybe "" show dsdRate
+  | c `elem` ["mp3", "aac", "vorbis", "opus", "wmav2"] = T.toUpper (if c == "vorbis" then "ogg" else c) <> maybe "" (\b -> " " <> show ((b + 500) `div` 1000)) br
+  | otherwise = name <> maybe "" (" " <>) res
+ where
+  c = T.toLower codec
+  -- the bit rate per channel over 44.1 kHz: 2.8224 Mbit/s = DSD64
+  dsdRate = do
+    b <- br
+    n <- mfilter (> 0) ch <|> Just 2
+    let m = b `div` n `div` 44100
+    pure (if m >= 48 then m else 64)
+  name
+    | "pcm" `T.isPrefixOf` c = "PCM"
+    | c == "wavpack" = "WavPack"
+    | T.null c = "?"
+    | otherwise = T.toUpper c
+  res = do
+    r <- rate
+    let khz = if r `mod` 1000 == 0 then show (r `div` 1000) else show (fromIntegral r / 1000 :: Double)
+    pure (maybe "" (\b -> show b <> "/") (mfilter (> 0) bits) <> khz)
+
+-- the album's: one value, or the different ones in track order
+albumQuality :: [Maybe Text] -> Maybe Text
+albumQuality qs = case ordNub (catMaybes qs) of
+  [] -> Nothing
+  ds -> Just (T.intercalate " · " (take 3 ds) <> if length ds > 3 then " …" else "")
+
 -- 404 is the normal "no review"; any other failure here costs only the review
 tidalReviewOf :: TSession -> Int -> IO (Maybe (Text, Maybe Text))
 tidalReviewOf s n =
@@ -412,19 +531,29 @@ stripLinks s = case T.breakOn "[" s of
 -- "Piano Sonata No. 20 …, D. 959: I. Allegro" -> work and movement, but only where two or
 -- more consecutive tracks share the work, so a lone title with a colon stays whole
 groupWorks :: [Track] -> [Track]
-groupWorks ts = zipWith3 pick (Nothing : ws) ts (drop 1 ws <> [Nothing])
+groupWorks = groupWorksBy workSplit
+
+-- file names and tags use " - " too: "La Primavera - Allegro"
+groupFileWorks :: [Track] -> [Track]
+groupFileWorks = groupWorksBy (\t -> workSplit t <|> workSplitOn " - " t)
+
+groupWorksBy :: (Text -> Maybe (Text, Text)) -> [Track] -> [Track]
+groupWorksBy split ts = zipWith3 pick (Nothing : ws) ts (drop 1 ws <> [Nothing])
  where
-  ws = fmap fst . workSplit . tkTitle <$> ts
-  pick prev t next = case workSplit (tkTitle t) of
+  ws = fmap fst . split . tkTitle <$> ts
+  pick prev t next = case split (tkTitle t) of
     Just (w, rest) | prev == Just w || next == Just w -> t{tkWork = Just w, tkTitle = rest}
     _ -> t
 
 workSplit :: Text -> Maybe (Text, Text)
-workSplit title = case T.breakOn ": " title of
+workSplit = workSplitOn ": "
+
+workSplitOn :: Text -> Text -> Maybe (Text, Text)
+workSplitOn sep title = case T.breakOn sep title of
   (w, rest)
     | not (T.null rest)
     , not (T.null (T.strip w))
-    , m <- T.strip (T.drop 2 rest)
+    , m <- T.strip (T.drop (T.length sep) rest)
     , not (T.null m) ->
         Just (T.strip w, m)
   _ -> Nothing

@@ -49,6 +49,8 @@ import Env (
   envJellyfinReload,
   envUpdate,
   envUpdateAlbum,
+  envGetAlbum,
+  envRefreshAlbum,
   envUpdateMenuParams,
   envUpdateSort,
  )
@@ -56,7 +58,7 @@ import Collection (appendLink, appendMark, appendSkip, appendStream, collectionF
 import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
-import Tracks (AlbumTracks, albumTracks)
+import Tracks (AlbumTracks, Want (..), albumTracks)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
@@ -137,6 +139,11 @@ type API4 =
     :> "albumq"
     :> Capture "aid" AlbumKey
     :> Get '[JSON] AlbumJ
+    -- a Discogs release asked again after its page is drawn: the album if Discogs changed it
+    :<|> "api"
+      :> "albumrefresh"
+      :> Capture "aid" AlbumKey
+      :> Get '[JSON] AlbumJ
 
 type API5 =
   "api"
@@ -489,7 +496,7 @@ clutterServer sd =
     :<|> serveAlbums
     :<|> serveDiscogs
     :<|> serveTidal
-    :<|> serveAlbumq
+    :<|> (serveAlbumq :<|> serveAlbumrefresh)
     :<|> serveAlbumsq
     :<|> serveParamsq
     :<|> serveReq
@@ -616,14 +623,19 @@ clutterServer sd =
     let asj = AlbumsJ{listName = ln, lalbums = la}
     pure asj
 
+  -- the album as clutter holds it, at once (slice 18): Discogs is asked afterwards, by
+  -- the page, through /api/albumrefresh
   serveAlbumq :: AlbumKey -> AppM AlbumJ
   serveAlbumq i = do
     liftIO $ print ("-------serveAlbumq " :: Text, i)
-    ma <- envUpdateAlbum i
+    ma <- envGetAlbum i
     let aj = case ma of
           Just a -> AlbumJ{aid = i, album = Just a}
           _ -> AlbumJ{aid = i, album = Nothing}
     pure aj
+
+  serveAlbumrefresh :: AlbumKey -> AppM AlbumJ
+  serveAlbumrefresh i = AlbumJ i <$> envRefreshAlbum i
 
   serveAlbumxq :: AlbumKey -> AppM AlbumXJ
   serveAlbumxq i = do
@@ -644,7 +656,11 @@ clutterServer sd =
     case M.lookup i am of
       Nothing -> pure AlbumTJ{tjId = i, tjTracks = Nothing, tjError = "not in the collection"}
       Just a -> do
-        r <- liftIO $ albumTracks (isJust mrefresh) (msource == Just "tidal") a
+        let want = case msource of
+              Just "tidal" -> WantTidal
+              Just "files" -> WantFiles
+              _ -> Own
+        r <- liftIO $ albumTracks (isJust mrefresh) want a
         pure $ case r of
           Right t -> AlbumTJ{tjId = i, tjTracks = Just t, tjError = ""}
           Left err -> AlbumTJ{tjId = i, tjTracks = Nothing, tjError = err}

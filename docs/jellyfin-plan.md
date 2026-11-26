@@ -4,6 +4,89 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 18 — the album page without waiting for Discogs (built 2026-11-26)
+
+Live since LATB's restart on 2026-11-26. Measured on the live server after it
+(same four albums as before): `albumq` 0.3–7 ms (was 2.5–3.1 s), `albumxq`
+20–50 ms, `albumtq` 1–2 ms cached, `albumrefresh` 0.30–0.35 s for a Discogs
+release, 0.3 ms for others.
+
+LATB: the page is slow to open, and `albumq` still treats Discogs as the main
+source. Measured on the live server (8080) before: `albumq` 2.5–3.1 s for
+**every** album — Discogs release, Tidal album, file album alike; `albumxq`
+0.06 s; `albumtq` 0 s (cached) to 2.3 s (Jellyfin) or more (Discogs, Tidal +
+Wikipedia). The cause was `Env.envUpdateAlbum`, called by `albumq` for each
+open: for a Discogs release a fetch from Discogs, and for every album the
+whole library's tags recomputed (`withPlays`) and Discogs' folders and lists
+read again (several Discogs calls) — before anything was drawn.
+
+- `albumq` → `Env.envGetAlbum`: the album as clutter holds it. Only a Discogs
+  release clutter does not hold is still fetched (as before).
+- `GET /api/albumrefresh/:id` → `Env.envRefreshAlbum`: for a Discogs release,
+  ask Discogs once; compare what Discogs gives (`discogsView`: title, artist,
+  released, cover, added, folder, format, location, rating, plays, and the tags
+  clutter does not attach itself); if it differs, take it in with the old full
+  update (`envPutAlbum`, the former body of `envUpdateAlbum`: map, all tags,
+  folders and lists) and answer the album; else answer none. The server log
+  says `albumrefresh <id>: unchanged | changed on Discogs, updating | Discogs
+  did not answer`.
+- Page: draws on `albumq`; then tracks (`albumtq`, forked) and details
+  (`albumxq`) at the same time; then, for a Discogs release, `albumrefresh`,
+  and only a changed album is put on the page again.
+- `tidalauth`: without a terminal (run by the server on a Tidal 401) a failed
+  refresh exits at once instead of starting a device login that waits ~5 min;
+  `--login` or a terminal still log in. `update-json` from a terminal is
+  unchanged; "Update from Tidal" from the menu goes on with the old token.
+- Tested on a test server (8085) with LATB's tok.json linked in (Discogs reads
+  only): `albumq` 0.4–8 ms for Discogs, Tidal and file albums (was 2.5–3.1 s);
+  `albumrefresh` 0.3 s and "unchanged" for three real releases (so the
+  comparison has no false alarm there); with one release's title altered in a
+  private copy of the cache: "changed", taken in (3.5 s, after the page is
+  drawn), tags and plays kept, the next check "unchanged"; a release clutter
+  does not hold: none. `tidalauth < /dev/null` with no session: exit 1 in
+  0.2 s; live numbers above. **Not tested:** the page in a browser by Claude
+  (LATB uses it).
+- Not done (later, if wanted): Discogs list memberships are no longer re-read
+  on a page open — ⋯ › Update does it; filling the tracks cache ahead of time
+  for file albums.
+
+## Slice 17 — tracks for file albums (built 2026-11-26)
+
+Live since LATB's restart on 2026-11-26; LATB tried it (one finding: Node
+cover art over 600 KB, `backlog.md` › Playback).
+
+- Measured on umini (curl): Jellyfin lists an album's tracks at ~50 ms a
+  track — 8 tracks 0.7 s, 20 tracks 1 s, the 296-track Dylan box 16 s; asking
+  for `People` (composers, performers) triples that (box 47 s), `Recursive`
+  and sorting add ~1 s. So: the album item's children, `Fields=MediaStreams,
+  Path`, no People, sorted by clutter. `umini.local` resolves fast now
+  (0.01–0.13 s).
+- `Tracks.hs`: source `FromJellyfin` — a file album (J key) always; a release
+  or Tidal album with files when asked (`/api/albumtq/:id?source=files`,
+  cached as `<key>-files.json`; `Want = Own | WantTidal | WantFiles`).
+  Address: the store's `api` (`Jellyfin.jellyfinApi`), key `jky` from
+  `tok.json`; timeout 120 s. Disc = ParentIndexNumber, else 1; position =
+  IndexNumber, else the place; order disc, number, path. "Work - movement"
+  file titles are grouped like Tidal's "Work: movement" (only where
+  neighbouring tracks share the work). No credits. Review: the linked Tidal
+  album's, else the Wikipedia lead, as for the others. An empty answer says
+  "the folder may have moved: update from the server".
+- Quality (`atQuality`): from the first audio stream of each track —
+  "FLAC 16/44.1", "ALAC 24/96", "DSD64" (bit rate per channel over 44.1 kHz),
+  "MP3 320"; the album's is the one value, or up to three different ones.
+  Shown in the Tracks header ("from files · FLAC 16/44.1 · date") and as
+  Quality in the facts of a file album.
+- Page: the tracks choice is a set of buttons for the other sources — "Discogs
+  release" / "Own tracks", "Tidal version", "Files" (`tracksSrc`, replaces
+  `tracksTidal`).
+- Tested: the parser in `cabal repl` against five saved Jellyfin answers
+  (untagged-looking Classical, DSD, the 296-track box, ALAC pop, a two-disc
+  quartet set; saved in the scratch copy `tfix/`); the endpoint on a test
+  server (8085) against a stand-in for Jellyfin serving them: file albums,
+  Files of a linked release (own cache file), a second open from the cache
+  (1 ms), refresh. **Not tested:** the page in a browser; the real Jellyfin
+  from the server (first real click is LATB's).
+
 ## Slice 16 — moved folders keep their links (built 2026-11-26)
 
 Uncommitted, no frontend change. **Script live at once; server after a restart.**

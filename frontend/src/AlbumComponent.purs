@@ -86,7 +86,7 @@ handleAction = case _ of
   MakeRequest event -> do
     H.liftEffect $ Event.preventDefault event
     pushView
-    H.modify_ _ { listName = AlbumList Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true }
+    H.modify_ _ { listName = AlbumList Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksSrc = "", loading = true }
     albumID <- H.gets _.albumID
     now <- H.liftAff getNow
     api <- H.gets _.apiUrl
@@ -104,8 +104,8 @@ handleAction = case _ of
 
   ToggleAbout -> H.modify_ \st -> st { aboutOpen = not st.aboutOpen }
   RefreshTracks -> loadTracks true
-  TracksSource tidal -> do
-    H.modify_ _ { tracksTidal = tidal }
+  TracksSource src -> do
+    H.modify_ _ { tracksSrc = src }
     loadTracks false
 
   TogglePop p -> H.modify_ \st -> st { menuOpen = if st.menuOpen == Just p then Nothing else Just p }
@@ -165,7 +165,7 @@ handleAction = case _ of
     H.modify_ _ { listName = alist, loading = true, menu { ln = "All", ffs = [ Tuple tag true ] } }
     updateAlbumList
   AlbumPlayed aid -> do
-    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksSrc = "", loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -217,7 +217,7 @@ handleAction = case _ of
     H.modify_ _ { nodeMsg = Just msg }
   UpdateDiscogs -> do
     H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "", review = Nothing }
-    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
+    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksSrc = "", loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
     api <- H.gets _.apiUrl
@@ -450,7 +450,7 @@ handleAction = case _ of
 
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
     showAlbum aid = do
-      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
+      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksSrc = "", loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
       now <- H.liftAff getNow
       H.liftAff $ Console.logShow now
       api <- H.gets _.apiUrl
@@ -464,18 +464,31 @@ handleAction = case _ of
       loadDetail am
 
     -- the album page's details, once the album itself is there; an older backend
-    -- without /api/albumxq just leaves them out
+    -- without /api/albumxq just leaves them out. Tracks are asked for at the same time
+    -- (they may take seconds: fetched from Tidal, Discogs or Jellyfin the first time), and
+    -- a Discogs release is checked with Discogs last (slice 18).
     loadDetail :: forall output' m'. MonadAff m' => Maybe Album -> H.HalogenM State Action () output' m' Unit
     loadDetail am = case am of
       Nothing -> pure unit
       Just a -> do
+        _ <- H.fork (loadTracks false)
         api <- H.gets _.apiUrl
         r <- H.liftAff $ getUrl (api <> "albumxq/" <> a.albumID)
         cur <- H.gets _.album
         case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumXJ, cur of
           Right x, Just c | x.xid == c.albumID -> H.modify_ _ { albumX = Just x }
           _, _ -> pure unit
-        loadTracks false
+        when (S.take 1 a.albumID == "D") (refreshFromDiscogs a.albumID)
+
+    -- has Discogs changed the release since clutter read it? Then show it as it is now
+    refreshFromDiscogs :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
+    refreshFromDiscogs aid = do
+      api <- H.gets _.apiUrl
+      r <- H.liftAff $ getUrl (api <> "albumrefresh/" <> aid)
+      cur <- H.gets _.album
+      case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ, cur of
+        Right { aid: _, album: a' }, Just c | a'.albumID == c.albumID -> H.modify_ _ { album = Just a' }
+        _, _ -> pure unit
 
     -- tracks, credits and review: from the backend's per-album cache, or fetched by it
     -- (refresh: fetched again)
@@ -487,8 +500,8 @@ handleAction = case _ of
         Just a -> do
           H.modify_ _ { tracksLoading = true }
           api <- H.gets _.apiUrl
-          tidal <- H.gets _.tracksTidal
-          let qs = (if refresh then [ "refresh=1" ] else []) <> (if tidal then [ "source=tidal" ] else [])
+          src <- H.gets _.tracksSrc
+          let qs = (if refresh then [ "refresh=1" ] else []) <> (if src /= "" then [ "source=" <> src ] else [])
           r <- H.liftAff $ getUrl (api <> "albumtq/" <> a.albumID <> (if qs == [] then "" else "?" <> joinWith "&" qs))
           cur <- H.gets _.album
           case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumTJ, cur of

@@ -357,7 +357,9 @@ render state =
         , case facts >>= _.afQuality of
             Just q -> row (if isDiscogs then "Tidal" else "Quality")
                           [ HH.text (q <> if maybe false _.afExplicit facts then " · explicit" else "") ]
-            Nothing -> []
+            -- a file album: its files' format, once the tracks are there
+            Nothing | S.take 1 a.albumID == "J", Just q <- tracks >>= _.atQuality -> row "Quality" [ HH.text q ]
+                    | otherwise -> []
         , case facts >>= _.afLabel of
             Just l -> row "Label" [ HH.text l ]
             Nothing -> []
@@ -611,17 +613,15 @@ render state =
           [ HH.div [ cls "av-sect-head" ] $
               [ HH.h2_ [ HH.text "Tracks" ] ]
               <> (case tracks of
-                    Just t -> [ HH.span_ [ HH.text ("from " <> t.atSource <> " · " <> S.take 10 t.atFetched) ] ]
+                    Just t -> [ HH.span_ [ HH.text ("from " <> t.atSource <> maybe "" (" · " <> _) t.atQuality <> " · " <> S.take 10 t.atFetched) ] ]
                     Nothing -> [])
-              -- a physical release shows its own tracks; its Tidal version on request
-              <> (case a.albumTidal of
-                    Just t | isDiscogs && t /= "" ->
-                      [ HH.button [ cls "av-tag", HE.onClick \_ -> TracksSource (not state.tracksTidal)
-                                  , HP.disabled state.tracksLoading
-                                  , HP.title (if state.tracksTidal then "Show the tracks of the Discogs release"
-                                                                   else "Show the tracks of the Tidal version") ]
-                                  [ HH.text (if state.tracksTidal then "Discogs release" else "Tidal version") ] ]
-                    _ -> [])
+              -- an album shows its own tracks; its Tidal version's (a physical release) or its
+              -- files' on request: a button for each of the others
+              <> map srcButton
+                   ( (if state.tracksSrc /= "" then [ Tuple "" (if isDiscogs then "Discogs release" else "Own tracks") ] else [])
+                     <> (if state.tracksSrc /= "tidal" && isDiscogs && maybe false (_ /= "") a.albumTidal then [ Tuple "tidal" "Tidal version" ] else [])
+                     <> (if state.tracksSrc /= "files" && not isFile && maybe false (_ /= "") a.albumJellyfin then [ Tuple "files" "Files" ] else [])
+                   )
               <> [ HH.button [ cls "av-tag", HE.onClick \_ -> RefreshTracks, HP.disabled state.tracksLoading
                              , HP.title "Fetch tracks, credits and review again" ] [ HH.text "↻" ] ]
           ] <> case tracks of
@@ -629,6 +629,11 @@ render state =
                  Nothing | state.tracksLoading -> [ HH.p [ cls "av-note" ] [ HH.text "Loading tracks…" ] ]
                          | otherwise -> [ HH.p [ cls "av-note" ] [ HH.text (maybe "No tracks." (\t -> "No tracks: " <> t.tjError) tj) ] ]
       ]
+    isFile = S.take 1 a.albumID == "J"
+    srcButton (Tuple src label) =
+      HH.button [ cls "av-tag", HE.onClick \_ -> TracksSource src, HP.disabled state.tracksLoading
+                , HP.title ("Show the tracks of the " <> (if src == "" then "album itself" else if src == "files" then "files on the server" else "Tidal version")) ]
+                [ HH.text label ]
     trackRows :: Array Track -> Array (H.ComponentHTML Action () m)
     trackRows ts =
       let discs = nub (map _.tkDisc ts)

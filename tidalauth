@@ -7,8 +7,11 @@
 # mode 600), so only the first run -- or a revoked session -- needs the browser link.
 # Run from the clutter directory before starting the server.
 #
-#   ./tidalauth          refresh if possible, otherwise log in
+#   ./tidalauth          refresh if possible, otherwise log in (only in a terminal)
 #   ./tidalauth --login  force a new device login
+#
+# Without a terminal (the clutter server runs it on a Tidal 401) a failed refresh ends
+# at once with exit 1: a device login waits minutes for a browser nobody is looking at.
 #
 import base64
 import json
@@ -79,6 +82,8 @@ def main() -> None:
         with open(SESSION) as f:
             t = refresh(json.load(f)["refresh_token"])
     if t is None:
+        if "--login" not in sys.argv and not sys.stdin.isatty():
+            sys.exit("tidalauth: no Tidal session to refresh; run ./tidalauth --login in a terminal")
         t = device_login()
     save_session(t)
 

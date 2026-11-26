@@ -17,9 +17,11 @@ module Jellyfin (
   jellyfinAlbums,
   jellyfinSecs,
   jellyfinPaths,
+  jellyfinApi,
 ) where
 
-import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.!=), (.:?))
+import Data.Aeson (FromJSON (..), Value, eitherDecode, withObject, (.!=), (.:?))
+import Data.Aeson.Types (parseMaybe)
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Relude
@@ -129,6 +131,19 @@ jellyfinAlbums (JellyfinStore web as) = uncurry toAlbum <$> M.toList as
           ]
       , albumFiles = []
       }
+
+-- Jellyfin as the server reaches its API: the store's "api" (what the update script used),
+-- no trailing slash; "" if there is none
+jellyfinApi :: IO Text
+jellyfinApi = do
+  fn <- storePath
+  ok <- doesFileExist fn
+  if not ok
+    then pure ""
+    else
+      readFileLBS fn <&> \bs -> case eitherDecode bs :: Either String Value of
+        Right v | Just a <- parseMaybe (withObject "store" (.:? "api")) v -> T.dropWhileEnd (== '/') (fromMaybe "" a)
+        _ -> ""
 
 -- The folder of every file album as Jellyfin sees it (item id -> "/media/music/…"), for
 -- finding the same folder on a player that has the share (App: playing files on the Node).

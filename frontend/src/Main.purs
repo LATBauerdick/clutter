@@ -85,7 +85,7 @@ initialState = do -- should eventually be saved in preferences
         , albumX: Nothing
         , albumT: Nothing
         , tracksLoading: false
-        , tracksTidal: false
+        , tracksSrc: ""
         , aboutOpen: false
         , aboutLong: false
         , loading: false

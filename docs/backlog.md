@@ -75,6 +75,15 @@ What is actually next lives in the project hub (`~/Notes/Claude/ws/clutter.md`
   a small common interface (play album, pause, stop, next, volume, now
   playing, "open its app"). TBD. The Tidal app player and the open-app button
   above are two more cases for the same interface.
+- 2026-11-26 · **Cover art for the Node must stay below 600 KB** (LATB, after
+  trying slice 17): the Node does not show larger artwork of files it plays.
+  At some point: scan all artwork on umini (embedded and `folder.jpg` /
+  `cover.*` in the album folders), list what is over 600 KB, and compress it
+  (resize to e.g. 1000–1400 px, JPEG quality ~85) — on copies first, as the
+  files are the archive; then re-index the Node. Not only folder images:
+  LATB saw it on Argerich II (Great Pianists of the 20th Century), whose art
+  is embedded in the FLAC files — so embedded pictures need the same check
+  (`metaflac --export-picture-to`, re-embed a smaller one).
 
 ## Jellyfin
 
@@ -98,8 +107,8 @@ In the order proposed to LATB; the first is the recommendation.
   off for the selection; "All n shown" selects what focus and search leave.
   To check in a browser. Ideas: shift-click for a range; the keep state as a
   badge on the covers.
-- **Tracks for file albums** from Jellyfin's API (the page says "no source
-  for tracks"); needs the key at request time, as Tidal's token is read.
+- ~~**Tracks for file albums**~~ Built 2026-11-26 (`docs/jellyfin-plan.md` ›
+  Slice 17). Later: fill the tracks cache ahead of time (~50 ms a track).
 - **Classical and Music Johannes** as Jellyfin libraries (LATB adds them),
   then `scripts/update-jellyfin-albums.py`, an entry each in
   `~/Sync/clutter/storage-map.json` if wanted, and the inventory again. Also a

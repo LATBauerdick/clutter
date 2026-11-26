@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
 -- {-# LANGUAGE OverloadedStrings #-}
 -- {-# LANGUAGE NoImplicitPrelude #-}
@@ -7,6 +8,8 @@ module Env (
   envUpdate,
   envInit,
   envUpdateAlbum,
+  envGetAlbum,
+  envRefreshAlbum,
   envTidalConnect,
   envTidalReload,
   envJellyfinReload,
@@ -59,6 +62,7 @@ import Provider (
 
 import Wikidata (attachWiki, readWikiStore)
 import Details (attachLength, factsFor, readDetailStore)
+import qualified Data.Text as TX
 import Collection (Moves, attachCollection, attachLinks, collectionFile, followMove, readCollection, sameKind, standInFolderTags)
 import Jellyfin (JellyfinStore (..), jellyfinAlbums, readJellyfinStore)
 import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
@@ -575,12 +579,62 @@ getDiscogsList ln = do
       pure aids
     else pure aids'
 
+-- The album page's album, at once: as clutter holds it (slice 18 — no Discogs call, no
+-- recomputation). Only a Discogs release clutter does not hold yet is fetched.
+envGetAlbum :: AlbumKey -> AppM (Maybe Album)
+envGetAlbum aid =
+  (M.lookup aid <$> (asks albumsR >>= readIORef)) >>= \case
+    Just a -> pure (Just a)
+    Nothing -> case aid of
+      D _ -> envUpdateAlbum aid
+      _ -> pure Nothing
+
+-- After the page is drawn: ask Discogs whether a release has changed (rating, folder,
+-- notes, title …). Just the album as it is now if it has -- taken in with envUpdateAlbum's
+-- full update --, Nothing if not, or if it is no Discogs release or Discogs cannot be asked.
+envRefreshAlbum :: AlbumKey -> AppM (Maybe Album)
+envRefreshAlbum aid = do
+  dc <- asks discogsR >>= readIORef
+  held <- M.lookup aid <$> (asks albumsR >>= readIORef)
+  case (aid, dc) of
+    (D i, DiscogsSession _ _) ->
+      readAlbum i >>= \case
+        Just fresh | maybe True (\h -> discogsView h /= discogsView fresh) held -> do
+          liftIO $ hPutStrLn stderr ("albumrefresh " <> show i <> ": changed on Discogs, updating")
+          envPutAlbum fresh
+          M.lookup aid <$> (asks albumsR >>= readIORef)
+        Just _ -> liftIO (hPutStrLn stderr ("albumrefresh " <> show i <> ": unchanged")) $> Nothing
+        Nothing -> liftIO (hPutStrLn stderr ("albumrefresh " <> show i <> ": Discogs did not answer")) $> Nothing
+    _ -> pure Nothing
+
+-- what a Discogs release brings with it, without what clutter attaches (plays, links,
+-- collection, lengths, …: tags with those prefixes, and the other fields)
+discogsView :: Album -> (Text, Text, Text, Text, Text, Int, Text, Maybe Int, Maybe Text, Int, Int, [Text])
+discogsView a =
+  ( albumTitle a
+  , albumArtist a
+  , albumReleased a
+  , albumCover a
+  , albumAdded a
+  , albumFolder a
+  , albumFormat a
+  , albumLocIdx a
+  , albumLocation a
+  , albumRating a
+  , albumPlays a
+  , sort (filter own (albumTags a))
+  )
+ where
+  own t = not (any (`TX.isPrefixOf` t) ["played.", "collection.", "keep.", "length.", "provider.", "storage.", "tidal."])
+
+-- A Discogs release, fetched again from Discogs, taken in: the album map, all tags, the
+-- Discogs folders and lists (several Discogs calls). Used for a release clutter does not
+-- hold, when Discogs has changed one, and by the old server-rendered pages.
 envUpdateAlbum :: AlbumKey -> AppM (Maybe Album)
 envUpdateAlbum aid = do
   env <- ask
   dc <- readIORef (discogsR env)
   am' <- readIORef (albumsR env)
-  ls <- readIORef (listsR env)
   -- check if this release id is already known / in the Map
   let ma' :: Maybe Album
       ma' = M.lookup aid am'
@@ -589,36 +643,7 @@ envUpdateAlbum aid = do
     (D i, DiscogsSession _ _) -> readAlbum i
     (D _, _) -> pure Nothing -- we only have the caching files
     _ -> pure ma'
-  _ <- case ma of
-    Just a -> do
-      -- insert updated album and put in album map
-      am <- withPlays $ M.insert aid a am'
-      liftIO $ writeIORef (albumsR env) am
-      -- insert aid into its folder
-      -- let folder = albumFolder a
-      -- update folder "lists" and invalidate lists
-      -- also update Tidal and AMusic "special" list
-      liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
-      liftIO $ writeIORef (listsR env) (updateAMusicFolderAids am ls)
-
-      -- update the tags map with tags from this album
-      tm <- readIORef (tagsR env)
-      _ <- writeIORef (tagsR env) (updateTags (fromMaybe a (M.lookup aid am)) tm)
-
-      -- update lists and folders
-      newFolders <- readFolders
-      -- reread Discogs lists info
-      lm <- liftIO $ readDiscogsLists dc
-      -- reread folder album ids
-      let fm :: Map Text (Int, Vector AlbumKey)
-          fm = readFolderAids newFolders am
-      let allLists = lm <> fm
-      -- _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) allLists
-
-      _ <- writeIORef (listsR env) allLists
-      _ <- writeIORef (listNamesR env) $ M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList allLists
-      pure ()
-    Nothing -> pure ()
+  whenJust ma envPutAlbum
   -- the stored album, which carries its play dates
   ma'' <- case ma of
     Just a -> Just . fromMaybe a . M.lookup aid <$> readIORef (albumsR env)
@@ -626,6 +651,40 @@ envUpdateAlbum aid = do
   putTextLn "----------------envUpdateAlbum-----------------------------"
   print ma''
   pure ma''
+
+envPutAlbum :: Album -> AppM ()
+envPutAlbum a = do
+  env <- ask
+  dc <- readIORef (discogsR env)
+  am' <- readIORef (albumsR env)
+  ls <- readIORef (listsR env)
+  let aid = albumID a
+  -- insert updated album and put in album map
+  am <- withPlays $ M.insert aid a am'
+  liftIO $ writeIORef (albumsR env) am
+  -- insert aid into its folder
+  -- let folder = albumFolder a
+  -- update folder "lists" and invalidate lists
+  -- also update Tidal and AMusic "special" list
+  liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
+  liftIO $ writeIORef (listsR env) (updateAMusicFolderAids am ls)
+
+  -- update the tags map with tags from this album
+  tm <- readIORef (tagsR env)
+  _ <- writeIORef (tagsR env) (updateTags (fromMaybe a (M.lookup aid am)) tm)
+
+  -- update lists and folders
+  newFolders <- readFolders
+  -- reread Discogs lists info
+  lm <- liftIO $ readDiscogsLists dc
+  -- reread folder album ids
+  let fm :: Map Text (Int, Vector AlbumKey)
+      fm = readFolderAids newFolders am
+  let allLists = lm <> fm
+  -- _ <- M.traverseWithKey (\n (i, vi) -> putTextLn $ show n <> "--" <> show i <> ": " <> show (length vi)) allLists
+
+  _ <- writeIORef (listsR env) allLists
+  writeIORef (listNamesR env) $ M.fromList . map (\(ln, (lid, _)) -> (ln, lid)) $ M.toList allLists
 
 envGetTag :: Text -> AppM [AlbumKey]
 envGetTag t = do

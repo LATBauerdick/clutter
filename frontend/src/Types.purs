@@ -176,6 +176,7 @@ type AlbumTracks = { atSource :: String -- tidal | discogs
                    , atReviewSource :: Maybe String -- "TiVo" (via Tidal) or "Wikipedia"
                    , atReviewUrl :: Maybe String -- the Wikipedia article
                    , atReviewAbout :: Maybe String -- the artist the text is about; Nothing: the album
+                   , atQuality :: Maybe String -- the files' format, "FLAC 24/96"; from Jellyfin only
                    }
 type AlbumTJ =    { tjId :: String
                   , tjTracks :: Maybe AlbumTracks
@@ -217,7 +218,7 @@ type State =      { apiUrl :: String
                   , albumX :: Maybe AlbumXJ -- details of that album, loaded after it
                   , albumT :: Maybe AlbumTJ -- its tracks, credits and review, loaded last (may take a moment)
                   , tracksLoading :: Boolean
-                  , tracksTidal :: Boolean -- a Discogs release: show its Tidal version's tracks; off again with each album
+                  , tracksSrc :: String -- whose tracks the album page shows: "" its own, "tidal" its Tidal version's (a Discogs release), "files" its files'; back to "" with each album
                   , aboutLong :: Boolean -- the review is longer than the lines shown, so "more" is offered
                   , aboutOpen :: Boolean -- the review is shown in full; folded again with each album
                   , listName :: AlbumList
@@ -296,7 +297,7 @@ data Action = ToggleSortOrder
             | UpdateServer -- take in what Jellyfin has now (new and gone file albums), then show the server list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
             | ToggleAbout -- the review: all of it, or its first lines
-            | TracksSource Boolean -- a Discogs release: its own tracks (false) or the Tidal version's (true)
+            | TracksSource String -- "" the album's own tracks, "tidal" its Tidal version's, "files" its files' (see tracksSrc)
             | RefreshTracks -- fetch the tracks, credits and review of the album again
             | TogglePop String -- open or close a menu: focus | sort | more
             | ClosePops -- a click beside the menus: close them and the drawer
