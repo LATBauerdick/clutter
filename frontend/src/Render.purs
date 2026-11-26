@@ -255,36 +255,57 @@ render state =
     -- a Discogs release that is not a download or a stream
     isPhysical = isDiscogs && a.albumFormat /= "Streaming" && not (S.contains (Pattern "File") a.albumFormat)
 
-    -- ▶ <player>: the Tidal version on the Bluesound Node (BluOS API, via the backend),
-    -- with the backend's four modes; then Album Played
+    -- ▶ <player>: the album on the Bluesound Node (BluOS API, via the backend), with the
+    -- backend's four modes; then Album Played. One button: it plays the Tidal version, or
+    -- the album's files from the player's own library (the shares it has indexed). Where an
+    -- album has both, a small chooser beside it says which; the choice stays while browsing.
     actionsView =
       HH.div [ cls "av-actions" ] $
-        ( case a.albumTidal of
-            -- its Tidal album is off Tidal: nothing to play, but maybe another edition is there
-            Just t | t /= "" && isGone ->
+        -- its Tidal album is off Tidal: say so; the files, if any, still play
+        ( if hasTidal && isGone
+            then
               [ HH.span [ cls "av-gone" ]
                   [ HH.text ("No longer on Tidal" <> maybe "" (\d -> " (noticed " <> S.take 10 d <> ")") (facts >>= _.afGone) <> " · ")
                   , HH.a [ HP.href ("https://listen.tidal.com/search?q=" <> enc (artistNames <> " " <> a.albumTitle)), HP.target "_blank" ]
                          [ HH.text "look for another edition" ]
                   ]
               ]
-            Just t | t /= "" ->
-              [ HH.span [ cls "av-play" ]
-                [ HH.button [ cls "av-btn av-primary", HE.onClick \_ -> NodePlay t "replace"
-                            , HP.title ("Play the Tidal album on " <> state.nodeName <> ", replacing its queue") ]
-                            [ HH.text ("▶ " <> state.nodeName) ]
-                , modeBtn t "now" "Play it now, after that go on with the queue"
-                , modeBtn t "next" "Queue it after the current album"
-                , modeBtn t "last" "Add it to the end of the queue"
-                ]
-              ]
-            _ -> [] )
+            else [] )
+        <> ( if not (tidalPlays || hasFiles) then [] else
+               [ HH.span [ cls "av-play" ] $
+                   [ HH.button [ cls "av-btn av-primary", HE.onClick \_ -> play "replace"
+                               , HP.title ("Play " <> what <> " on " <> state.nodeName <> ", replacing its queue") ]
+                               [ HH.text ("▶ " <> state.nodeName) ]
+                   , modeBtn "now" "Play it now, after that go on with the queue"
+                   , modeBtn "next" "Queue it after the current album"
+                   , modeBtn "last" "Add it to the end of the queue"
+                   ]
+                   <> ( if tidalPlays && hasFiles
+                          then [ HH.select [ cls "av-source", HE.onValueChange \v -> SetPlayFiles (v == "files")
+                                           , HP.title "What ▶ plays: the Tidal version, or the files from the player's own library" ]
+                                   [ HH.option [ HP.value "tidal", HP.selected (not useFiles) ] [ HH.text "Tidal" ]
+                                   , HH.option [ HP.value "files", HP.selected useFiles ] [ HH.text "Files" ]
+                                   ] ]
+                          else if hasFiles then [ HH.small [ cls "av-source-one" ] [ HH.text "files" ] ]
+                          else [] )
+               ] )
         <> [ HH.button [ cls "av-btn", HE.onClick \_ -> AlbumPlayed a.albumID ] [ HH.text "✓ Album Played" ] ]
         <> case state.nodeMsg of
              Just m -> [ HH.span [ cls "av-msg" ] [ HH.text m ] ]
              Nothing -> []
-    modeBtn t mode tip =
-      HH.button [ cls "av-btn av-primary av-mode", HE.onClick \_ -> NodePlay t mode, HP.title tip ] [ HH.text mode ]
+    tidalId = fromMaybe "" a.albumTidal
+    hasTidal = tidalId /= ""
+    tidalPlays = hasTidal && not isGone
+    -- a file album, or an album with file versions
+    hasFiles = S.take 1 a.albumID == "J" || (case a.albumJellyfin of
+      Just j -> j /= ""
+      Nothing -> false)
+    -- the files where they are all there is, else what the chooser says
+    useFiles = hasFiles && (not tidalPlays || state.playFiles)
+    what = if useFiles then "the files, from the player's own library," else "the Tidal album"
+    play mode = if useFiles then NodePlayFiles a.albumID mode else NodePlay tidalId mode
+    modeBtn mode tip =
+      HH.button [ cls "av-btn av-primary av-mode", HE.onClick \_ -> play mode, HP.title tip ] [ HH.text mode ]
 
     -- genres as chips; a click shows that genre from all albums
     genres = mapMaybe (S.stripPrefix (Pattern "genre.")) a.albumTags

@@ -1055,6 +1055,10 @@ body { margin: 0; }
 .rv-row .av-file small { color: #6b6b70; }
 .pill.rv-skip { color: #6b6b70; }
 
+/* the album page's ▶: Tidal or the files */
+.av-source { margin-left: 8px; border: 1px solid #dcd8d0; border-radius: 6px; background: white; padding: 3px 6px; font-family: inherit; font-size: 12.5px; color: #1d1d1f; }
+.av-source-one { margin-left: 8px; color: #6b6b70; }
+
 /* bulk Keep: a list in select mode */
 .selbar { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: #eef0fc; }
 .sel-n { font-size: 12.5px; font-weight: 600; color: #2a3fb0; min-width: 86px; }

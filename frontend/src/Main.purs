@@ -68,6 +68,7 @@ initialState = do -- should eventually be saved in preferences
         , albumList : ls
         , menuOpen: Nothing
         , review: Nothing
+        , playFiles: false
         , selecting: false
         , selected: Set.empty
         , notice: Nothing

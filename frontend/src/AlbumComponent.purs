@@ -187,6 +187,15 @@ handleAction = case _ of
                 Left _ -> r
     H.liftAff $ Console.log msg
     H.modify_ _ { nodeMsg = Just msg }
+  SetPlayFiles b -> H.modify_ _ { playFiles = b, nodeMsg = Nothing }
+  NodePlayFiles aid mode -> do
+    H.modify_ _ { nodeMsg = Just "Node: starting…" }
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "nodeplayfiles/" <> aid <> "?mode=" <> mode)
+    let msg = case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String } of
+                Right { reqInfo: i } -> i
+                Left _ -> r
+    H.modify_ _ { nodeMsg = Just msg }
   LoadNodeName -> do
     -- on start: also listen for the browser's Back and Forward
     { emitter, listener } <- H.liftEffect HS.create

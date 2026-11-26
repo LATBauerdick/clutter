@@ -4,6 +4,41 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 12 — playing files on the Node (built 2026-11-25, night)
+
+Uncommitted; bundle installed. **Live after a restart.**
+
+- LATB: Roon is out (subscription to be cancelled). Route chosen: the **Node's
+  own library** — a network share of umini indexed by the player (BluOS app ›
+  Settings › Music Library). UPnP: the Node is not a renderer (from memory, not
+  verified); AirPlay only from a Jellyfin client, CD quality.
+- Trial share: `\\umini\media\music\Music\_Classical\_Piano` → the Node indexed
+  8,853 songs (ALAC, MP3, FLAC, AAC; all 16/44.1 or 16/48); all 348 Jellyfin
+  albums under `_Piano` have their files there and the Jellyfin title equals
+  the Node's album tag (9 folders hold several album tags).
+- The player knows a local album by **album and artist tag**, not by an id:
+  `/Add?service=LocalMusic&album=…&artist=…` + the same mode parameters as
+  Tidal. Test play by hand worked (Barenboim, Liszt–Wagner; queue of 6, ALAC
+  16/44.1). An album it does not have: `<error>Nothing here can be played`.
+- `GET /api/nodeplayfiles/:id?mode=replace|now|next|last[&version=J…]`: a file
+  album, or an album with file versions (the first, or the one named); sends
+  the file album's title and artist (`bluosAddLocal`). Album page: **▶ <node>
+  · files** with now / next / last, next to the Tidal ▶ where both exist.
+- Tested on 8084: refusals (no files, unknown, wrong version) and the
+  unreachable-player answer. **The call from clutter to the Node is not
+  tested** — a server started from Claude's shell has no LAN access; first
+  real click is LATB's, after the restart.
+- Known limits of matching by text: two albums with the same title and artist
+  (367 such pairs in Jellyfin: MP3 next to FLAC, `_1001` copies) are one album
+  to the Node and would be queued together; album artist vs the Node's artist
+  tag may differ outside this folder. Exact alternative if it bites: play by
+  file (`/Add?service=LocalMusic&file=<fn>` per song, `fn` from
+  `/library/v1/Songs?…&start=&end=`, paged — unpaged is empty), matching the
+  Node's folders to Jellyfin's paths.
+- Open: DSD and hi-res on the Node (none in `_Piano`); the whole library's
+  size; a read-only Samba user for the Node; whether a ▶ on the Node should
+  log a play (today it does not, as for Tidal).
+
 ## Slice 11 — bulk Keep in a list (built 2026-11-25, late)
 
 Uncommitted (with slice 10); bundle installed. **Live after a restart.**

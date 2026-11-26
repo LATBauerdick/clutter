@@ -14,7 +14,9 @@ module App (
 )
 where
 
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
+import Numeric (showHex)
 import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 
 import Control.Exception (try)
@@ -323,6 +325,17 @@ type API22 =
     :> ReqBody '[JSON] [AlbumKey]
     :> Post '[JSON] ReqJ
 
+-- play an album's files on the Bluesound Node, from the player's own library (the shares
+-- it has indexed): /api/nodeplayfiles/:id?mode=replace|now|next|last[&version=J…]. The id
+-- is a file album, or an album that has file versions (the first, or the one named).
+type API23 =
+  "api"
+    :> "nodeplayfiles"
+    :> Capture "aid" AlbumKey
+    :> QueryParam "mode" Text
+    :> QueryParam "version" AlbumKey
+    :> Get '[JSON] ReqJ
+
 data ReviewJ = ReviewJ
   { rvRows :: [ReviewRow]
   , rvDone :: Int -- the inventory's unsure rows already decided (linked, unlinked or skipped)
@@ -411,6 +424,7 @@ type ClutterAPI =
     :<|> API20
     :<|> API21
     :<|> API22
+    :<|> API23
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -489,6 +503,7 @@ clutterServer sd =
     :<|> serveReviewq
     :<|> serveAlbumskip
     :<|> serveAlbumskeep
+    :<|> serveNodeplayfiles
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -1006,6 +1021,29 @@ clutterServer sd =
     liftIO $ hPutStrLn stderr ("nodeplay " <> show tid <> ": " <> toString info)
     pure ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
 
+  -- the files of an album on the Node: the file album's own title and artist are what the
+  -- player has read from the same tags
+  serveNodeplayfiles :: AlbumKey -> Maybe Text -> Maybe AlbumKey -> AppM ReqJ
+  serveNodeplayfiles i mm mversion = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        answer ok info = ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+    am <- asks albumsR >>= readIORef
+    let files = case (i, M.lookup i am) of
+          (J _, Just f) -> Just f
+          (_, Just a) -> case mversion of
+            Just (J j) | j `elem` albumFiles a -> M.lookup (J j) am
+            Just _ -> Nothing
+            Nothing -> viaNonEmpty head (albumFiles a) >>= \j -> M.lookup (J j) am
+          _ -> Nothing
+    case files of
+      Nothing -> pure $ answer False "No files of this album are known to clutter"
+      Just f -> do
+        base <- liftIO bluosBase
+        (ok, info) <- liftIO $ bluosAddLocal base (albumTitle f) (albumArtist f) (fromMaybe "replace" mm)
+        liftIO $ hPutStrLn stderr ("nodeplayfiles " <> show (albumID f) <> ": " <> toString info)
+        pure $ answer ok info
+
   serveNodectl :: Text -> AppM ReqJ
   serveNodectl cmd = do
     now <- liftIO getZonedTime
@@ -1103,14 +1141,39 @@ clutterServer sd =
 -- tested live on the Node 2026-11-21, see ~/Notes/Claude/2026-11-21-bluos-api-for-clutter.md
 -- Returns (ok, message); never throws.
 bluosAdd :: String -> Int -> Text -> IO (Bool, Text)
-bluosAdd base tid mode = do
+bluosAdd base tid = bluosAddWhat base ("service=Tidal&albumid=" <> show tid)
+
+-- BluOS: queue an album of the player's own library (the network shares it has indexed)
+-- and play it. The player knows such an album by its album and artist tags, not by an id
+-- ("Play now" in /Services, LocalMusic-Album); tested live 2026-11-25. An album it does
+-- not have is answered with <error>…Nothing here can be played…</error>.
+bluosAddLocal :: String -> Text -> Text -> Text -> IO (Bool, Text)
+bluosAddLocal base title artist mode = do
+  (ok, info) <- bluosAddWhat base (toString ("service=LocalMusic&album=" <> urlEnc title <> "&artist=" <> urlEnc artist)) mode
+  pure $
+    if not ok && "Nothing here can be played" `T.isInfixOf` info
+      then (False, "Not in the player's library: “" <> title <> "” by " <> artist <> " (its folder is not shared with the player, or it is tagged differently there)")
+      else (ok, info)
+ where
+  -- percent-encoding of the UTF-8 bytes; letters, digits and -._~ stay
+  urlEnc :: Text -> Text
+  urlEnc = toText . concatMap enc . BS.unpack . encodeUtf8
+  enc w
+    | w < 128 && (Ch.isAlphaNum c || c `elem` ("-._~" :: String)) = [c]
+    | otherwise = '%' : (if w < 16 then "0" else "") <> map Ch.toUpper (showHex w "")
+   where
+    c = Ch.chr (fromIntegral w)
+
+-- the album to add ("service=…&albumid=…" or "service=…&album=…&artist=…") and the mode
+bluosAddWhat :: String -> String -> Text -> IO (Bool, Text)
+bluosAddWhat base what mode = do
   let ps :: String
       ps = case mode of
         "now" -> "&playnow=1&clear=0&shuffle=0&where=nextAlbum" -- after the current album
         "next" -> "&playnow=-1&where=nextAlbum" -- queue, don't play
         "last" -> "&playnow=-1&where=last"
         _ -> "&playnow=1&clear=1&where=nextAlbum" -- replace the queue
-  r <- bluosGet base ("/Add?service=Tidal&albumid=" <> show tid <> ps)
+  r <- bluosGet base ("/Add?" <> what <> ps)
   pure $ case r of
     Left err -> (False, err)
     Right b ->
