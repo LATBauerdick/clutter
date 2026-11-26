@@ -321,10 +321,76 @@ Status:
   check now has 59 answers, both orders of merge and alias and the five
   refused lines; both readers OK, and with the old rules put back the Python
   half fails on exactly those cases.
-- For slice 2 (not built): `Collection.reviewedFiles` counts only link /
-  unlink / skip lines; once slice 3 writes `version` lines, a file album
-  joined that way would be offered for review again — count `version` lines
-  (and the C-id membership) there too.
+- Slice 2 — built 2026-11-26, uncommitted; **Fable reviewed it the same day**
+  (by reading, nothing run), fixes below, compare rerun clean of anything new.
+  Fixed: (1) `albumrefresh` compared Discogs's answer with the album's union
+  tags, so every joined record looked changed and was taken in again on
+  each page open — it compares with `baseR` now; (2) `rated.*` went into the
+  lead's union before the rating was chosen, so an album could carry two
+  ratings — album-level tags stay out of the union (0 rows with two ratings
+  now); (3) the Apple twin of a Tidal album had the Tidal row but its own
+  name (marks, plays, collection), so a row could be in Collection and Inbox
+  at once — the twin now counts as the Tidal album's album; (4) a stand-in's
+  rating did not reach its album's row — stand-ins (`Layer.lyStandIns`)
+  donate `rated.*` (focuses `rated.like`/`rated.dislike` equal on both
+  servers); (5) a file album linked from an album with no record (files +
+  Tidal) moved alone and left the Tidal album stranded — it now brings that
+  album along, and the answer says so; (6) a stream link that brings
+  another album along says so (undone only with slice 3); (8) new ids avoid
+  every id the log has used (`Layer.lyIds`: albums and both ends of merges;
+  an id emptied entirely by splits is still not seen — chance of a clash
+  about 1e-6); (10) bulk keep groups by album with a Map. Left as notes:
+  merges go into the page's album (the spec says the one opened first —
+  the same on a page); the Tidal list is ordered by each version's date
+  before rows are taken; a split that does nothing on a stand-in page still
+  answers "Took off".
+  Before the review:
+  The server keeps the albums as the readers give them (`Env.baseR`) and
+  computes everything else from them in one place (`Env.derive` / `rebuild`,
+  run after every log line, play or reload): `Collection.buildLayer` (album
+  of every key, its row = the lead among the versions held, a play's album),
+  `attachAlbums` (the lead gets the album's streams, file albums, the union
+  of its versions' tags, the Wikidata keys of all; the other versions keep
+  their own tags plus the album's `provider.*`, `storage.*`, `tidal.*`),
+  `attachAlbumPlays` (plays by album, on every version), `spreadAlbumTags`
+  (`length.*` the lead's, `rated.*` the first rated record's), and
+  `attachCollection` by album. Lists map each key to its row and show an
+  album once (`Provider.rowsByAdded`, `App.decodeListQuery`); a shelf list
+  keeps its records and filters on a second tags index
+  (`Collection.shelfIndexTags`, `Env.shelfTagsR`). `standIns`,
+  `attachLinks` (with the master sharing), `masterKey`, `linkTidalTags`,
+  `readCollection` and `playAlbumId` are gone. Writes: keep marks go against
+  the C id; a stream linked on a page joins its album (a stream that is a
+  version of another album brings that album along — the same stream, the
+  same album) and a stream of the same service leaves it (`split`), as the
+  page promised before; a file album linked moves alone (`split`, then
+  `version`); unlinks are `split`s. Without the format line the server
+  warns at start and refuses links. `reviewedFiles` counts `version` and
+  `split` lines, and the review leaves out file albums in an album with an
+  id. Versions block: `AlbumXJ.xversions` (every other version, lead first;
+  an un-held stream by key) and rows for those the block did not show
+  (other records, more editions, Apple Music, Qobuz); `xof` for every
+  version that is not its album's lead.
+  Found while testing: an album none of whose versions clutter holds (a
+  Tidal and an Apple album that are no favourites, 143 albums) had lost its
+  row, since the migration aliases its stand-in away; the stand-in now shows
+  it (the first one, if two), and a play of such a version counts.
+  Check (`test/album-layer-compare.py --versions --tags --focus …`), HEAD
+  server with today's log on 8086 against this one with a migrated copy on
+  8085: every list the same albums, each once, 700 old rows joined, all in
+  albums with ids; shelves identical; plays per album equal (2,080 on 1,498
+  albums), Listened lists equal; Versions complete for all 1,296 albums;
+  24 albums with two records of different formats: the album row matches
+  either format, a shelf row only its own. Differences left, all expected:
+  `storage.music`/`storage.hirez` gone from 5 rows that had them only
+  through the master sharing (Files/Streaming stand-ins, and Cream's
+  *Wheels Of Fire*, whose hirez copy is its own album until joined by hand
+  in slice 3); `played.never` off 38 albums whose other version was played
+  (joins); `provider.applemusic`/`tidal.collection` on 3 album rows from
+  their Tidal version's own tags (the union). `python3
+  test/album-layer-check.py` OK (Python 59, Haskell 57: the server's old
+  reader is gone). Page checked in headless Chrome (Blonde On Blonde from
+  four versions, a stand-in row).
 
 ### Questions for LATB — answered 2026-11-26: OK to all five
 

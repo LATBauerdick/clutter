@@ -9,7 +9,8 @@ Covers: last line wins (membership, keep, rate, lead), merge chain, merge back, 
 stand-in), a move, a move + alias loop that must end, names by C id and by version key,
 tags folded in order (case folded), lines that cannot be read are skipped, the lead rule
 with and without dates, plays resolved through moves and aliases, and the format line
-switching the old link/unlink lines off in both old readers.
+switching the old link/unlink lines off in the old Python reader (collection_log.read;
+the server's old reader went with slice 2, so the Haskell half has two answers fewer).
 
 Run from the repository root:  python3 test/album-layer-check.py [--no-haskell]
 cabal must be on PATH (with CABAL_DIR as the build needs); --no-haskell checks Python only.
@@ -216,9 +217,6 @@ albumLayerCheck = do
   mapM_ (\w -> out ("play " ++ T.unpack w ++ "|" ++ f (ks <$> AL.playVersion holds al (mapMaybe parseKey (T.splitOn "," w))))) (T.words "PLAYS")
   mapM_ (\(i, l) -> out ("line " ++ show i ++ "|" ++ either (const "not read") (maybe "not read" (const "read")) (A.eitherDecode l >>= AT.parseEither AL.logEvent)))
     (zip [0 :: Int ..] LINES)
-  mapM_ (\p -> do
-      (_, links, streams, _) <- Co.readCollection ("DIR/" ++ p)
-      out ("old " ++ p ++ "|files " ++ show (M.size links) ++ "|streams " ++ show (sum (length <$> streams)))) ["log.jsonl", "log-noformat.jsonl"]
 :}
 albumLayerCheck
 '''
@@ -262,7 +260,8 @@ def main() -> None:
         want = expected()
         ok = compare("python", python_answers(d), want)
         if "--no-haskell" not in sys.argv:
-            ok = compare("haskell", haskell_answers(d), want) and ok
+            # the server's old link reader is gone (slice 2): no "old …" answers
+            ok = compare("haskell", haskell_answers(d), [w for w in want if not w.startswith("old ")]) and ok
     sys.exit(0 if ok else 1)
 
 

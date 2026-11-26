@@ -121,8 +121,9 @@ type AlbumXJ =    { xid :: String
                   , xcandidates :: Maybe (Array CandV) -- for a file album: albums it may be a version of
                   , xfiles :: Maybe (Array FileV) -- file albums on the server that are versions of this album
                   , xnode :: Maybe Boolean -- the album's files are in a share the Node has indexed (▶ can play them)
-                  , xof :: Maybe CandV -- a file album: the album it is a version of
+                  , xof :: Maybe CandV -- a version that is not its album's lead: the album's row
                   , xnotsame :: Maybe (Array CandV) -- suggestions marked "not the same album" (×)
+                  , xversions :: Maybe (Array CandV) -- every other version of the album (a stream clutter does not hold: key only, cvTitle "")
                   }
 -- an album a file album may be a version of
 type CandV =      { cvKey :: String

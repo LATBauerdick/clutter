@@ -21,8 +21,6 @@ module Provider (
   readFolderAids,
   updateTidalFolderAids,
   updateAMusicFolderAids,
-  linkTidalTags,
-  standIns,
   memberList,
   serverList,
   allList,
@@ -32,7 +30,6 @@ where
 -- import Data.Text.Encoding ( decodeUtf8 )
 import qualified Data.Char as Ch
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -58,8 +55,10 @@ import Types (
   AppM,
   Discogs (..),
   Env (..),
+  Layer,
   Release (..),
   TagFolder (..),
+  rowOf,
   Tidal (..),
   TidalInfo (..),
   envGetDiscogs,
@@ -175,17 +174,12 @@ readDiscogsFolders :: Discogs -> IO (Map Text Int)
 readDiscogsFolders (DiscogsFile fn) = FD.readDiscogsFoldersCache fn
 readDiscogsFolders di = FD.readDiscogsFolders di
 
--- the Tidal list: every Discogs release with a Tidal location (T<id>), and every Tidal album
--- clutter holds (ever a favourite, or played) that no Discogs release stands for
+-- the Tidal list: every album with a Tidal version (every version of it is here; a list
+-- shows an album once, as its row: App.decodeListQuery)
 updateTidalFolderAids :: Map AlbumKey Album -> Map Text (Int, Vector AlbumKey) -> Map Text (Int, Vector AlbumKey)
 updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
  where
-  -- releases and file albums that have a Tidal album
-  linkedD = [k | (k, a) <- M.toList am, owned k, isJust (tidalId a)]
-  owned k = case k of D _ -> True; J _ -> True; _ -> False
-  linkedT = standIns am
-  tidalOnly = [k | k@(T _) <- M.keys am, not (k `S.member` linkedT)]
-  allTidal = sAdded (V.fromList (linkedD <> tidalOnly))
+  allTidal = sAdded (V.fromList [k | (k, a) <- M.toList am, isJust (tidalId a)])
   sAdded :: Vector AlbumKey -> Vector AlbumKey
   sAdded aids = V.fromList (fst <$> sortBy (\(_, a) (_, b) -> comparing (fmap albumAdded) b a) asi)
    where
@@ -195,62 +189,29 @@ updateTidalFolderAids am = M.insert "Tidal" (fromEnum TTidal, allTidal)
 tidalId :: Album -> Maybe Int
 tidalId a = readMaybe . toString =<< albumTidal a
 
--- The stream albums that another album stands for: a Tidal album named in the Location field
--- of a Discogs release, and an Apple Music album named by a Discogs release or a Tidal album.
--- A list shows the album that stands for them, never both — whatever the focus: the plays
--- and so the played.* tags are on the standing album, so a filter must not bring its twin back.
-standIns :: Map AlbumKey Album -> Set AlbumKey
-standIns am = S.fromList (concatMap twins (M.elems am))
- where
-  twins a =
-    [T t | owned (albumID a), Just t <- [tidalId a]]
-      <> [A i | Just i <- [readMaybe . toString =<< albumAMusic a], albumID a /= A i]
-      <> [J j | notFile (albumID a), j <- albumFiles a]
-  notFile = \case J _ -> False; _ -> True
-  -- a release, or a file album: what has a stream rather than being one
-  owned = \case D _ -> True; J _ -> True; _ -> False
+-- the rows of some albums, newest first (by the row's date added: the lead's): each key
+-- as its album's row (Layer.lyRow), each album once
+rowsByAdded :: Layer -> Map AlbumKey Album -> [AlbumKey] -> Vector AlbumKey
+rowsByAdded ly am = V.fromList . map albumID . sortOn (Down . albumAdded) . mapMaybe (`M.lookup` am) . ordNub . map (rowOf ly)
 
--- the albums with a tag, newest first, without the stand-ins: the lists "Collection"
--- (collection.in) and "Inbox" (collection.inbox), read off the tags when asked for, so
--- they follow a play or a keep mark at once
-memberList :: Text -> Map AlbumKey Album -> Vector AlbumKey
-memberList tag am = V.fromList [albumID a | a <- sortOn (Down . albumAdded) (M.elems am), tag `elem` albumTags a, not (albumID a `S.member` hidden)]
- where
-  hidden = standIns am
+-- the albums with a tag: the lists "Collection" (collection.in) and "Inbox"
+-- (collection.inbox), read off the tags when asked for, so they follow a play or a keep
+-- mark at once
+memberList :: Layer -> Text -> Map AlbumKey Album -> Vector AlbumKey
+memberList ly tag am = rowsByAdded ly am [k | (k, a) <- M.toList am, tag `elem` albumTags a]
 
--- "All": every album, newest first, without the stand-ins; read off the album map when
--- asked for, since a link in the collection log changes who stands in for whom
-allList :: Map AlbumKey Album -> Vector AlbumKey
-allList am = V.fromList [albumID a | a <- sortOn (Down . albumAdded) (M.elems am), not (albumID a `S.member` hidden)]
- where
-  hidden = standIns am
+-- "All": every album
+allList :: Layer -> Map AlbumKey Album -> Vector AlbumKey
+allList ly am = rowsByAdded ly am (M.keys am)
 
--- the albums on the file server, newest first: every file album, or those of one storage
--- location (tag storage.<name>). A file album that is a version of another album is shown
--- as that album, which carries its storage tags (Collection.attachLinks). Read off the tags
--- when asked for, like memberList.
-serverList :: Maybe Text -> Map AlbumKey Album -> Vector AlbumKey
-serverList mstorage am = V.fromList [albumID a | a <- sortOn (Down . albumAdded) (M.elems am), wanted a, not (albumID a `S.member` hidden)]
+-- the albums on the file server: every album with a file version, or with one in a
+-- storage location (tag storage.<name>, on every version of the album)
+serverList :: Layer -> Maybe Text -> Map AlbumKey Album -> Vector AlbumKey
+serverList ly mstorage am = rowsByAdded ly am [k | (k, a) <- M.toList am, wanted a]
  where
-  hidden = standIns am
   wanted a = case mstorage of
     Just s -> ("storage." <> s) `elem` albumTags a
     Nothing -> any ("storage." `T.isPrefixOf`) (albumTags a)
-
--- a Discogs release whose Tidal album is in the Tidal collection is tagged tidal.collection
--- too, so #tidal.collection filters the whole Tidal list; likewise tidal.gone, when its
--- Tidal album is off Tidal
-linkTidalTags :: Map AlbumKey Album -> Map AlbumKey Album
-linkTidalTags am = M.map link am
- where
-  linked = ["tidal.collection", "tidal.gone"]
-  having tag = S.fromList [k | (k@(T _), a) <- M.toList am, tag `elem` albumTags a]
-  sets = [(tag, having tag) | tag <- linked]
-  link a = case albumID a of
-    D _ ->
-      let others = filter (`notElem` linked) (albumTags a)
-       in a{albumTags = others <> [tag | (tag, ks) <- sets, Just t <- [tidalId a], T t `S.member` ks]}
-    _ -> a
 
 -- the Tidal albums that were removed from clutter by hand (the album store's "dropped")
 readTidalDropped :: IO [AlbumKey]
@@ -301,7 +262,6 @@ readFolderAids fm am = fam
       $ fam'
   allAlbums =
     sAdded
-      . V.filter (not . (`S.member` standIns am))
       . V.map albumID
       . V.fromList
       $ M.elems am

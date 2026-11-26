@@ -42,6 +42,7 @@ module AlbumLayer (
   tagsOf,
   ratingOf,
   leadOf,
+  leadAmong,
   kindRank,
   playVersion,
   foldChain,
@@ -196,9 +197,14 @@ kindRank = \case D _ -> 0; T _ -> 1; J _ -> 2; A _ -> 3; Q _ -> 4; C _ -> 5
 -- else by kindRank, records by the date they were added to the collection (the earliest;
 -- no date last), the others by when they became a version.
 leadOf :: Ord d => (AlbumKey -> Maybe d) -> AlbumLog -> AlbumKey -> Maybe AlbumKey
-leadOf added al name =
+leadOf = leadAmong (const True)
+
+-- the same among the versions clutter holds: a Tidal album that is no favourite, a Qobuz
+-- album, a file album gone from the server cannot lead a row (the server's choice)
+leadAmong :: Ord d => (AlbumKey -> Bool) -> (AlbumKey -> Maybe d) -> AlbumLog -> AlbumKey -> Maybe AlbumKey
+leadAmong holds added al name =
   let a = resolveName al name
-      vs = case a of
+      vs = filter (holds . fst) $ case a of
         C _ -> M.findWithDefault [] a (alAlbums al)
         k -> [(k, 0)]
       named = M.lookup a (alLead al) >>= \k -> find ((== k) . fst) vs

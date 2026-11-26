@@ -23,6 +23,11 @@ module Types (
   AppM,
   Env (..),
   EnvR (..),
+  Layer (..),
+  rowOf,
+  rowOfName,
+  nameOf,
+  versionsOfKey,
   envGetEnvr,
   envGetDiscogs,
   envGetListName,
@@ -150,11 +155,46 @@ data Env = Env
     wikiLinksR :: IORef (Map AlbumKey Album -> Map AlbumKey Album)
   , albumFactsR :: IORef (Album -> AlbumFacts)
   , jellyfinWeb :: Text -- Jellyfin as a browser reaches it (Jellyfin.jsWeb); "" if there is none
-  , marksR :: IORef (Map AlbumKey Bool) -- the keep marks (Collection.Marks): True keep, False not for me
-  , linksR :: IORef (Map Text AlbumKey) -- file album (Jellyfin id) -> the album it is a version of (Collection.Links)
-  , streamsR :: IORef (Map AlbumKey [AlbumKey]) -- release -> its Tidal / Apple / Qobuz album from the log, one of each at most (Collection.Streams)
+  , -- the albums as the readers give them (Discogs, Tidal, Apple Music, Jellyfin), before
+    -- the album layer, the plays and the stores are put on: albumsR is computed from these
+    -- (Env.rebuild), so a version that leaves an album leaves nothing behind
+    baseR :: IORef (Map AlbumKey Album)
+  , layerR :: IORef Layer -- the album layer as the collection log and the albums held leave it
+  , shelfTagsR :: IORef (Map Text [AlbumKey]) -- the tags index for a record's row in a shelf list (tagsR: an album's row)
   , standInTags :: Set Text -- folder tags of the Discogs stand-in folders (Collection.standInFolderTags)
   }
+
+-- The album layer as the server uses it (Collection.buildLayer; docs/album-layer-plan.md).
+-- An album is named by its C id, or by its one version's key. Its row in every list but a
+-- shelf is its lead version's key.
+data Layer = Layer
+  { lyFormat :: Bool -- the log is in the album format (it has the format line)
+  , lyName :: Map AlbumKey AlbumKey -- every key clutter holds -> its album's name
+  , lyRow :: Map AlbumKey AlbumKey -- a key clutter holds whose album's row is another key -> that key
+  , lyVersions :: Map AlbumKey [AlbumKey] -- an album with a C id -> its versions in the log, held or not; those held first, the lead first
+  , lyKeep :: Map AlbumKey Bool -- an album's keep mark, by name
+  , lyStandIns :: Map AlbumKey [AlbumKey] -- an album -> the stand-in releases clutter holds that the log reads as one of its versions
+  , lyIds :: Set AlbumKey -- every C id the log has used (a new one must be none of them)
+  , lyPlay :: PlayEvent -> Maybe AlbumKey -- the album a play counts for, if clutter holds its version
+  }
+
+-- the key of a held album's row: its lead version's
+rowOf :: Layer -> AlbumKey -> AlbumKey
+rowOf ly k = M.findWithDefault k k (lyRow ly)
+
+-- the row of an album by its name (Layer.lyPlay gives names): its lead's key
+rowOfName :: Layer -> AlbumKey -> AlbumKey
+rowOfName ly n = case M.lookup n (lyVersions ly) of
+  Just (l : _) -> rowOf ly l
+  _ -> rowOf ly n
+
+-- an album's name (C id or a key) for a key clutter holds
+nameOf :: Layer -> AlbumKey -> AlbumKey
+nameOf ly k = M.findWithDefault k k (lyName ly)
+
+-- the versions of the album a held key belongs to, as the log has them, lead first
+versionsOfKey :: Layer -> AlbumKey -> [AlbumKey]
+versionsOfKey ly k = M.findWithDefault [k] (nameOf ly k) (lyVersions ly)
 instance Show Env where
   show :: Env -> String
   show _ = "This is an Env"

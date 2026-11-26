@@ -17,17 +17,11 @@ module Env (
   envUpdateSort,
   envUpdateMenuParams,
   envRefreshPlays,
-  envSetMark,
-  envSetMarks,
-  envSetLink,
-  envSetStream,
+  envReloadLog,
 )
 where
 
 import Data.Aeson (FromJSON (..), decode)
-import qualified Data.List as L (
-  union,
- )
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Text as T (all, find, length, stripPrefix)
@@ -52,7 +46,6 @@ import Provider (
   readFolders,
   readTidalAlbums,
   readTidalDropped,
-  linkTidalTags,
   memberList,
   serverList,
   allList,
@@ -63,9 +56,10 @@ import Provider (
 import Wikidata (attachWiki, readWikiStore)
 import Details (attachLength, factsFor, readDetailStore)
 import qualified Data.Text as TX
-import Collection (Moves, attachCollection, attachLinks, collectionFile, followMove, readCollection, sameKind, standInFolderTags)
+import qualified AlbumLayer as AL
+import Collection (attachAlbumPlays, attachAlbums, attachCollection, buildLayer, collectionFile, followMove, readAlbumLog, readMoves, shelfIndexTags, spreadAlbumTags, standInFolderTags)
 import Jellyfin (JellyfinStore (..), jellyfinAlbums, readJellyfinStore)
-import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
+import Listened (listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
 import System.IO (hPutStrLn)
 import Types (
@@ -74,14 +68,17 @@ import Types (
   AMusic (..),
   AMusicInfo (..),
   Album (..),
+  AlbumFacts,
   AlbumKey (..),
   AppM,
   Discogs (..),
   Env (..),
   EnvR (..),
+  Layer (..),
   MenuParams (..),
   PlayEvent (..),
   SortOrder (..),
+  rowOfName,
   Tidal (..),
   TidalInfo (..),
   envGetDiscogs,
@@ -151,21 +148,15 @@ envTidalConnect _nalbums = do
   (_, tidal, aMusic, dci, _) <- liftIO getProviders
 
   env <- ask
-  oldAlbums <- readIORef $ albumsR env
+  oldAlbums <- readIORef $ baseR env
   vta <- liftIO $ readTidalAlbums tidal
   vma <- liftIO $ readAMusicAlbums aMusic
   newFolders <- readFolders
   let tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
   let aMusicAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vma
-  allAlbums <- withPlays $ oldAlbums <> tidalAlbums <> aMusicAlbums
-  _ <- liftIO $ writeIORef (albumsR env) allAlbums
-
-  -- create the Tags index
-  putTextLn "----------------------envTidalConnect: Updating Tags index"
-  let tagsMap :: Map Text [AlbumKey]
-      tagsMap = buildTags (M.elems allAlbums)
-  putTextLn "----------------------envTidalConnect: list of Tags found: "
-  print (M.keys tagsMap)
+  writeIORef (baseR env) (oldAlbums <> tidalAlbums <> aMusicAlbums)
+  rebuild
+  allAlbums <- readIORef (albumsR env)
 
   -- reread Discogs lists info
   lm <- liftIO $ readDiscogsLists dci
@@ -240,7 +231,7 @@ envTidalReload :: AppM Int
 envTidalReload = do
   env <- ask
   (_, tidalCached, _, _, _) <- liftIO getProviders
-  oldAlbums <- readIORef (albumsR env)
+  oldAlbums <- readIORef (baseR env)
   vta <- liftIO $ readTidalAlbums tidalCached
   liftIO readWikiStore >>= writeIORef (wikiLinksR env) . attachWiki
   liftIO readDetailStore >>= writeIORef (albumFactsR env) . factsFor
@@ -248,56 +239,44 @@ envTidalReload = do
       new = M.size (tidalAlbums `M.difference` oldAlbums)
   -- an album removed from clutter is in the store, marked, and no longer among its albums
   dropped <- liftIO readTidalDropped
-  allAlbums <- withPlays (tidalAlbums <> foldr M.delete oldAlbums dropped)
-  writeIORef (albumsR env) allAlbums
-  writeIORef (tagsR env) (buildTags (M.elems allAlbums))
+  writeIORef (baseR env) (tidalAlbums <> foldr M.delete oldAlbums dropped)
+  rebuild
+  allAlbums <- readIORef (albumsR env)
   oldLists <- readIORef (listsR env)
   let rebuilt = readFolderAids M.empty allAlbums -- the built-in lists only
       fresh = M.filterWithKey (\k _ -> k `elem` ["Tidal", "All"]) rebuilt
   writeIORef (listsR env) (fresh <> oldLists)
   pure new
 
--- the plays of file albums under the ids their folders have now (Collection: "moved")
-movedPlays :: Moves -> [PlayEvent] -> [PlayEvent]
-movedPlays mv
-  | M.null mv = id
-  | otherwise = map (\e -> e{peJellyfin = followMove mv <$> peJellyfin e})
-
 -- Take clutter's Jellyfin album store in again (after scripts/update-jellyfin-albums.py),
 -- without a restart: the file albums are replaced by the store's; those no longer in it
--- leave, also as versions of other albums; playing times are read again. Jellyfin gives a
+-- leave, also as versions of their albums; playing times are read again. Jellyfin gives a
 -- moved folder a new id: where the script found the album again it wrote a "moved" line to
--- the collection log, so the log is read again too and the links, marks and plays of the
--- old id are the new one's. A link whose file album is gone and was not found again is left
--- dangling and counted. Returns (new, gone, moved, dangling links).
+-- the collection log, which is read again too (rebuild), so the versions, marks and plays
+-- of the old id are the new one's. A file album that is a version in the log, is gone and
+-- was not found again is counted as dangling. Returns (new, gone, moved, dangling).
 envJellyfinReload :: AppM (Int, Int, Int, Int)
 envJellyfinReload = do
   env <- ask
-  old <- readIORef (albumsR env)
+  old <- readIORef (baseR env)
   jstore <- liftIO readJellyfinStore
   liftIO readDetailStore >>= writeIORef (albumFactsR env) . factsFor
-  (marks, links', streams, moves) <- liftIO $ collectionFile >>= readCollection
-  writeIORef (marksR env) marks
-  writeIORef (linksR env) links'
-  writeIORef (streamsR env) streams
-  modifyIORef' (playsR env) (movedPlays moves)
+  moves <- liftIO $ collectionFile >>= readMoves
   let isFile a = case albumID a of
         J _ -> True
         _ -> False
       (oldFiles, others) = M.partition isFile old
       files = M.fromList [(albumID a, a) | a <- jellyfinAlbums jstore]
       there j = M.member (J j) files
-      -- a file version that is gone leaves its album; attachLinks puts the rest back
-      pruned = M.map (\a -> let fs = filter there (albumFiles a) in if fs == albumFiles a then a else a{albumFiles = fs, albumJellyfin = viaNonEmpty head fs}) others
       new = M.size (files `M.difference` oldFiles)
       goneIds = [j | J j <- M.keys (oldFiles `M.difference` files)]
       gone = length goneIds
       -- the albums that left and are here again under a new id
       moved = length [j | j <- goneIds, let j' = followMove moves j, j' /= j, there j']
-      dangling = length (filter (not . there) (M.keys links'))
-  allAlbums <- withPlays (files <> pruned)
-  writeIORef (albumsR env) allAlbums
-  writeIORef (tagsR env) (buildTags (M.elems allAlbums))
+  writeIORef (baseR env) (files <> others)
+  rebuild
+  ly <- readIORef (layerR env)
+  let dangling = length (ordNub [j | vs <- M.elems (lyVersions ly), J j <- vs, not (there j)])
   pure (new, gone, moved, dangling)
 
 -- also update folders and lists, update other metadata
@@ -305,13 +284,8 @@ envUpdate :: Maybe Text -> Maybe Text -> Int -> AppM ()
 envUpdate _tok _un nreleases = do
   env <- ask
 
-  -- save tidal albums map
-  oldAlbums <- readIORef $ albumsR env
-  oldLists <- readIORef $ listsR env
-  let (_, tl) = fromMaybe (0, V.empty) $ M.lookup "Tidal" oldLists
-      vta :: Vector Album
-      vta = V.fromList $ mapMaybe (`M.lookup` oldAlbums) $ V.toList tl
-      tidalAlbums = M.fromList $ (\a -> (albumID a, a)) <$> V.toList vta
+  -- the albums as the readers gave them (Tidal's among them)
+  oldAlbums <- readIORef $ baseR env
 
   -- update with the new discogs info
   -- let discogs' = DiscogsSession (fromMaybe "" tok) (fromMaybe "" un)
@@ -332,15 +306,9 @@ envUpdate _tok _un nreleases = do
   newAlbums <-
     M.fromList . map (\a -> (albumID a, a)) . V.toList
       <$> readAlbums nreleases
-  allAlbums <- withPlays $ newAlbums <> oldAlbums <> tidalAlbums
-  _ <- writeIORef (albumsR env) allAlbums
-
-  -- create the Tags index
-  putTextLn "----------------------envUpdate: Updating Tags index"
-  let tagsMap :: Map Text [AlbumKey]
-      tagsMap = buildTags (M.elems allAlbums)
-  putTextLn "----------------------envUpdate: list of Tags found: "
-  print (M.keys tagsMap)
+  writeIORef (baseR env) (newAlbums <> oldAlbums)
+  rebuild
+  allAlbums <- readIORef (albumsR env)
 
   -- reread Discogs lists info
   dci <- envGetDiscogs
@@ -368,12 +336,51 @@ discogsLocList (ln, (_, aids)) = zipWith (\idx aid -> (aid, (ln, idx))) [1 ..] (
 buildTags :: [Album] -> Map Text [AlbumKey]
 buildTags as = M.map (ordNub . reverse) $ M.fromListWith (<>) [(t, [albumID a]) | a <- as, t <- albumTags a]
 
-updateTags :: Album -> Map Text [AlbumKey] -> Map Text [AlbumKey]
-updateTags a m =
-  foldr
-    (\k mm -> M.insertWith L.union k (one (albumID a)) mm)
-    m
-    (albumTags a)
+-- the same with the tags of some keys put in place of theirs (a record's row in a shelf
+-- list: Collection.shelfIndexTags)
+buildTagsWith :: Map AlbumKey [Text] -> Map AlbumKey Album -> Map Text [AlbumKey]
+buildTagsWith over am = M.map (ordNub . reverse) $ M.fromListWith (<>) [(t, [k]) | (k, a) <- M.toList am, t <- M.findWithDefault (albumTags a) k over]
+
+-- The albums as the server shows them, from the albums as the readers give them: the album
+-- layer (which versions make an album, its row), the plays by album, the Wikipedia links,
+-- the playing time and rating by album, the collection rule. Also the tags of the records
+-- that lead an album, as they are matched in a shelf list.
+derive ::
+  Set Text ->
+  AL.AlbumLog ->
+  [PlayEvent] ->
+  (Map AlbumKey Album -> Map AlbumKey Album) ->
+  (Album -> AlbumFacts) ->
+  Map AlbumKey Album ->
+  (Layer, Map AlbumKey Album, Map AlbumKey [Text])
+derive sit alog es wl fa base =
+  let ly = buildLayer alog base
+      am =
+        attachCollection sit ly base
+          . spreadAlbumTags ly
+          . attachLength fa
+          . wl
+          . attachAlbumPlays ly es
+          . attachAlbums ly
+          $ base
+   in (ly, am, shelfIndexTags ly base am)
+
+-- compute the albums the server shows again: the collection log is read again (a line
+-- written by the server, or by a script), then the album layer, the plays, the tags
+-- indexes. Each change of a version, a mark or a play ends here.
+rebuild :: AppM ()
+rebuild = do
+  env <- ask
+  alog <- liftIO $ collectionFile >>= readAlbumLog
+  base <- readIORef (baseR env)
+  es <- readIORef (playsR env)
+  wl <- readIORef (wikiLinksR env)
+  fa <- readIORef (albumFactsR env)
+  let (ly, am, shelf) = derive (standInTags env) alog es wl fa base
+  writeIORef (layerR env) ly
+  writeIORef (albumsR env) am
+  writeIORef (tagsR env) (buildTags (M.elems am))
+  writeIORef (shelfTagsR env) (buildTagsWith shelf am)
 
 -- initialize Env
 -- get info from Tidal
@@ -436,19 +443,22 @@ envInit c = do
   wstore <- readWikiStore
   -- facts for the album page (docs/album-page-plan.md, phase 1)
   dstore <- readDetailStore
-  -- the keep marks (docs/jellyfin-plan.md, "Membership")
-  (marks', links', streams', moves') <- collectionFile >>= readCollection
-  -- a play of a file album whose folder has since moved is the new id's
-  let plays' = movedPlays moves' plays0
+  -- the album layer and the keep marks (docs/album-layer-plan.md)
+  cfn <- collectionFile
+  alog <- readAlbumLog cfn
+  unless (AL.alFormat alog) $
+    hPutStrLn stderr $
+      "WARNING: " <> cfn <> " has no format line: it is not in the album format yet "
+        <> "(scripts/album-layer-migrate.py --write), so no album here has two versions"
+  let plays' = plays0
   sit <- standInFolderTags
-  let albums' = attachCollection sit marks' (attachLength (factsFor dstore) (attachWiki wstore (linkTidalTags (attachPlays plays' (attachLinks links' streams' albums'')))))
+  let (layer', albums', shelfTags') = derive sit alog plays' (attachWiki wstore) (factsFor dstore) albums''
+  hPutStrLn stderr $ "album layer: " <> show (M.size (lyVersions layer')) <> " albums with an id, " <> show (M.size (lyRow layer')) <> " keys shown as another's row"
 
   -- create the Tags index
-  putTextLn "----------------------envInit: Updating Tags index"
   let tagsMap :: Map Text [AlbumKey]
       tagsMap = buildTags (M.elems albums')
-  putTextLn "----------------------envInit: list of Tags found: "
-  print (M.keys tagsMap)
+  putTextLn $ "----------------------envInit: " <> show (M.size tagsMap) <> " tags"
 
   let fm :: Map Text (Int, Vector AlbumKey)
       fm = readFolderAids fns albums'
@@ -473,9 +483,9 @@ envInit c = do
   fr <- newIORef []
   wlr <- newIORef (attachWiki wstore)
   afr <- newIORef (factsFor dstore)
-  mkr <- newIORef marks'
-  lkr <- newIORef links'
-  skr <- newIORef streams'
+  bsr <- newIORef albums''
+  lyr <- newIORef layer'
+  str <- newIORef (buildTagsWith shelfTags' albums')
   -- define sort functions and map to names
   let sDef :: Map AlbumKey Album -> SortOrder -> Vector AlbumKey -> Vector AlbumKey
       sDef _ s l = case s of
@@ -530,9 +540,9 @@ envInit c = do
       , wikiLinksR = wlr
       , albumFactsR = afr
       , jellyfinWeb = jweb
-      , marksR = mkr
-      , linksR = lkr
-      , streamsR = skr
+      , baseR = bsr
+      , layerR = lyr
+      , shelfTagsR = str
       , standInTags = sit
       }
 
@@ -547,14 +557,18 @@ getList' ln = case listenedName ln of
     env <- ask
     es <- readIORef (playsR env)
     am <- readIORef (albumsR env)
-    pure . V.fromList . mapMaybe (fmap albumID . snd) $ listenedRows my es am
+    ly <- readIORef (layerR env)
+    pure . V.fromList . mapMaybe (fmap albumID . snd) $ listenedRows my es (fmap (rowOfName ly) . lyPlay ly) am
   Nothing
-    | ln == "Collection" -> memberList "collection.in" <$> (asks albumsR >>= readIORef)
-    | ln == "Inbox" -> memberList "collection.inbox" <$> (asks albumsR >>= readIORef)
-    | ln == "All" -> allList <$> (asks albumsR >>= readIORef)
-    | ln == "Server" -> serverList Nothing <$> (asks albumsR >>= readIORef)
-    | Just s <- T.stripPrefix "Server " ln -> serverList (Just s) <$> (asks albumsR >>= readIORef)
+    | ln == "Collection" -> withLayer (\ly -> memberList ly "collection.in")
+    | ln == "Inbox" -> withLayer (\ly -> memberList ly "collection.inbox")
+    | ln == "All" -> withLayer allList
+    | ln == "Server" -> withLayer (`serverList` Nothing)
+    | Just s <- T.stripPrefix "Server " ln -> withLayer (`serverList` Just s)
     | otherwise -> getDiscogsList ln
+ where
+  withLayer :: (Layer -> Map AlbumKey Album -> b) -> AppM b
+  withLayer f = f <$> (asks layerR >>= readIORef) <*> (asks albumsR >>= readIORef)
 
 getDiscogsList :: Text -> AppM (Vector AlbumKey)
 getDiscogsList ln = do
@@ -595,7 +609,8 @@ envGetAlbum aid =
 envRefreshAlbum :: AlbumKey -> AppM (Maybe Album)
 envRefreshAlbum aid = do
   dc <- asks discogsR >>= readIORef
-  held <- M.lookup aid <$> (asks albumsR >>= readIORef)
+  -- the release as Discogs gave it last (baseR): albumsR carries the album's union tags
+  held <- M.lookup aid <$> (asks baseR >>= readIORef)
   case (aid, dc) of
     (D i, DiscogsSession _ _) ->
       readAlbum i >>= \case
@@ -656,22 +671,15 @@ envPutAlbum :: Album -> AppM ()
 envPutAlbum a = do
   env <- ask
   dc <- readIORef (discogsR env)
-  am' <- readIORef (albumsR env)
   ls <- readIORef (listsR env)
   let aid = albumID a
-  -- insert updated album and put in album map
-  am <- withPlays $ M.insert aid a am'
-  liftIO $ writeIORef (albumsR env) am
-  -- insert aid into its folder
-  -- let folder = albumFolder a
-  -- update folder "lists" and invalidate lists
+  -- the release as Discogs gives it, then everything computed again (tags indexes too)
+  modifyIORef' (baseR env) (M.insert aid a)
+  rebuild
+  am <- readIORef (albumsR env)
   -- also update Tidal and AMusic "special" list
   liftIO $ writeIORef (listsR env) (updateTidalFolderAids am ls)
   liftIO $ writeIORef (listsR env) (updateAMusicFolderAids am ls)
-
-  -- update the tags map with tags from this album
-  tm <- readIORef (tagsR env)
-  _ <- writeIORef (tagsR env) (updateTags (fromMaybe a (M.lookup aid am)) tm)
 
   -- update lists and folders
   newFolders <- readFolders
@@ -717,74 +725,11 @@ envUpdateSort msb mso = do
   lds <- readIORef (playsR env)
   pure $ EnvR am lm lcs lds lns sn so dc tm fs
 
--- albumListenedDates for an album map, from the play log in Env
-withPlays :: Map AlbumKey Album -> AppM (Map AlbumKey Album)
-withPlays am = do
-  es <- asks playsR >>= readIORef
-  wl <- asks wikiLinksR >>= readIORef
-  -- the length.* tags, from the album facts as last read
-  fa <- asks albumFactsR >>= readIORef
-  -- the collection.* tags, from the keep marks and the plays
-  marks <- asks marksR >>= readIORef
-  sit <- asks standInTags
-  links <- asks linksR >>= readIORef
-  streams <- asks streamsR >>= readIORef
-  pure (attachCollection sit marks (attachLength fa (wl (linkTidalTags (attachPlays es (attachLinks links streams am))))))
-
--- set or take off the keep mark of an album (the log line is written by the caller), and
--- bring the collection.* tags up to date
-envSetMark :: AlbumKey -> Maybe Bool -> AppM ()
-envSetMark k m = do
-  mr <- asks marksR
-  modifyIORef' mr (M.alter (const m) k)
-  envRefreshPlays
-
--- the same for many albums at once (bulk Keep in a list): one recomputation of the tags
-envSetMarks :: [AlbumKey] -> Maybe Bool -> AppM ()
-envSetMarks ks m = do
-  mr <- asks marksR
-  modifyIORef' mr (\ms -> foldl' (flip (M.alter (const m))) ms ks)
-  envRefreshPlays
-
--- make a file album a version of an album (Just), or take the link off (Nothing); the log
--- line is written by the caller. The file album leaves the album it was on before.
-envSetLink :: Text -> Maybe AlbumKey -> AppM ()
-envSetLink j mk = do
-  lr <- asks linksR
-  ar <- asks albumsR
-  modifyIORef' lr (M.alter (const mk) j)
-  let off a = case albumID a of
-        J _ -> a
-        _ | j `elem` albumFiles a -> let fs = filter (/= j) (albumFiles a) in a{albumFiles = fs, albumJellyfin = viaNonEmpty head fs}
-        _ -> a
-  modifyIORef' ar (M.map off)
-  envRefreshPlays
-
--- give a release a stream (True) or take it off (False); the log line is written by the
--- caller. A stream of the same kind that the release had is replaced.
-envSetStream :: AlbumKey -> AlbumKey -> Bool -> AppM ()
-envSetStream k s linked = do
-  sr <- asks streamsR
-  ar <- asks albumsR
-  old <- readIORef sr
-  let had = M.findWithDefault [] k old
-      gone = if linked then filter (sameKind s) had else [s]
-      now' = (if linked then (s :) else id) (filter (`notElem` gone) had)
-      clear st a = case st of
-        T n | albumTidal a == Just (show n) -> a{albumTidal = Nothing, albumTags = filter (/= "provider.tidal") (albumTags a), albumWikiKeys = filter (/= ("t:" <> show n)) (albumWikiKeys a)}
-        A n | albumAMusic a == Just (show n) -> a{albumAMusic = Nothing, albumTags = filter (/= "provider.applemusic") (albumTags a), albumWikiKeys = filter (/= ("a:" <> show n)) (albumWikiKeys a)}
-        Q q | albumQobuz a == Just q -> a{albumQobuz = Nothing, albumTags = filter (/= "provider.qobuz") (albumTags a)}
-        _ -> a
-  writeIORef sr (if null now' then M.delete k old else M.insert k now' old)
-  modifyIORef' ar (M.adjust (\a -> foldr clear a gone) k)
-  envRefreshPlays
+-- after a line was written to the collection log (a keep mark, a version joined or split):
+-- read it again and compute the albums again
+envReloadLog :: AppM ()
+envReloadLog = rebuild
 
 -- re-attach the play dates to all albums, after a play was logged
 envRefreshPlays :: AppM ()
-envRefreshPlays = do
-  ar <- asks albumsR
-  am <- readIORef ar >>= withPlays
-  writeIORef ar am
-  -- played.* tags change with a play: rebuild the index (a few thousand albums)
-  tr <- asks tagsR
-  writeIORef tr (buildTags (M.elems am))
+envRefreshPlays = rebuild

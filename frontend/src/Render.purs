@@ -500,8 +500,25 @@ render state =
                                        , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum o, HP.title "The release these files are linked to" ]
                                               [ HH.text (fromMaybe "other release" f.fvOwnerFormat) ] ] ]
                          Nothing -> []) )
-          rows = [ pick "" ownLabel "The album as it was opened" [] ] <> tidalRow <> map fileRow files
-          -- a file album linked to an album: that album, with all its versions, one click away
+          -- the album's other versions not shown above (album layer): other records, more
+          -- editions of a stream, Apple Music, Qobuz; ↗ opens one that clutter holds
+          shownKeys = [ a.albumID ] <> map _.fvKey files <> (if hasTidal then [ "T" <> tidalId ] else [])
+          otherRow v =
+            let kind = case S.take 1 v.cvKey of
+                  "D" -> S.trim (fromMaybe v.cvFormat (head (S.split (Pattern ",") v.cvFormat)))
+                  "T" -> "Tidal"
+                  "A" -> "Apple Music"
+                  "Q" -> "Qobuz"
+                  _ -> "Version"
+                held = v.cvTitle /= ""
+            in
+            HH.div [ cls "av-ver" ] $
+              [ HH.span [ cls "av-ver-pick", HP.title (if held then v.cvTitle <> " — " <> v.cvArtist else v.cvKey <> ": not in clutter's library") ]
+                        [ HH.text (kind <> (if held && v.cvReleased /= "" then " · " <> S.take 4 v.cvReleased else "")) ] ]
+              <> (if held then [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum v.cvKey, cls "av-ver-open", HP.title "Open this version's own page" ] [ HH.text "↗" ] ] else [])
+          others = filter (\v -> not (elem v.cvKey shownKeys)) (fromMaybe [] (detail >>= _.xversions))
+          rows = [ pick "" ownLabel "The album as it was opened" [] ] <> tidalRow <> map fileRow files <> map otherRow others
+          -- a version that is not its album's lead: the album, with all its versions, one click away
           ofRow = case detail >>= _.xof of
             Just o -> [ HH.p [ cls "av-ver-of" ]
                           [ HH.text "Version of "

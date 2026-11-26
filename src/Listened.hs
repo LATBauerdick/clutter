@@ -14,8 +14,6 @@ module Listened (
   appendPlay,
   readPlayFile,
   readPlays,
-  playAlbumId,
-  attachPlays,
   playedTags,
   listenedName,
   listenedYears,
@@ -136,45 +134,10 @@ readPlays dir = do
       concat <$> mapM (readPlayFile . (dir </>)) fns
 
 --
--- read side: which displayed album a play belongs to
+-- read side: which album a play belongs to is the album layer's answer
+-- (Collection.buildLayer, Layer.lyPlay; the plays go on the albums in
+-- Collection.attachAlbumPlays)
 --
-
--- the clutter album id a play is shown on, if clutter knows the album:
--- the Discogs release; else the Discogs release carrying its Tidal (Apple)
--- id in its Location field; else the Tidal (Apple) album itself.
--- Build once per album map: `playAlbumId am` holds the lookup tables.
-playAlbumId :: Map AlbumKey Album -> PlayEvent -> Maybe AlbumKey
-playAlbumId am = resolve
- where
-  -- the release -- or the file album standing for itself -- that has the stream
-  viaField f = M.fromList [(i, k) | (k, a) <- M.toList am, owned k, Just i <- [readMaybe . toString =<< f a]]
-  owned k = case k of D _ -> True; J _ -> True; _ -> False
-  tidalToDiscogs = viaField albumTidal
-  appleToDiscogs = viaField albumAMusic
-  -- a file album that is a version of another album: its plays are that album's
-  fileToAlbum = M.fromList [(j, k) | (k, a) <- M.toList am, notFile k, j <- albumFiles a]
-  notFile k = case k of J _ -> False; _ -> True
-  known k = k <$ M.lookup k am
-  resolve e =
-    asum
-      [ known . D =<< peDiscogs e
-      , peTidal e >>= \t -> M.lookup t tidalToDiscogs <|> known (T t)
-      , peApple e >>= \i -> M.lookup i appleToDiscogs <|> known (A i)
-      , peJellyfin e >>= \j -> M.lookup j fileToAlbum <|> known (J j)
-      ]
-
--- set albumListenedDates (newest first) and the played.* tags on every album
-attachPlays :: [PlayEvent] -> Map AlbumKey Album -> Map AlbumKey Album
-attachPlays es am = M.mapWithKey attach am
- where
-  attach i a =
-    let ds = M.findWithDefault [] i dates
-     in a
-          { albumListenedDates = ds
-          , albumTags = filter (not . ("played." `T.isPrefixOf`)) (albumTags a) <> playedTags (length ds) (albumPlays a)
-          }
-  resolve = playAlbumId am
-  dates = M.fromListWith (<>) [(i, [peTs e]) | e <- sortOn peTs es, Just i <- [resolve e]]
 
 -- played or not: a play in the log, or the Discogs field 7 mark (plays before the log
 -- began, 2019); how often: the log
@@ -202,14 +165,13 @@ listenedYears = sortOn Down . ordNub . map (T.take 4 . peTs)
 -- one row per play of the year (or all years), newest first, with the album it is
 -- shown on: the album clutter knows, or one made up from the play itself
 -- (a release no longer in the collection, a Tidal album no longer a favourite)
-listenedRows :: Maybe Text -> [PlayEvent] -> Map AlbumKey Album -> [(PlayEvent, Maybe Album)]
-listenedRows my es am =
+-- The album is its row's (resolve: the key of the row of the album the play counts for).
+listenedRows :: Maybe Text -> [PlayEvent] -> (PlayEvent -> Maybe AlbumKey) -> Map AlbumKey Album -> [(PlayEvent, Maybe Album)]
+listenedRows my es resolve am =
   [ (e, (`M.lookup` am) =<< resolve e)
   | e <- sortOn (Down . peTs) es
   , maybe True (`T.isPrefixOf` peTs e) my
   ]
- where
-  resolve = playAlbumId am
 
 -- an album made up from a play, for plays of albums clutter does not hold
 -- (yet, or any more), under the key it was logged with

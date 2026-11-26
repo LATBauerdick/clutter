@@ -1,37 +1,27 @@
 {-# LANGUAGE LambdaCase #-}
 
--- What is in the collection (docs/jellyfin-plan.md, "Membership").
+-- What is in the collection, and which versions make an album (docs/jellyfin-plan.md ›
+-- Membership; docs/album-layer-plan.md).
 --
 -- clutter's own log, ~/Sync/clutter/collection.jsonl (CLUTTER_COLLECTION overrides): one
--- line per change, appended, never rewritten. For now it holds the keep mark:
+-- line per change, appended, never rewritten. Since the album layer (slice 2) the server
+-- reads it through AlbumLayer: which versions make an album (version, split, merge, alias),
+-- the keep mark of an album, moves of file albums. The lines, in short:
 --
---   {"ts":"2026-11-25T16:02:11-06:00","op":"keep","key":"T283130328","value":"yes",
---    "artist":"…","title":"…"}
+--   {"op":"format","format":2}                      the log is in the album format
+--   {"op":"version","album":"C…","key":"D123"}      key is a version of that album
+--   {"op":"split","key":"D123"}                     key is its own album again
+--   {"op":"merge","from":"C…","into":"C…"}          album from is now into
+--   {"op":"alias","from":"D9340172","to":"T1847"}   a stand-in release, read as the stream
+--   {"op":"keep","key":…,"value":"yes|no|unset"}    keep mark of the album (C id or a key)
+--   {"op":"moved","from":"J…","to":"J…"}            a file album's folder moved
 --
--- value: "yes" (keep), "no" (not for me), "unset" (back to the rule). The last line for a
--- key counts.
---
--- And the links between versions: a file album (Jellyfin) that is the same album as a
--- Discogs release or a Tidal album:
---
---   {"ts":"…","op":"link","key":"D1365907","version":"J32aa…","via":"inventory:sure"}
---   {"ts":"…","op":"unlink","version":"J32aa…"}
---
--- A file album is a version of one album at most; the last line for it counts. The linked
--- album stands for the file album in the lists, shows it under "On the server", and
--- carries its storage.* tags.
---
--- The same two lines with a Tidal, Apple Music or Qobuz album as "version" ("T5201052",
--- "A399275146", "Q0060254728436") give a Discogs release its stream: one of each kind per
--- release, the last line counts; an unlink names the release too ("key"), since several
--- releases may have the same stream. This log is the only place these links are kept: the
--- ids once written into the Discogs Location field were brought over by
--- scripts/import-location-links.py (via "discogs-location") and are not read any more.
--- Lines with another "op" are left alone.
+-- The old link and unlink lines are not read once the log has its format line (written
+-- by scripts/album-layer-migrate.py --write); a log without one has no albums of two
+-- versions for this server, which says so at start.
 --
 -- A file album that the review of the inventory's unsure matches passed over (none of the
--- albums offered is it) gets a "skip" line, so that it is not offered again; linking it by
--- hand later still works:
+-- albums offered is it) gets a "skip" line, so that it is not offered again:
 --
 --   {"ts":"…","op":"skip","version":"J32aa…","artist":"…","title":"…"}
 --
@@ -49,58 +39,56 @@
 --   {"ts":"…","op":"moved","from":"J32aa…","to":"J7f01…","via":"update-jellyfin-albums",
 --    "artist":"…","title":"…","from_path":"…","to_path":"…"}
 --
--- Every file album id in the log, and in the play log (Env), is read through these lines:
--- links, keep marks, skips and plays of the old id are the new one's. Nothing is rewritten.
--- A later move of the new id is followed too; a move back takes the earlier one off.
+-- Every file album id in the log, and in the play log, is read through these lines.
 --
--- The rule: an album is in the collection if it is marked yes; or it is not marked and is
--- a record on a shelf (a Discogs release outside the stand-in folders) or has been played.
--- Tags, recomputed whenever the plays are: collection.in / collection.inbox (not judged
--- yet) / collection.out (marked no), and keep.yes / keep.no for the mark itself.
+-- The rule, on the album: in the collection if it is marked yes; or it is not marked and
+-- has a record (a Discogs release outside the stand-in folders) or has been played; out if
+-- marked no; inbox otherwise. Tags collection.in / collection.inbox / collection.out and
+-- keep.yes / keep.no, on every version of the album.
 module Collection (
-  Marks,
-  Links,
-  Streams,
   Moves,
   followMove,
   movedKey,
   sameKind,
   parseStreamRef,
-  appendStream,
   collectionFile,
-  readCollection,
   readAlbumLog,
+  buildLayer,
+  attachAlbums,
+  attachAlbumPlays,
+  spreadAlbumTags,
+  attachCollection,
+  shelfIndexTags,
+  standInFolderTags,
   appendMark,
-  appendLink,
+  appendVersion,
+  appendSplit,
+  appendMerge,
+  newAlbumId,
   appendSkip,
   appendNotSame,
   notSame,
   reviewedFiles,
   readMoves,
-  attachLinks,
-  masterKey,
-  attachCollection,
-  standInFolderTags,
 ) where
 
 import qualified AlbumLayer as AL
 import Data.Aeson (Value, eitherDecodeStrict, encode, object, withObject, (.!=), (.:), (.:?), (.=))
-import Data.Aeson.Types (Parser, parseEither)
+import Data.Aeson.Types (Pair, Parser, parseEither)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BL
+import Data.Hashable (hash)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time (ZonedTime, defaultTimeLocale, formatTime)
+import Listened (playedTags)
 import Relude
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (SeekMode (..), hFileSize, hPutStrLn, hSeek)
-import Types (Album (..), AlbumKey (..), parseKey)
-
--- the keep mark per album: True = keep, False = not for me; no entry = not set
-type Marks = Map AlbumKey Bool
+import Types (Album (..), AlbumKey (..), Layer (..), PlayEvent (..), nameOf, parseKey, rowOf)
 
 collectionFile :: IO FilePath
 collectionFile =
@@ -118,45 +106,17 @@ standInFolderTags = do
   names <- maybe "Streaming,Files" toText <$> lookupEnv "CLUTTER_STANDIN_FOLDERS"
   pure . S.fromList $ [T.toCaseFold ("folder." <> T.strip n) | n <- T.splitOn "," names, not (T.null (T.strip n))]
 
--- file album (Jellyfin id) -> the album it is a version of
-type Links = Map Text AlbumKey
-
 -- a file album's old Jellyfin id -> the id its folder has since it moved
 type Moves = Map Text Text
 
 -- the id a file album has now: the moves followed to the end (a loop stops where it closes)
 followMove :: Moves -> Text -> Text
-followMove mv = go S.empty
- where
-  go seen j = case M.lookup j mv of
-    Just j' | not (S.member j' seen), j' /= j -> go (S.insert j seen) j'
-    _ -> j
+followMove = AL.followChain
 
 movedKey :: Moves -> AlbumKey -> AlbumKey
 movedKey mv = \case
   J j -> J (followMove mv j)
   k -> k
-
--- Discogs release (or a file album that stands for itself) -> its streams: one Tidal,
--- one Apple Music, one Qobuz album at most.
--- Several releases may have the same stream (the vinyl and the CD of an album).
-type Streams = Map AlbumKey [AlbumKey]
-
-data Event
-  = Keep AlbumKey (Maybe Bool)
-  | Link Text AlbumKey
-  | Unlink Text
-  | LinkStream AlbumKey AlbumKey -- stream, release
-  | UnlinkStream AlbumKey (Maybe AlbumKey) -- stream, release (every release, if none is named)
-  | Moved Text Text -- old Jellyfin id, new one
-  | FormatLine -- the log is in the album format: link and unlink lines are not read
-
--- what can have a stream: a Discogs release, a file album
-holds :: AlbumKey -> Bool
-holds = \case D _ -> True; J _ -> True; _ -> False
-
-isStream :: AlbumKey -> Bool
-isStream = \case T _ -> True; A _ -> True; Q _ -> True; _ -> False
 
 -- both Tidal albums, both Apple albums, or both Qobuz albums
 sameKind :: AlbumKey -> AlbumKey -> Bool
@@ -164,13 +124,6 @@ sameKind (T _) (T _) = True
 sameKind (A _) (A _) = True
 sameKind (Q _) (Q _) = True
 sameKind _ _ = False
-
--- one stream of a kind per release: a new one takes the place of the old
-insertStream :: AlbumKey -> AlbumKey -> Streams -> Streams
-insertStream s k = M.alter (\ms -> Just (s : filter (not . sameKind s) (fromMaybe [] ms))) k
-
-deleteStream :: AlbumKey -> Maybe AlbumKey -> Streams -> Streams
-deleteStream s mk = M.filter (not . null) . maybe (M.map (filter (/= s))) (M.adjust (filter (/= s))) mk
 
 -- What LATB pastes to name a stream album: "T5201052", "A399275146", or a share link --
 -- https://tidal.com/album/5201052?u, https://listen.tidal.com/album/5201052,
@@ -197,86 +150,261 @@ parseStreamRef raw
   -- an Apple album id is the last path piece: digits, or "id" + digits
   isId p = let q = fromMaybe p (T.stripPrefix "id" p) in not (T.null q) && T.all isDigit q
 
--- Nothing for a line with an "op" this version does not know
-logLine :: Value -> Parser (Maybe Event)
-logLine = withObject "collection event" $ \o -> do
+-- a move line, for the readers here that only need the moves
+movedLine :: Value -> Parser (Maybe (Text, Text))
+movedLine = withObject "collection event" $ \o -> do
   op <- o .: "op"
-  case (op :: Text) of
-    "keep" -> do
-      k <- o .: "key"
-      v <- o .: "value"
-      case (parseKey k, v :: Text) of
-        (Just key, "yes") -> pure (Just (Keep key (Just True)))
-        (Just key, "no") -> pure (Just (Keep key (Just False)))
-        (Just key, "unset") -> pure (Just (Keep key Nothing))
-        _ -> fail "not a keep mark"
-    "link" -> do
-      k <- o .: "key"
-      v <- o .: "version"
-      case (parseKey k, parseKey v) of
-        -- a stream of a release, or of a file album that stands for itself
-        (Just key, Just st) | isStream st, holds key -> pure (Just (LinkStream st key))
-        (Just (J _), _) -> fail "a file album cannot stand for another"
-        (Just key, Just (J j)) -> pure (Just (Link j key))
-        _ -> fail "not a link"
-    "unlink" -> do
-      v <- o .: "version"
-      case parseKey v of
-        Just (J j) -> pure (Just (Unlink j))
-        Just st | isStream st -> do
-          mk <- o .:? "key"
-          pure (Just (UnlinkStream st (mk >>= parseKey)))
-        _ -> fail "not an unlink"
-    "moved" -> do
+  if op /= ("moved" :: Text)
+    then pure Nothing
+    else do
       f <- o .: "from"
       t <- o .: "to"
       case (parseKey f, parseKey t) of
-        (Just (J a), Just (J b)) -> pure (Just (Moved (T.toLower a) (T.toLower b)))
+        (Just (J a), Just (J b)) -> pure (Just (a, b))
         _ -> fail "not a move of a file album"
-    "format" -> pure (Just FormatLine)
-    _ -> pure Nothing
 
--- the moves in the order of the log: a move to an id takes off a move from it (a folder
--- moved back), so that following them ends
-foldMoves :: [(Text, Text)] -> Moves
-foldMoves = foldl' (\mv (a, b) -> M.insert a b (M.delete b mv)) M.empty
+movesOf :: [Value] -> Moves
+movesOf vs = AL.foldChain [m | v <- vs, Right (Just m) <- [parseEither movedLine v]]
 
--- the marks and links as the log leaves them, with every file album under the id it has
--- now, and the moves; a missing file is none of them, an undecodable line is skipped with
--- a warning
-readCollection :: FilePath -> IO (Marks, Links, Streams, Moves)
-readCollection fn = do
+-- the album layer as the log leaves it (AlbumLayer): versions, merges, aliases, keep
+-- marks, tags, ratings, lead lines, moves. A line this reader knows but cannot read is
+-- skipped with a warning; lines it does not know (skip, notsame, …) are left to the others.
+readAlbumLog :: FilePath -> IO AL.AlbumLog
+readAlbumLog fn = do
   exists <- doesFileExist fn
-  if not exists
-    then pure (M.empty, M.empty, M.empty, M.empty)
-    else do
-      ls <- BS8.lines <$> readFileBS fn
-      es <- fmap catMaybes . forM (zip [1 :: Int ..] ls) $ \(n, l) ->
-        if BS8.all (`elem` [' ', '\t', '\r']) l
-          then pure Nothing
-          else case eitherDecodeStrict l >>= parseEither logLine of
-            Right e -> pure e
-            Left err -> do
-              hPutStrLn stderr $ "WARNING: skipping " <> fn <> ":" <> show n <> ": " <> err
-              pure Nothing
-      let moves = foldMoves [(a, b) | Moved a b <- es]
-          -- a format line anywhere switches every link and unlink line off (AlbumLayer)
-          inAlbumFormat = any (\case FormatLine -> True; _ -> False) es
-          isLink = \case Link _ _ -> True; Unlink _ -> True; LinkStream _ _ -> True; UnlinkStream _ _ -> True; _ -> False
-          es' = if inAlbumFormat then filter (not . isLink) es else es
-          j = followMove moves
-          k = movedKey moves
-          step (ms, lk, st) = \case
-            Keep a v -> (M.alter (const v) (k a) ms, lk, st)
-            Link f a -> (ms, M.insert (j f) a lk, st)
-            Unlink f -> (ms, M.delete (j f) lk, st)
-            LinkStream s a -> (ms, lk, insertStream s (k a) st)
-            UnlinkStream s ma -> (ms, lk, deleteStream s (k <$> ma) st)
-            Moved _ _ -> (ms, lk, st)
-            FormatLine -> (ms, lk, st)
-          (marks, links, streams) = foldl' step (M.empty, M.empty, M.empty) es'
-      hPutStrLn stderr $ "read " <> show (M.size marks) <> " keep marks and " <> show (M.size links) <> " file links, " <> show (sum (length <$> streams)) <> " stream links, " <> show (M.size moves) <> " moved file albums from " <> fn
-      pure (marks, links, streams, moves)
+  ls <- if exists then BS8.lines <$> readFileBS fn else pure []
+  es <- fmap catMaybes . forM (zip [1 :: Int ..] ls) $ \(n, l) ->
+    if BS8.all (`elem` [' ', '\t', '\r']) l
+      then pure Nothing
+      else case eitherDecodeStrict l >>= parseEither AL.logEvent of
+        Right e -> pure e
+        Left err -> do
+          hPutStrLn stderr $ "WARNING: album layer skips " <> fn <> ":" <> show n <> ": " <> err
+          pure Nothing
+  pure (AL.foldLog es)
+
+--
+-- The album layer on the albums clutter holds (docs/album-layer-plan.md › Spec)
+--
+
+-- Which album each key clutter holds belongs to, and the key of that album's row: its
+-- lead version among the versions held (AlbumLayer.leadAmong; records by the date they
+-- were added). Besides:
+--  - a key the log reads as another (a stand-in release with an alias, an old file album
+--    id) is no version: its row is that other key's album's;
+--  - an Apple Music album that a Tidal album names through the store lookup, and that is
+--    no version of an album, has the Tidal album's row (an "also on Apple Music" fact of
+--    that stream, docs/album-layer-plan.md › Migration, 6);
+--  - a play counts for the album of the first of its keys clutter holds (the one its src
+--    names, then discogs, tidal, apple, jellyfin), read through moves and aliases.
+buildLayer :: AL.AlbumLog -> Map AlbumKey Album -> Layer
+buildLayer al am =
+  Layer
+    { lyFormat = AL.alFormat al
+    , lyName = names
+    , lyRow = rows
+    , lyVersions = versions
+    , lyKeep = AL.alKeep al
+    , lyStandIns = M.fromListWith (flip (<>)) [(n, [k]) | (k, n) <- M.toList aliased]
+    , lyIds = S.fromList (M.keys (AL.albumsWithIds al)) <> S.fromList (map C (M.keys (AL.alMerges al) <> M.elems (AL.alMerges al)))
+    , -- a play counts if clutter holds its version, or its version is one of an album
+      -- clutter shows (a Tidal album that is no favourite, of a record)
+      lyPlay = \e -> twinName . AL.albumOfKey al <$> AL.playVersion counts al (playKeys e)
+    }
+ where
+  held k = M.member k am
+  counts k = held k || M.member (AL.albumOfKey al k) heldOf
+  canon = AL.canonical al
+  own = [k | k <- M.keys am, canon k == k]
+  added k = case k of D _ -> mfilter (not . T.null) (albumAdded <$> M.lookup k am); _ -> Nothing
+  -- every album with an id -> its versions held, lead first, in the order they joined.
+  -- An album none of whose versions clutter holds (a Tidal and an Apple album that are no
+  -- favourites) is shown by the stand-in release read as one of them, as before the
+  -- migration: that stand-in is its row, though no version.
+  heldOwn = M.fromListWith (flip (<>)) [(AL.albumOfKey al k, [k]) | k <- own]
+  -- (a second stand-in of the same album has that first one's row: aliasRows)
+  heldOf = M.unionWith (\o _ -> o) heldOwn (M.map (take 1) (M.fromListWith (flip (<>)) [(n, [k]) | (k, n) <- M.toList aliased, not (M.member n heldOwn)]))
+  ordered n ks = case AL.leadAmong (`elem` ks) added al n of
+    Just l -> l : filter (/= l) (inLog n ks)
+    Nothing -> inLog n ks
+  inLog n ks = case n of
+    C _ -> let vs = AL.versionsOf al n in filter (`elem` ks) vs <> filter (`notElem` vs) ks
+    _ -> ks
+  heldOrdered = M.mapWithKey ordered heldOf
+  -- an album with an id: the versions held (lead first), then the others in the log
+  -- (and an album of one version clutter does not hold, shown by a stand-in: the stand-in,
+  -- then that version)
+  versions =
+    M.mapWithKey (\n vs -> let hs = M.findWithDefault [] n heldOrdered in hs <> filter (`notElem` hs) vs) $
+      M.fromList [(n, AL.versionsOf al n) | n <- M.keys (AL.albumsWithIds al)]
+        <> M.fromList [(n, [n]) | n <- M.keys heldOf, not (isId n), not (M.member n heldOwn)]
+  isId = \case C _ -> True; _ -> False
+  leadOfName n = M.lookup n heldOrdered >>= viaNonEmpty head
+  ownNames = M.fromList [(k, AL.albumOfKey al k) | k <- own]
+  -- a key read as another: the album of the key it is read as
+  aliased = M.fromList [(k, AL.albumOfKey al k) | k <- M.keys am, canon k /= k]
+  ownRows = M.fromList [(k, l) | (k, n) <- M.toList ownNames, Just l <- [leadOfName n], l /= k]
+  aliasRows = M.fromList [(k, l) | (k, n) <- M.toList aliased, Just l <- [leadOfName n], l /= k]
+  -- the Apple Music album of a Tidal album (store lookup), where it stands alone: shown as
+  -- the Tidal album's row and counted as its album (plays, keep mark, collection), as the
+  -- old server hid it behind the Tidal album
+  twins =
+    [ (A i, k)
+    | (k@(T _), a) <- M.toList am
+    , Just i <- [readMaybe . toString =<< albumAMusic a]
+    , held (A i)
+    , M.lookup (A i) ownNames == Just (A i)
+    ]
+  twinOf = M.fromList [(t, M.findWithDefault k k ownNames) | (t, k) <- twins]
+  twinName n = M.findWithDefault n n twinOf
+  appleRows = M.fromList [(t, M.findWithDefault k k ownRows) | (t, k) <- twins]
+  names = M.map twinName ownNames <> aliased
+  rows = ownRows <> aliasRows <> appleRows
+
+-- the keys of a play: the one its src names, then the others in the order discogs, tidal,
+-- apple, jellyfin
+playKeys :: PlayEvent -> [AlbumKey]
+playKeys e = ordNub (catMaybes [src, D <$> peDiscogs e, T <$> peTidal e, A <$> peApple e, J . T.toLower <$> peJellyfin e])
+ where
+  src = case peSrc e of
+    "discogs" -> D <$> peDiscogs e
+    "tidal" -> T <$> peTidal e
+    "apple" -> A <$> peApple e
+    "jellyfin" -> J . T.toLower <$> peJellyfin e
+    _ -> Nothing
+
+-- tags of an album that are about the album, not about one version: on every version
+albumLevel :: Text -> Bool
+albumLevel t = any (`T.isPrefixOf` t) ["played.", "collection.", "keep.", "length.", "rated.", "my."]
+
+-- tags a version shows of what else its album is available as (provider.*, storage.*,
+-- and Tidal's own: in the collection, gone)
+borrowed :: Text -> Bool
+borrowed t = any (`T.isPrefixOf` t) ["provider.", "storage.", "tidal."]
+
+-- Put each album's versions on the albums clutter holds. The lead version is the album's
+-- row: it gets the album's streams (albumTidal, albumAMusic, albumQobuz: the first of each
+-- in the log, held or not), its file albums (albumFiles, albumJellyfin), the union of its
+-- versions' own tags (an album with a vinyl and a CD is found under both formats), plus
+-- provider.* for the streams clutter does not hold, and the Wikidata store keys of all
+-- versions, the lead's first. Every other version keeps its own identity (a Tidal album's
+-- albumTidal is its own) and its own tags, with the album's provider.*, storage.* and
+-- tidal.* tags; it gets the album's streams and files too, so that its page shows them.
+-- Works on the albums as the readers give them (Env.baseR).
+attachAlbums :: Layer -> Map AlbumKey Album -> Map AlbumKey Album
+attachAlbums ly am = foldl' putAlbum am (M.elems (lyVersions ly))
+ where
+  putAlbum m vs =
+    let hs = filter (`M.member` m) vs
+     in case hs of
+          [] -> m
+          (l : rest) ->
+            let la = m M.! l
+                others = [m M.! k | k <- rest]
+                firstT = viaNonEmpty head [show n | T n <- vs]
+                firstA = viaNonEmpty head [show n | A n <- vs]
+                firstQ = viaNonEmpty head [q | Q q <- vs]
+                files = [j | J j <- hs]
+                unheld = filter (`notElem` hs) vs
+                streamTags = ["provider.tidal" | T _ <- unheld] <> ["provider.applemusic" | A _ <- unheld] <> ["provider.qobuz" | Q _ <- unheld]
+                streamWiki = ["t:" <> show n | T n <- unheld] <> ["a:" <> show n | A n <- unheld]
+                -- album-level tags (rated.*, …) come from one version (spreadAlbumTags), not the union
+                rowTags = ordNub (albumTags la <> filter (not . albumLevel) (concatMap albumTags others) <> streamTags)
+                withStreams a =
+                  a
+                    { albumTidal = case albumID a of T _ -> albumTidal a; _ -> firstT <|> albumTidal a
+                    , albumAMusic = case albumID a of A _ -> albumAMusic a; T _ -> albumAMusic a <|> firstA; _ -> firstA <|> albumAMusic a
+                    , albumQobuz = firstQ <|> albumQobuz a
+                    , albumFiles = case albumID a of J j -> filter (/= j) files; _ -> files
+                    , albumJellyfin = case albumID a of J _ -> albumJellyfin a; _ -> viaNonEmpty head files <|> albumJellyfin a
+                    }
+                lead =
+                  (withStreams la)
+                    { albumTags = rowTags
+                    , albumWikiKeys = ordNub (albumWikiKeys la <> concatMap albumWikiKeys others <> streamWiki)
+                    }
+                other a = (withStreams a){albumTags = ordNub (albumTags a <> filter borrowed rowTags)}
+             in foldl' (\m' a -> M.insert (albumID a) (other a) m') (M.insert l lead m) others
+
+-- albumListenedDates and the played.* tags, by album: a play counts for the album its
+-- version belongs to (Layer.lyPlay), and every version of the album shows the album's
+-- plays. played.early: the Discogs field 7 mark of any of its records.
+attachAlbumPlays :: Layer -> [PlayEvent] -> Map AlbumKey Album -> Map AlbumKey Album
+attachAlbumPlays ly es am = M.mapWithKey attach am
+ where
+  dates = M.fromListWith (<>) [(n, [peTs e]) | e <- sortOn peTs es, Just n <- [lyPlay ly e]]
+  early = M.fromListWith max [(nameOf ly k, albumPlays a) | (k, a) <- M.toList am]
+  attach k a =
+    let n = nameOf ly k
+        ds = M.findWithDefault [] n dates
+     in a
+          { albumListenedDates = ds
+          , albumTags = filter (not . ("played." `T.isPrefixOf`)) (albumTags a) <> playedTags (length ds) (M.findWithDefault 0 n early)
+          }
+
+-- The album-level tags that come from one version: length.* (the lead's) and rated.* (from
+-- Discogs until clutter has its own rating: the first record of the album that is rated,
+-- lead first), the same on every version of an album. Run after Details.attachLength.
+spreadAlbumTags :: Layer -> Map AlbumKey Album -> Map AlbumKey Album
+spreadAlbumTags ly am = foldl' spread am albums
+ where
+  pre p t = p `T.isPrefixOf` t
+  -- every album with an id or a stand-in: its held versions (lead first) and its stand-ins
+  albums =
+    [ (filter (`M.member` am) vs, M.findWithDefault [] n (lyStandIns ly))
+    | n <- ordNub (M.keys (lyVersions ly) <> M.keys (lyStandIns ly))
+    , let vs = M.findWithDefault [n] n (lyVersions ly)
+    ]
+  spread m (hs, sis) = case hs of
+    l : _ | length hs + length sis >= 2 ->
+      let tagsOf k = maybe [] albumTags (M.lookup k m)
+          lengthTags = filter (pre "length.") (tagsOf l)
+          -- the first version (lead first), then stand-in, that is rated
+          rated = filter (pre "rated.") <$> map tagsOf (hs <> sis)
+          ratedTags = fromMaybe (fromMaybe [] (viaNonEmpty head (filter (not . null) rated))) (find (\ts -> not (null ts) && "rated.not" `notElem` ts) rated)
+          setTags a = a{albumTags = filter (\t -> not (pre "length." t || pre "rated." t)) (albumTags a) <> lengthTags <> ratedTags}
+       in foldl' (flip (M.adjust setTags)) m (hs <> sis)
+    _ -> m
+
+-- set the collection.* and keep.* tags, by album (Layer.lyKeep, the rule above). Needs the
+-- played.* tags (attachAlbumPlays) and the albums as the readers give them (for a record's
+-- folder: a stand-in is no record).
+attachCollection :: Set Text -> Layer -> Map AlbumKey Album -> Map AlbumKey Album -> Map AlbumKey Album
+attachCollection standInTags ly base am = M.mapWithKey setTags am
+ where
+  isRecord (k, a) = case k of
+    D _ -> not (any (`S.member` standInTags) (albumTags a))
+    _ -> False
+  withRecord = S.fromList [nameOf ly k | (k, a) <- M.toList base, isRecord (k, a)]
+  setTags k a =
+    let n = nameOf ly k
+        tags = filter (\t -> not ("collection." `T.isPrefixOf` t || "keep." `T.isPrefixOf` t)) (albumTags a)
+        played = "played.never" `notElem` tags
+        new = case M.lookup n (lyKeep ly) of
+          Just True -> ["keep.yes", "collection.in"]
+          Just False -> ["keep.no", "collection.out"]
+          Nothing -> [if S.member n withRecord || played then "collection.in" else "collection.inbox"]
+     in a{albumTags = tags <> new}
+
+-- The tags a record matches in a shelf list, where it differ from its album's row: a
+-- record that leads an album of several versions matches on its own tags (format,
+-- folder, …), the album-level ones, and what else the album is available as (provider.*,
+-- storage.*, tidal.*) — not on another record's format. Every other key matches in a
+-- shelf list as it does in the others.
+shelfIndexTags :: Layer -> Map AlbumKey Album -> Map AlbumKey Album -> Map AlbumKey [Text]
+shelfIndexTags ly base am =
+  M.fromList
+    [ (l, ordNub (albumTags b <> filter (\t -> albumLevel t || borrowed t) (albumTags a)))
+    | vs <- M.elems (lyVersions ly)
+    , l@(D _) : _ : _ <- [filter (`M.member` am) vs]
+    , rowOf ly l == l
+    , Just b <- [M.lookup l base]
+    , Just a <- [M.lookup l am]
+    ]
+
+--
+-- Writing the log
+--
 
 -- append one line; never rewrites what is already there
 appendLine :: FilePath -> Value -> IO ()
@@ -302,48 +430,55 @@ appendLine fn line = do
 stamp :: ZonedTime -> Text
 stamp = toText . formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%S%Ez"
 
--- append one keep mark
-appendMark :: FilePath -> ZonedTime -> Album -> Maybe Bool -> IO ()
-appendMark fn now a mark =
-  appendLine fn $
-    object
-      [ "ts" .= stamp now
-      , "op" .= ("keep" :: Text)
-      , "key" .= albumID a
-      , "value" .= (case mark of Just True -> "yes"; Just False -> "no"; Nothing -> "unset" :: Text)
-      , "artist" .= albumArtist a
-      , "title" .= albumTitle a
-      ]
+-- for a human reader of the log; never read back
+named :: Album -> [Pair]
+named a = ["artist" .= albumArtist a, "title" .= albumTitle a]
 
--- append a link (Just the album the file album is a version of) or an unlink (Nothing)
-appendLink :: FilePath -> ZonedTime -> Text -> Maybe Album -> IO ()
-appendLink fn now j = \case
-  Just a ->
-    appendLine fn $
-      object
-        [ "ts" .= stamp now
-        , "op" .= ("link" :: Text)
-        , "key" .= albumID a
-        , "version" .= J j
-        , "via" .= ("clutter" :: Text)
-        , "artist" .= albumArtist a
-        , "title" .= albumTitle a
-        ]
-  Nothing -> appendLine fn $ object ["ts" .= stamp now, "op" .= ("unlink" :: Text), "version" .= J j]
+-- append one keep mark, against the album's name (its C id, or its one version's key)
+appendMark :: FilePath -> ZonedTime -> AlbumKey -> Album -> Maybe Bool -> IO ()
+appendMark fn now n a mark =
+  appendLine fn . object $
+    [ "ts" .= stamp now
+    , "op" .= ("keep" :: Text)
+    , "key" .= n
+    , "value" .= (case mark of Just True -> "yes"; Just False -> "no"; Nothing -> "unset" :: Text)
+    ]
+      <> named a
+
+-- a version joins an album with an id
+appendVersion :: FilePath -> ZonedTime -> AlbumKey -> AlbumKey -> Album -> IO ()
+appendVersion fn now c k a =
+  appendLine fn . object $
+    ["ts" .= stamp now, "op" .= ("version" :: Text), "album" .= c, "key" .= k, "via" .= ("clutter" :: Text)] <> named a
+
+-- a version is its own album again
+appendSplit :: FilePath -> ZonedTime -> AlbumKey -> Album -> IO ()
+appendSplit fn now k a =
+  appendLine fn . object $
+    ["ts" .= stamp now, "op" .= ("split" :: Text), "key" .= k, "via" .= ("clutter" :: Text)] <> named a
+
+-- album from is now album into (both with ids)
+appendMerge :: FilePath -> ZonedTime -> AlbumKey -> AlbumKey -> Album -> IO ()
+appendMerge fn now from into a =
+  appendLine fn . object $
+    ["ts" .= stamp now, "op" .= ("merge" :: Text), "from" .= from, "into" .= into, "via" .= ("clutter" :: Text)] <> named a
+
+-- a new album id: C + 6 characters of 0-9 and a-z without i l o u, from a hash of the
+-- versions and the time, not one of those taken
+newAlbumId :: ZonedTime -> [AlbumKey] -> Set AlbumKey -> AlbumKey
+newAlbumId now ks taken = fromMaybe (C "000000") (find (`S.notMember` taken) (map cid [0 :: Int ..]))
+ where
+  alphabet = "0123456789abcdefghjkmnpqrstvwxyz" :: Text
+  seed = T.intercalate "|" (map show (sort ks)) <> "@" <> stamp now
+  cid n =
+    let h = abs (hash (seed <> "#" <> show n))
+     in C (toText [T.index alphabet ((h `div` (32 ^ i)) `mod` 32) | i <- [0 .. 5 :: Int]])
 
 -- append a skip: the review of the unsure matches found none of the albums offered to be
 -- this file album (the album given is the file album itself)
 appendSkip :: FilePath -> ZonedTime -> Album -> IO ()
 appendSkip fn now a = case albumID a of
-  J j ->
-    appendLine fn $
-      object
-        [ "ts" .= stamp now
-        , "op" .= ("skip" :: Text)
-        , "version" .= J j
-        , "artist" .= albumArtist a
-        , "title" .= albumTitle a
-        ]
+  J j -> appendLine fn . object $ ["ts" .= stamp now, "op" .= ("skip" :: Text), "version" .= J j] <> named a
   _ -> pure ()
 
 -- the moves alone, for a reader that has the old ids (the inventory's TSV)
@@ -354,24 +489,7 @@ readMoves fn = do
     then pure M.empty
     else do
       ls <- BS8.lines <$> readFileBS fn
-      pure $ foldMoves [(a, b) | l <- ls, "\"moved\"" `BS.isInfixOf` l, Right (Just (Moved a b)) <- [eitherDecodeStrict l >>= parseEither logLine]]
-
--- the album layer as the log leaves it (AlbumLayer): versions, merges, aliases, keep
--- marks, tags, ratings, lead lines. A line this reader knows but cannot read is skipped
--- with a warning; lines it does not know (link, skip, notsame, …) are left to the others.
-readAlbumLog :: FilePath -> IO AL.AlbumLog
-readAlbumLog fn = do
-  exists <- doesFileExist fn
-  ls <- if exists then BS8.lines <$> readFileBS fn else pure []
-  es <- fmap catMaybes . forM (zip [1 :: Int ..] ls) $ \(n, l) ->
-    if BS8.all (`elem` [' ', '\t', '\r']) l
-      then pure Nothing
-      else case eitherDecodeStrict l >>= parseEither AL.logEvent of
-        Right e -> pure e
-        Left err -> do
-          hPutStrLn stderr $ "WARNING: album layer skips " <> fn <> ":" <> show n <> ": " <> err
-          pure Nothing
-  pure (AL.foldLog es)
+      pure $ movesOf [v | l <- ls, "\"moved\"" `BS.isInfixOf` l, Right v <- [eitherDecodeStrict l]]
 
 -- append that a suggestion is not the same album as this one (True), or take that back
 appendNotSame :: FilePath -> ZonedTime -> AlbumKey -> Album -> Bool -> IO ()
@@ -382,7 +500,7 @@ appendNotSame fn now this cand excluded =
     , "version" .= this
     , "key" .= albumID cand
     ]
-      <> (if excluded then ["artist" .= albumArtist cand, "title" .= albumTitle cand] else ["undo" .= True])
+      <> (if excluded then named cand else ["undo" .= True])
 
 -- the suggestions excluded for each album (both keys as they are now: moved file albums
 -- under their new ids), in the order they were excluded
@@ -394,8 +512,7 @@ notSame fn = do
     else do
       ls <- BS8.lines <$> readFileBS fn
       let vs = [v | l <- ls, "\"notsame\"" `BS.isInfixOf` l || "\"moved\"" `BS.isInfixOf` l, Right v <- [eitherDecodeStrict l]]
-          moves = foldMoves [(T.toLower a, T.toLower b) | v <- vs, Right (Just (Moved a b)) <- [parseEither logLine v]]
-          k = movedKey moves
+          k = movedKey (movesOf vs)
           step m (this, cand, undo) = M.alter (\cs -> let cs' = filter (/= cand) (fromMaybe [] cs) in if undo then mfilter (not . null) (Just cs') else Just (cs' <> [cand])) this m
       pure $
         foldl'
@@ -411,8 +528,9 @@ notSame fn = do
   pairOf :: Value -> Parser (Text, Maybe Text, Maybe Text, Bool)
   pairOf = withObject "collection event" $ \o -> (,,,) <$> o .: "op" <*> o .:? "version" <*> o .:? "key" <*> o .:? "undo" .!= False
 
--- the file albums (Jellyfin ids, as they are now) that the log has a link, unlink or skip
--- line for: decided once, by hand or by the import, and not offered for review again
+-- the file albums (Jellyfin ids, as they are now) that the log has decided: a link, unlink
+-- or skip line ("version"), or a version or split line ("key") for it — by hand or by the
+-- import — not offered for review again
 reviewedFiles :: FilePath -> IO (Set Text)
 reviewedFiles fn = do
   exists <- doesFileExist fn
@@ -421,93 +539,13 @@ reviewedFiles fn = do
     else do
       ls <- BS8.lines <$> readFileBS fn
       let vs = [v | l <- ls, Right v <- [eitherDecodeStrict l]]
-          moves = foldMoves [(T.toLower a, T.toLower b) | v <- vs, Right (Just (Moved a b)) <- [parseEither logLine v]]
+          moves = movesOf vs
       pure . S.fromList $
         [ followMove moves (T.toLower j)
         | v <- vs
-        , Right (op, ver) <- [parseEither opVersion v]
-        , op `elem` ["link", "unlink", "skip" :: Text]
-        , Just (J j) <- [ver >>= parseKey]
+        , Right (op, ver, key) <- [parseEither opVersion v]
+        , Just (J j) <- [parseKey =<< if op `elem` ["link", "unlink", "skip" :: Text] then ver else if op `elem` ["version", "split"] then key else Nothing]
         ]
  where
-  opVersion :: Value -> Parser (Text, Maybe Text)
-  opVersion = withObject "collection event" $ \o -> (,) <$> o .: "op" <*> o .:? "version"
-
--- append a stream link of a release (True), or its unlink (False)
-appendStream :: FilePath -> ZonedTime -> AlbumKey -> Album -> Bool -> IO ()
-appendStream fn now s a linked =
-  appendLine fn . object $
-    [ "ts" .= stamp now
-    , "op" .= (if linked then "link" else "unlink" :: Text)
-    , "key" .= albumID a
-    , "version" .= s
-    ]
-      <> ["via" .= ("clutter" :: Text) | linked]
-      <> ["artist" .= albumArtist a, "title" .= albumTitle a]
-
--- put the linked file albums on the albums they are versions of: albumFiles (after those
--- the Discogs Location field names), albumJellyfin (the first), and the tags
--- provider.jellyfin and storage.* of those file albums. A link to an album or from a file
--- album clutter does not hold is left out. Idempotent; an unlinked file has to be taken
--- off albumFiles by the caller (Env.envSetLink), since a Location id looks the same.
--- Runs before attachPlays (a file album's plays are its album's) and attachLength.
---
--- Releases of one Discogs master (the vinyl and the CD of an album) share the storage
--- tags: the files linked to one of them are a version of the album, whichever release
--- holds the link. albumFiles stays with that release (stand-in, plays); the album page
--- shows the files on the others too (App.filesOf).
---
--- And the streams from the log: a release gets the Tidal, Apple Music and Qobuz album
--- linked there, with the provider tag. The log is the only source since 2026-11-25 (the
--- ids in the Discogs Location field were brought over once and are not read any more).
-attachLinks :: Links -> Streams -> Map AlbumKey Album -> Map AlbumKey Album
-attachLinks links streams am = M.mapWithKey (\k -> withStreams k . attach k) am
- where
-  withStreams k a = foldr putStream a (M.findWithDefault [] k streams)
-  -- the id field, the provider tag, and the Wikidata store key the id gives (Provider.wikiKeys)
-  putStream st a = case st of
-    T n -> (tagged "provider.tidal" . wikiKeyed ("t:" <> show n)) a{albumTidal = Just (show n)}
-    A n -> (tagged "provider.applemusic" . wikiKeyed ("a:" <> show n)) a{albumAMusic = Just (show n)}
-    Q q -> tagged "provider.qobuz" a{albumQobuz = Just q}
-    _ -> a
-  tagged t a = if t `elem` albumTags a then a else a{albumTags = albumTags a <> [t]}
-  wikiKeyed w a = if w `elem` albumWikiKeys a then a else a{albumWikiKeys = albumWikiKeys a <> [w]}
-  byAlbum = M.fromListWith (flip (<>)) [(k, [j]) | (j, k) <- M.toList links, M.member (J j) am]
-  ownFiles k a = case k of
-    J _ -> []
-    _ -> ordNub (albumFiles a <> M.findWithDefault [] k byAlbum)
-  byMaster = M.fromListWith (<>) [(m, fs) | (k, a) <- M.toList am, Just m <- [masterKey a], let fs = ownFiles k a, not (null fs)]
-  storageOf j = [t | Just f <- [M.lookup (J j) am], t <- albumTags f, "storage." `T.isPrefixOf` t]
-  attach k a = case k of
-    J _ -> a
-    _ ->
-      let files = ownFiles k a
-          shared = maybe [] (\m -> M.findWithDefault [] m byMaster) (masterKey a)
-          own = filter (\t -> not ("storage." `T.isPrefixOf` t)) (albumTags a)
-          fileTags = ordNub (concatMap storageOf (files <> shared))
-          tags = own <> ["provider.jellyfin" | "provider.jellyfin" `notElem` own, not (null fileTags)] <> fileTags
-       in if null files
-            then a{albumTags = tags}
-            else a{albumFiles = files, albumJellyfin = viaNonEmpty head files, albumTags = tags}
-
--- the Discogs master of a release, as its Wikidata store key ("dm:<id>"): releases with
--- the same one are versions of one album
-masterKey :: Album -> Maybe Text
-masterKey a = case albumID a of
-  D _ -> find ("dm:" `T.isPrefixOf`) (albumWikiKeys a)
-  _ -> Nothing
-
--- set the collection.* and keep.* tags on every album. Needs the played.* tags, so it
--- runs after Listened.attachPlays. Idempotent.
-attachCollection :: Set Text -> Marks -> Map AlbumKey Album -> Map AlbumKey Album
-attachCollection standInTags marks = M.map $ \a ->
-  let tags = filter (\t -> not ("collection." `T.isPrefixOf` t || "keep." `T.isPrefixOf` t)) (albumTags a)
-      onShelf = case albumID a of
-        D _ -> not (any (`S.member` standInTags) tags)
-        _ -> False
-      played = "played.never" `notElem` tags
-      new = case M.lookup (albumID a) marks of
-        Just True -> ["keep.yes", "collection.in"]
-        Just False -> ["keep.no", "collection.out"]
-        Nothing -> [if onShelf || played then "collection.in" else "collection.inbox"]
-   in a{albumTags = tags <> new}
+  opVersion :: Value -> Parser (Text, Maybe Text, Maybe Text)
+  opVersion = withObject "collection event" $ \o -> (,,) <$> o .: "op" <*> o .:? "version" <*> o .:? "key"
