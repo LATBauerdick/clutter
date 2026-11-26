@@ -563,10 +563,19 @@ render state =
                                      <> (case c.cvHas of
                                            Just h | h /= "" -> " · has " <> h <> ", to be replaced"
                                            _ -> "")) ]
+              , HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> NotSame a.albumID c.cvKey true
+                          , HP.title "Not the same album: don't suggest it again" ] [ HH.text "×" ]
               ]
+          -- those marked × , small, each with ↺ to suggest it again
+          notSame = fromMaybe [] (detail >>= _.xnotsame)
+          gone c =
+            HH.p [ cls "av-file av-notsame" ]
+              [ HH.text ("not " <> c.cvTitle <> " — " <> c.cvArtist <> " ")
+              , HH.button [ cls "av-tag", HE.onClick \_ -> NotSame a.albumID c.cvKey false
+                          , HP.title "Suggest it again" ] [ HH.text "↺" ] ]
       in
-      if null cands then HH.text "" else
-        HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "Same album as…" ] ] <> map one cands)
+      if null cands && null notSame then HH.text "" else
+        HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "Same album as…" ] ] <> map one cands <> map gone notSame)
 
     -- in the collection or not, why, and the keep mark (docs/jellyfin-plan.md, "Membership"):
     -- a record on a shelf and anything played is in; "Keep" puts an album in, "Not for me"

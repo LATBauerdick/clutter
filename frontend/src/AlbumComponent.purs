@@ -104,6 +104,18 @@ handleAction = case _ of
 
   ToggleAbout -> H.modify_ \st -> st { aboutOpen = not st.aboutOpen }
   RefreshTracks -> loadTracks true
+  -- × / ↺ under "Same album as…": one suggestion off the list, or back on it; the details
+  -- (with the suggestions) are asked for again
+  NotSame aid cand off -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumnotsame/" <> aid <> "?cand=" <> cand <> (if off then "" else "&op=undo"))
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String } of
+      Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Not the same: no answer" }
+    rx <- H.liftAff $ getUrl (api <> "albumxq/" <> aid)
+    case (decodeJson =<< parseJson rx) :: Either JsonDecodeError AlbumXJ of
+      Right x -> H.modify_ \st -> if map _.albumID st.album == Just aid then st { albumX = Just x } else st
+      Left _ -> pure unit
   ShowVersion v -> do
     H.modify_ _ { version = v, verX = Nothing, verA = Nothing, albumT = Nothing, nodeMsg = Nothing }
     _ <- H.fork (loadTracks false)

@@ -122,6 +122,7 @@ type AlbumXJ =    { xid :: String
                   , xfiles :: Maybe (Array FileV) -- file albums on the server that are versions of this album
                   , xnode :: Maybe Boolean -- the album's files are in a share the Node has indexed (▶ can play them)
                   , xof :: Maybe CandV -- a file album: the album it is a version of
+                  , xnotsame :: Maybe (Array CandV) -- suggestions marked "not the same album" (×)
                   }
 -- an album a file album may be a version of
 type CandV =      { cvKey :: String
@@ -300,6 +301,7 @@ data Action = ToggleSortOrder
             | UpdateServer -- take in what Jellyfin has now (new and gone file albums), then show the server list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
             | ToggleAbout -- the review: all of it, or its first lines
+            | NotSame String String Boolean -- album, suggestion: not the same album (true), or bring it back (false)
             | ShowVersion String -- the album page shows this version: "" the album, "tidal", "J…" (see version)
             | RefreshTracks -- fetch the tracks, credits and review of the album again
             | TogglePop String -- open or close a menu: focus | sort | more

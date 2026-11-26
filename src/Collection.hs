@@ -35,6 +35,13 @@
 --
 --   {"ts":"…","op":"skip","version":"J32aa…","artist":"…","title":"…"}
 --
+-- One suggestion under an album page's "Same album as…" that is not the same album (× on
+-- the page): that album is not suggested for this one again. "undo" (↺) brings it back;
+-- the last line for the pair counts.
+--
+--   {"ts":"…","op":"notsame","version":"J097b…","key":"D1234","artist":"…","title":"…"}
+--   {"ts":"…","op":"notsame","version":"J097b…","key":"D1234","undo":true}
+--
 -- Jellyfin gives a folder that was moved or renamed a new id. When a full update from the
 -- server (scripts/update-jellyfin-albums.py) finds that a file album clutter refers to has
 -- gone and one new album is the same one, it notes the move:
@@ -65,6 +72,8 @@ module Collection (
   appendMark,
   appendLink,
   appendSkip,
+  appendNotSame,
+  notSame,
   reviewedFiles,
   readMoves,
   attachLinks,
@@ -73,7 +82,7 @@ module Collection (
   standInFolderTags,
 ) where
 
-import Data.Aeson (Value, eitherDecodeStrict, encode, object, withObject, (.:), (.:?), (.=))
+import Data.Aeson (Value, eitherDecodeStrict, encode, object, withObject, (.!=), (.:), (.:?), (.=))
 import Data.Aeson.Types (Parser, parseEither)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
@@ -337,6 +346,44 @@ readMoves fn = do
     else do
       ls <- BS8.lines <$> readFileBS fn
       pure $ foldMoves [(a, b) | l <- ls, "\"moved\"" `BS.isInfixOf` l, Right (Just (Moved a b)) <- [eitherDecodeStrict l >>= parseEither logLine]]
+
+-- append that a suggestion is not the same album as this one (True), or take that back
+appendNotSame :: FilePath -> ZonedTime -> AlbumKey -> Album -> Bool -> IO ()
+appendNotSame fn now this cand excluded =
+  appendLine fn . object $
+    [ "ts" .= stamp now
+    , "op" .= ("notsame" :: Text)
+    , "version" .= this
+    , "key" .= albumID cand
+    ]
+      <> (if excluded then ["artist" .= albumArtist cand, "title" .= albumTitle cand] else ["undo" .= True])
+
+-- the suggestions excluded for each album (both keys as they are now: moved file albums
+-- under their new ids), in the order they were excluded
+notSame :: FilePath -> IO (Map AlbumKey [AlbumKey])
+notSame fn = do
+  exists <- doesFileExist fn
+  if not exists
+    then pure M.empty
+    else do
+      ls <- BS8.lines <$> readFileBS fn
+      let vs = [v | l <- ls, "\"notsame\"" `BS.isInfixOf` l || "\"moved\"" `BS.isInfixOf` l, Right v <- [eitherDecodeStrict l]]
+          moves = foldMoves [(T.toLower a, T.toLower b) | v <- vs, Right (Just (Moved a b)) <- [parseEither logLine v]]
+          k = movedKey moves
+          step m (this, cand, undo) = M.alter (\cs -> let cs' = filter (/= cand) (fromMaybe [] cs) in if undo then mfilter (not . null) (Just cs') else Just (cs' <> [cand])) this m
+      pure $
+        foldl'
+          step
+          M.empty
+          [ (k this, k cand, undo)
+          | v <- vs
+          , Right ("notsame", Just tv, Just cv, undo) <- [parseEither pairOf v]
+          , Just this <- [parseKey tv]
+          , Just cand <- [parseKey cv]
+          ]
+ where
+  pairOf :: Value -> Parser (Text, Maybe Text, Maybe Text, Bool)
+  pairOf = withObject "collection event" $ \o -> (,,,) <$> o .: "op" <*> o .:? "version" <*> o .:? "key" <*> o .:? "undo" .!= False
 
 -- the file albums (Jellyfin ids, as they are now) that the log has a link, unlink or skip
 -- line for: decided once, by hand or by the import, and not offered for review again

@@ -119,6 +119,8 @@ Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, 
 
 **Moved folders, since 2026-11-26** (`docs/jellyfin-plan.md` › Slice 16): Jellyfin gives a moved folder a new id; a full run of `update-jellyfin-albums.py` finds the albums clutter refers to again (title + artist, else folder name + playing time; exactly one fit) and appends `{"op":"moved","from":"J…","to":"J…"}` to the collection log. Every reader of J ids follows these lines (`Collection.followMove`, `collection_log.follow`); nothing is rewritten.
 
+**Not the same album, since 2026-11-26:** × beside a "Same album as…" suggestion appends `{"op":"notsame","version":<this album>,"key":<suggestion>}` to the collection log (`/api/albumnotsame/:id?cand=…[&op=undo]`); `/api/albumxq` leaves those out of `xcandidates` and lists them in `xnotsame`, where ↺ brings one back (`"undo":true`).
+
 **Bulk Keep, since 2026-11-25** (`docs/jellyfin-plan.md` › Slice 11): "Select" in a list's toolbar, then Keep / Not for me / Take mark off for the selection. `POST /api/albumskeep?value=yes|no|unset` with the album keys as a JSON array in the body (the only POST endpoint; `GetStuff.postStrings`); one log line per changed mark, one tag recomputation (`Env.envSetMarks`).
 
 **HTML Endpoints** (for direct browser access):
