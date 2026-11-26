@@ -120,8 +120,10 @@ In the order proposed to LATB; the first is the recommendation.
   - A "Kept" list in the sidebar (today: focus `keep.yes` in Collection).
   - Collection as the start list.
   - Storage tags for records (the shelf) and streams (`storage.tidal`).
-  - Re-read the Jellyfin store without a restart; find a file album again
-    after its files moved (the link keeps artist and title for that).
+  - ~~Re-read the Jellyfin store without a restart; find a file album again
+    after its files moved~~ — done (slices 14, 16). Left: a moved folder
+    whose title changed too (untagged Classical albums renamed) — a by-hand
+    "this is the moved …" on a not-found album.
   - A keep mark takes ~3 s (all tags are recomputed) — speed up if it annoys.
   - First real run of the scripts that now read the log
     (`update-lengths.py`, `update-tidal-albums.py`, the inventory, the

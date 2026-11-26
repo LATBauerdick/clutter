@@ -4,6 +4,49 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 16 — moved folders keep their links (built 2026-11-26)
+
+Uncommitted, no frontend change. **Script live at once; server after a restart.**
+
+- Jellyfin gives a moved or renamed folder a new id. Before: the link, keep
+  mark, skip and plays stayed on the old id ("links without files").
+- **The full update finds them again** (`scripts/update-jellyfin-albums.py`):
+  for every album that has gone *and that clutter refers to* (link, unlink,
+  skip, keep mark or stream line in `collection.jsonl`, a play in
+  `listened/`), it looks among the albums that came since the last full run
+  (new in this run, or added by a quick run since — the store keeps those in
+  `since_full`) and that clutter does not refer to yet: same title and artist
+  (several fit → same folder name, then same playing time; playing times must
+  agree within 2 s where both are known), else same folder name and playing
+  time. Exactly one fit, and no other gone album wanting it → a line
+  `{"op":"moved","from":"J<old>","to":"J<new>","via":"update-jellyfin-albums",
+  artist, title, from_path, to_path}` is appended to the collection log.
+  Quick runs never write moves (they see no albums leave). `--no-moves` skips
+  the search. The script prints `moved: N found again, M … not found` and
+  lists those not found.
+- **Readers follow the moves:** `Collection.readCollection` (links, marks,
+  streams of a file album; returns the moves too), `reviewedFiles`, the review
+  queue (`readMoves`, the inventory TSV has old ids), the play log
+  (`Env.movedPlays`, at start and on reload), and `scripts/collection_log.py`
+  (`moves`, `follow`, `file_refs`; `read` resolves). Chains are followed; a
+  move back takes the earlier line off. Nothing is rewritten.
+- `envJellyfinReload` reads the collection log again after the script and
+  counts the moved ones: the menu answer says "N moved (links kept)".
+- Tested: the script against a stand-in for Jellyfin's API (`test-moves.py`
+  in the scratch copy, 14 checks: link, keep mark, play via a quick run, a
+  rename, two copies told apart by folder name, two equal candidates left
+  alone, an album already referred to not taken, nothing for unreferenced
+  albums, idempotent, a move back); the Haskell reader in `cabal repl` (link,
+  keep mark, stream of a file album, skip, move back). **Not tested:** the
+  server's reload path and the menu answer (linking and a test server need
+  LATB's OK); a real moved folder on umini.
+- Not covered: a folder renamed *and* retagged so that neither title/artist
+  nor folder name and playing time agree. Untagged albums (many in the
+  Classical library: Jellyfin takes the folder name as title, playing time 0)
+  are found after a move, not after a rename of their folder. Those are
+  listed as not found and stay dangling. The album-details cache (`album-details/J….json`) is not
+  carried over; it is fetched again when the page opens.
+
 ## Slice 15 — quick update; what was slow (built 2026-11-25, late night)
 
 Uncommitted; bundle installed. **Backend live after a restart; the script at

@@ -52,7 +52,7 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Collection (appendLink, appendMark, appendSkip, appendStream, collectionFile, masterKey, parseStreamRef, reviewedFiles, sameKind)
+import Collection (appendLink, appendMark, appendSkip, appendStream, collectionFile, followMove, masterKey, parseStreamRef, readMoves, reviewedFiles, sameKind)
 import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
@@ -875,6 +875,8 @@ clutterServer sd =
       Left _ -> pure ReviewJ{rvRows = [], rvDone = 0, rvError = "No inventory: " <> toText tsv <> " (run scripts/jellyfin-inventory.py)"}
       Right body -> do
         decided <- liftIO $ collectionFile >>= reviewedFiles
+        -- the inventory has the ids of its day; a folder moved since has a new one
+        moves <- liftIO $ collectionFile >>= readMoves
         am <- asks albumsR >>= readIORef
         streams <- asks streamsR >>= readIORef
         let rows = case map (TX.dropWhileEnd (== '\r')) (TX.lines body) of
@@ -885,7 +887,7 @@ clutterServer sd =
             col r c = M.findWithDefault "" c r
             unsure r = col r "grade" /= "sure" || not (TX.null (col r "flag"))
             open = filter unsure rows
-            jid r = TX.toLower (col r "id")
+            jid r = followMove moves (TX.toLower (col r "id"))
             done = length [() | r <- open, jid r `Set.member` decided]
             -- the release that has this stream, if one does
             holderOf s = viaNonEmpty head [k | (k, ss) <- M.toList streams, s `elem` ss]
@@ -1039,7 +1041,7 @@ clutterServer sd =
         liftIO $ hPutStrLn stderr (toString e)
         pure sj{reqInfo = e, reqResult = 0}
       Right (ExitSuccess, _, err) -> do
-        (new, gone, dangling) <- envJellyfinReload
+        (new, gone, moved, dangling) <- envJellyfinReload
         let n c sg pl = show c <> " " <> (if c == 1 then sg else pl)
             -- the quick run saw by Jellyfin's album count that more than additions changed
             due = maybe False ("full update" `TX.isInfixOf`) (lastLine err)
@@ -1047,6 +1049,7 @@ clutterServer sd =
               -- short: the top bar shows one line
               "Server: " <> show new <> " new"
                 <> (if gone > 0 then ", " <> show gone <> " gone" else "")
+                <> (if moved > 0 then ", " <> show moved <> " moved (links kept)" else "")
                 <> (if dangling > 0 then ", " <> n dangling "link" "links" <> " without files" else "")
                 <> (if due then " — albums left or moved: a full update is due" else "")
         liftIO $ hPutStrLn stderr (toString info)

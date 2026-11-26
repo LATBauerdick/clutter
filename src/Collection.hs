@@ -35,6 +35,17 @@
 --
 --   {"ts":"…","op":"skip","version":"J32aa…","artist":"…","title":"…"}
 --
+-- Jellyfin gives a folder that was moved or renamed a new id. When a full update from the
+-- server (scripts/update-jellyfin-albums.py) finds that a file album clutter refers to has
+-- gone and one new album is the same one, it notes the move:
+--
+--   {"ts":"…","op":"moved","from":"J32aa…","to":"J7f01…","via":"update-jellyfin-albums",
+--    "artist":"…","title":"…","from_path":"…","to_path":"…"}
+--
+-- Every file album id in the log, and in the play log (Env), is read through these lines:
+-- links, keep marks, skips and plays of the old id are the new one's. Nothing is rewritten.
+-- A later move of the new id is followed too; a move back takes the earlier one off.
+--
 -- The rule: an album is in the collection if it is marked yes; or it is not marked and is
 -- a record on a shelf (a Discogs release outside the stand-in folders) or has been played.
 -- Tags, recomputed whenever the plays are: collection.in / collection.inbox (not judged
@@ -43,6 +54,9 @@ module Collection (
   Marks,
   Links,
   Streams,
+  Moves,
+  followMove,
+  movedKey,
   sameKind,
   parseStreamRef,
   appendStream,
@@ -52,6 +66,7 @@ module Collection (
   appendLink,
   appendSkip,
   reviewedFiles,
+  readMoves,
   attachLinks,
   masterKey,
   attachCollection,
@@ -95,6 +110,22 @@ standInFolderTags = do
 -- file album (Jellyfin id) -> the album it is a version of
 type Links = Map Text AlbumKey
 
+-- a file album's old Jellyfin id -> the id its folder has since it moved
+type Moves = Map Text Text
+
+-- the id a file album has now: the moves followed to the end (a loop stops where it closes)
+followMove :: Moves -> Text -> Text
+followMove mv = go S.empty
+ where
+  go seen j = case M.lookup j mv of
+    Just j' | not (S.member j' seen), j' /= j -> go (S.insert j seen) j'
+    _ -> j
+
+movedKey :: Moves -> AlbumKey -> AlbumKey
+movedKey mv = \case
+  J j -> J (followMove mv j)
+  k -> k
+
 -- Discogs release (or a file album that stands for itself) -> its streams: one Tidal,
 -- one Apple Music, one Qobuz album at most.
 -- Several releases may have the same stream (the vinyl and the CD of an album).
@@ -106,6 +137,7 @@ data Event
   | Unlink Text
   | LinkStream AlbumKey AlbumKey -- stream, release
   | UnlinkStream AlbumKey (Maybe AlbumKey) -- stream, release (every release, if none is named)
+  | Moved Text Text -- old Jellyfin id, new one
 
 -- what can have a stream: a Discogs release, a file album
 holds :: AlbumKey -> Bool
@@ -183,15 +215,27 @@ logLine = withObject "collection event" $ \o -> do
           mk <- o .:? "key"
           pure (Just (UnlinkStream st (mk >>= parseKey)))
         _ -> fail "not an unlink"
+    "moved" -> do
+      f <- o .: "from"
+      t <- o .: "to"
+      case (parseKey f, parseKey t) of
+        (Just (J a), Just (J b)) -> pure (Just (Moved (T.toLower a) (T.toLower b)))
+        _ -> fail "not a move of a file album"
     _ -> pure Nothing
 
--- the marks and links as the log leaves them; a missing file is none of either, an
--- undecodable line is skipped with a warning
-readCollection :: FilePath -> IO (Marks, Links, Streams)
+-- the moves in the order of the log: a move to an id takes off a move from it (a folder
+-- moved back), so that following them ends
+foldMoves :: [(Text, Text)] -> Moves
+foldMoves = foldl' (\mv (a, b) -> M.insert a b (M.delete b mv)) M.empty
+
+-- the marks and links as the log leaves them, with every file album under the id it has
+-- now, and the moves; a missing file is none of them, an undecodable line is skipped with
+-- a warning
+readCollection :: FilePath -> IO (Marks, Links, Streams, Moves)
 readCollection fn = do
   exists <- doesFileExist fn
   if not exists
-    then pure (M.empty, M.empty, M.empty)
+    then pure (M.empty, M.empty, M.empty, M.empty)
     else do
       ls <- BS8.lines <$> readFileBS fn
       es <- fmap catMaybes . forM (zip [1 :: Int ..] ls) $ \(n, l) ->
@@ -202,15 +246,19 @@ readCollection fn = do
             Left err -> do
               hPutStrLn stderr $ "WARNING: skipping " <> fn <> ":" <> show n <> ": " <> err
               pure Nothing
-      let step (ms, lk, st) = \case
-            Keep k v -> (M.alter (const v) k ms, lk, st)
-            Link j k -> (ms, M.insert j k lk, st)
-            Unlink j -> (ms, M.delete j lk, st)
-            LinkStream s k -> (ms, lk, insertStream s k st)
-            UnlinkStream s mk -> (ms, lk, deleteStream s mk st)
+      let moves = foldMoves [(a, b) | Moved a b <- es]
+          j = followMove moves
+          k = movedKey moves
+          step (ms, lk, st) = \case
+            Keep a v -> (M.alter (const v) (k a) ms, lk, st)
+            Link f a -> (ms, M.insert (j f) a lk, st)
+            Unlink f -> (ms, M.delete (j f) lk, st)
+            LinkStream s a -> (ms, lk, insertStream s (k a) st)
+            UnlinkStream s ma -> (ms, lk, deleteStream s (k <$> ma) st)
+            Moved _ _ -> (ms, lk, st)
           (marks, links, streams) = foldl' step (M.empty, M.empty, M.empty) es
-      hPutStrLn stderr $ "read " <> show (M.size marks) <> " keep marks and " <> show (M.size links) <> " file links, " <> show (sum (length <$> streams)) <> " stream links from " <> fn
-      pure (marks, links, streams)
+      hPutStrLn stderr $ "read " <> show (M.size marks) <> " keep marks and " <> show (M.size links) <> " file links, " <> show (sum (length <$> streams)) <> " stream links, " <> show (M.size moves) <> " moved file albums from " <> fn
+      pure (marks, links, streams, moves)
 
 -- append one line; never rewrites what is already there
 appendLine :: FilePath -> Value -> IO ()
@@ -280,8 +328,18 @@ appendSkip fn now a = case albumID a of
         ]
   _ -> pure ()
 
--- the file albums (Jellyfin ids) that the log has a link, unlink or skip line for: decided
--- once, by hand or by the import, and not offered for review again
+-- the moves alone, for a reader that has the old ids (the inventory's TSV)
+readMoves :: FilePath -> IO Moves
+readMoves fn = do
+  exists <- doesFileExist fn
+  if not exists
+    then pure M.empty
+    else do
+      ls <- BS8.lines <$> readFileBS fn
+      pure $ foldMoves [(a, b) | l <- ls, "\"moved\"" `BS.isInfixOf` l, Right (Just (Moved a b)) <- [eitherDecodeStrict l >>= parseEither logLine]]
+
+-- the file albums (Jellyfin ids, as they are now) that the log has a link, unlink or skip
+-- line for: decided once, by hand or by the import, and not offered for review again
 reviewedFiles :: FilePath -> IO (Set Text)
 reviewedFiles fn = do
   exists <- doesFileExist fn
@@ -289,10 +347,11 @@ reviewedFiles fn = do
     then pure S.empty
     else do
       ls <- BS8.lines <$> readFileBS fn
+      let vs = [v | l <- ls, Right v <- [eitherDecodeStrict l]]
+          moves = foldMoves [(T.toLower a, T.toLower b) | v <- vs, Right (Just (Moved a b)) <- [parseEither logLine v]]
       pure . S.fromList $
-        [ j
-        | l <- ls
-        , Right v <- [eitherDecodeStrict l]
+        [ followMove moves (T.toLower j)
+        | v <- vs
         , Right (op, ver) <- [parseEither opVersion v]
         , op `elem` ["link", "unlink", "skip" :: Text]
         , Just (J j) <- [ver >>= parseKey]

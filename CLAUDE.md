@@ -117,6 +117,8 @@ Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, 
 
 **Review of the unsure matches, since 2026-11-25** (`docs/jellyfin-plan.md` › Slice 10): sidebar On the server › Unsure matches. `/api/reviewq` lists the file albums of `cache/jellyfin-inventory/link-candidates.tsv` (`CLUTTER_INVENTORY`) that were not linked for sure and that the log has not decided, each with up to five candidate albums; Link = `/api/albumlink`, "None of these" = `/api/albumskip/J…`, which appends `{"op":"skip","version":"J…"}` to the collection log.
 
+**Moved folders, since 2026-11-26** (`docs/jellyfin-plan.md` › Slice 16): Jellyfin gives a moved folder a new id; a full run of `update-jellyfin-albums.py` finds the albums clutter refers to again (title + artist, else folder name + playing time; exactly one fit) and appends `{"op":"moved","from":"J…","to":"J…"}` to the collection log. Every reader of J ids follows these lines (`Collection.followMove`, `collection_log.follow`); nothing is rewritten.
+
 **Bulk Keep, since 2026-11-25** (`docs/jellyfin-plan.md` › Slice 11): "Select" in a list's toolbar, then Keep / Not for me / Take mark off for the selection. `POST /api/albumskeep?value=yes|no|unset` with the album keys as a JSON array in the body (the only POST endpoint; `GetStuff.postStrings`); one log line per changed mark, one tag recomputation (`Env.envSetMarks`).
 
 **HTML Endpoints** (for direct browser access):

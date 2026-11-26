@@ -59,7 +59,7 @@ import Provider (
 
 import Wikidata (attachWiki, readWikiStore)
 import Details (attachLength, factsFor, readDetailStore)
-import Collection (attachCollection, attachLinks, collectionFile, readCollection, sameKind, standInFolderTags)
+import Collection (Moves, attachCollection, attachLinks, collectionFile, followMove, readCollection, sameKind, standInFolderTags)
 import Jellyfin (JellyfinStore (..), jellyfinAlbums, readJellyfinStore)
 import Listened (attachPlays, listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
@@ -76,6 +76,7 @@ import Types (
   Env (..),
   EnvR (..),
   MenuParams (..),
+  PlayEvent (..),
   SortOrder (..),
   Tidal (..),
   TidalInfo (..),
@@ -252,17 +253,30 @@ envTidalReload = do
   writeIORef (listsR env) (fresh <> oldLists)
   pure new
 
+-- the plays of file albums under the ids their folders have now (Collection: "moved")
+movedPlays :: Moves -> [PlayEvent] -> [PlayEvent]
+movedPlays mv
+  | M.null mv = id
+  | otherwise = map (\e -> e{peJellyfin = followMove mv <$> peJellyfin e})
+
 -- Take clutter's Jellyfin album store in again (after scripts/update-jellyfin-albums.py),
 -- without a restart: the file albums are replaced by the store's; those no longer in it
--- leave, also as versions of other albums; playing times are read again. Links in the
--- collection log stay as they are -- one whose file album is gone (Jellyfin gives a moved
--- folder a new id) is left dangling and counted. Returns (new, gone, dangling links).
-envJellyfinReload :: AppM (Int, Int, Int)
+-- leave, also as versions of other albums; playing times are read again. Jellyfin gives a
+-- moved folder a new id: where the script found the album again it wrote a "moved" line to
+-- the collection log, so the log is read again too and the links, marks and plays of the
+-- old id are the new one's. A link whose file album is gone and was not found again is left
+-- dangling and counted. Returns (new, gone, moved, dangling links).
+envJellyfinReload :: AppM (Int, Int, Int, Int)
 envJellyfinReload = do
   env <- ask
   old <- readIORef (albumsR env)
   jstore <- liftIO readJellyfinStore
   liftIO readDetailStore >>= writeIORef (albumFactsR env) . factsFor
+  (marks, links', streams, moves) <- liftIO $ collectionFile >>= readCollection
+  writeIORef (marksR env) marks
+  writeIORef (linksR env) links'
+  writeIORef (streamsR env) streams
+  modifyIORef' (playsR env) (movedPlays moves)
   let isFile a = case albumID a of
         J _ -> True
         _ -> False
@@ -272,13 +286,15 @@ envJellyfinReload = do
       -- a file version that is gone leaves its album; attachLinks puts the rest back
       pruned = M.map (\a -> let fs = filter there (albumFiles a) in if fs == albumFiles a then a else a{albumFiles = fs, albumJellyfin = viaNonEmpty head fs}) others
       new = M.size (files `M.difference` oldFiles)
-      gone = M.size (oldFiles `M.difference` files)
-  links <- readIORef (linksR env)
-  let dangling = length (filter (not . there) (M.keys links))
+      goneIds = [j | J j <- M.keys (oldFiles `M.difference` files)]
+      gone = length goneIds
+      -- the albums that left and are here again under a new id
+      moved = length [j | j <- goneIds, let j' = followMove moves j, j' /= j, there j']
+      dangling = length (filter (not . there) (M.keys links'))
   allAlbums <- withPlays (files <> pruned)
   writeIORef (albumsR env) allAlbums
   writeIORef (tagsR env) (buildTags (M.elems allAlbums))
-  pure (new, gone, dangling)
+  pure (new, gone, moved, dangling)
 
 -- also update folders and lists, update other metadata
 envUpdate :: Maybe Text -> Maybe Text -> Int -> AppM ()
@@ -410,14 +426,16 @@ envInit c = do
 
   -- clutter's play log, attached to the albums before the tags index is built
   ldir <- listenedDir
-  plays' <- readPlays ldir
-  hPutStrLn stderr $ "read " <> show (length plays') <> " plays from " <> ldir
+  plays0 <- readPlays ldir
+  hPutStrLn stderr $ "read " <> show (length plays0) <> " plays from " <> ldir
   -- Wikipedia/AllMusic links (docs/wikidata-plan.md), also re-attached by withPlays
   wstore <- readWikiStore
   -- facts for the album page (docs/album-page-plan.md, phase 1)
   dstore <- readDetailStore
   -- the keep marks (docs/jellyfin-plan.md, "Membership")
-  (marks', links', streams') <- collectionFile >>= readCollection
+  (marks', links', streams', moves') <- collectionFile >>= readCollection
+  -- a play of a file album whose folder has since moved is the new id's
+  let plays' = movedPlays moves' plays0
   sit <- standInFolderTags
   let albums' = attachCollection sit marks' (attachLength (factsFor dstore) (attachWiki wstore (linkTidalTags (attachPlays plays' (attachLinks links' streams' albums'')))))
 
