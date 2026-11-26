@@ -115,6 +115,10 @@ Album ids are typed (since 2026-11-01): `D6715388` Discogs, `T283130328` Tidal, 
 
 **Collection and keep mark, since 2026-11-25** (`src/Collection.hs`, `docs/jellyfin-plan.md` › Membership): an album is in the collection if it is marked keep, or is not marked and is a record on a shelf (a Discogs release outside the stand-in folders, `CLUTTER_STANDIN_FOLDERS`, default `Streaming,Files`) or has a play. Marks live in clutter's own append-only log `~/Sync/clutter/collection.jsonl` (`CLUTTER_COLLECTION`), written by `/api/albumkeep/:id?value=yes|no|unset`. Tags `collection.in|inbox|out`, `keep.yes|no` (`attachCollection`, in `Env.withPlays` — after `attachPlays`, it needs the `played.*` tags). Lists `Collection` and `Inbox` are computed from the tags (`Provider.memberList`); `All` is everything minus stand-ins. clutter-owned data = append-only `.jsonl`; fetched data = rebuildable JSON snapshots.
 
+**Review of the unsure matches, since 2026-11-25** (`docs/jellyfin-plan.md` › Slice 10): sidebar On the server › Unsure matches. `/api/reviewq` lists the file albums of `cache/jellyfin-inventory/link-candidates.tsv` (`CLUTTER_INVENTORY`) that were not linked for sure and that the log has not decided, each with up to five candidate albums; Link = `/api/albumlink`, "None of these" = `/api/albumskip/J…`, which appends `{"op":"skip","version":"J…"}` to the collection log.
+
+**Bulk Keep, since 2026-11-25** (`docs/jellyfin-plan.md` › Slice 11): "Select" in a list's toolbar, then Keep / Not for me / Take mark off for the selection. `POST /api/albumskeep?value=yes|no|unset` with the album keys as a JSON array in the body (the only POST endpoint; `GetStuff.postStrings`); one log line per changed mark, one tag recomputation (`Env.envSetMarks`).
+
 **HTML Endpoints** (for direct browser access):
 - `/album/:id` - Single album view
 - `/albums/:list?sortBy=&sortOrder=&focus=` - Album list view with filtering

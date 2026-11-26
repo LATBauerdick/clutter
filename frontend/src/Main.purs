@@ -5,6 +5,7 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Data.Either (Either(..))
 import Data.Tuple (fst, snd)
+import Data.Set as Set
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
@@ -66,6 +67,9 @@ initialState = do -- should eventually be saved in preferences
         , listName: AlbumList (Just ln)
         , albumList : ls
         , menuOpen: Nothing
+        , review: Nothing
+        , selecting: false
+        , selected: Set.empty
         , notice: Nothing
         , confirmDrop: false
         , sideOpen: false

@@ -20,7 +20,7 @@ import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 import Control.Exception (try)
 import Control.Monad (foldM)
 import qualified Data.Char as Ch
-import qualified Data.List as L (isInfixOf)
+import qualified Data.List as L (isInfixOf, nubBy)
 import qualified Data.Text as T (length, map, null, strip, words)
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as M
@@ -37,6 +37,7 @@ import Env (
   envRefreshPlays,
   envSetLink,
   envSetMark,
+  envSetMarks,
   envSetStream,
   envTidalConnect,
   envTidalReload,
@@ -45,7 +46,8 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Collection (appendLink, appendMark, appendStream, collectionFile, masterKey, parseStreamRef, sameKind)
+import Collection (appendLink, appendMark, appendSkip, appendStream, collectionFile, masterKey, parseStreamRef, reviewedFiles, sameKind)
+import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
 import Tracks (AlbumTracks, albumTracks)
@@ -73,6 +75,7 @@ import Types (
   PlayEvent (..),
   envGetDiscogs,
   envGetEnvr,
+  parseKey,
  )
 
 import Data.Aeson (FromJSON (..), ToJSON (..), eitherDecode, encode, object, withObject, (.!=), (.:?), (.=))
@@ -295,6 +298,55 @@ type API17 =
     :> QueryParam "value" Text
     :> Get '[JSON] ReqJ
 
+-- the review of the inventory's unsure matches (docs/jellyfin-plan.md, "Review of the
+-- unsure matches"): the file albums scripts/jellyfin-inventory.py could not link for sure,
+-- each with the albums it may be a version of. Link with /api/albumlink; none of them:
+type API20 =
+  "api"
+    :> "reviewq"
+    :> Get '[JSON] ReviewJ
+
+-- /api/albumskip/J32aa…: none of the albums offered is this file album; logged, not offered again
+type API21 =
+  "api"
+    :> "albumskip"
+    :> Capture "aid" AlbumKey
+    :> Get '[JSON] ReqJ
+
+-- the keep mark for many albums at once (bulk Keep in a list): POST /api/albumskeep?value=
+-- yes | no | unset, the album keys as a JSON array in the body. One log line per album
+-- whose mark changes, one recomputation of the tags.
+type API22 =
+  "api"
+    :> "albumskeep"
+    :> QueryParam "value" Text
+    :> ReqBody '[JSON] [AlbumKey]
+    :> Post '[JSON] ReqJ
+
+data ReviewJ = ReviewJ
+  { rvRows :: [ReviewRow]
+  , rvDone :: Int -- the inventory's unsure rows already decided (linked, unlinked or skipped)
+  , rvError :: Text -- why there is no list, "" otherwise
+  }
+  deriving (Show, Generic)
+instance ToJSON ReviewJ
+
+-- a file album to review and the albums it may be a version of, the inventory's choice first
+data ReviewRow = ReviewRow
+  { rrKey :: AlbumKey
+  , rrTitle :: Text
+  , rrArtist :: Text
+  , rrYear :: Text
+  , rrMins :: Text
+  , rrStorage :: Text -- storage location, "" if none
+  , rrFolder :: Text -- the album's folder on the server, its last part
+  , rrUrl :: Text -- the album in Jellyfin
+  , rrWhy :: Text -- why it was not linked for sure
+  , rrCands :: [CandV]
+  }
+  deriving (Show, Generic)
+instance ToJSON ReviewRow
+
 data AlbumJ = AlbumJ
   { aid :: AlbumKey
   , album :: Maybe Album
@@ -356,6 +408,9 @@ type ClutterAPI =
     :<|> API17
     :<|> API18
     :<|> API19
+    :<|> API20
+    :<|> API21
+    :<|> API22
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -431,6 +486,9 @@ clutterServer sd =
     :<|> serveAlbumkeep
     :<|> serveAlbumlink
     :<|> serveAlbumstream
+    :<|> serveReviewq
+    :<|> serveAlbumskip
+    :<|> serveAlbumskeep
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -780,6 +838,120 @@ clutterServer sd =
             envSetMark i m
             liftIO $ hPutStrLn stderr ("keep mark: " <> show i <> " " <> fromMaybe "?" (toString <$> mv))
             pure $ answer True (said <> ": “" <> albumTitle a <> "”")
+
+  -- The inventory's matches that scripts/import-inventory-links.py left for review: not
+  -- "sure" (the artist differs, or only the title agrees), or several albums fit (the vinyl
+  -- and the CD). Read from its TSV (CLUTTER_INVENTORY, else
+  -- cache/jellyfin-inventory/link-candidates.tsv) when asked for; a file album the log has
+  -- decided (link, unlink, skip) or clutter does not hold is left out. Candidates: the
+  -- inventory's choice -- a Tidal album a release has goes to that release -- then the
+  -- title rule of the file album's page ("Same album as…"), five at most.
+  serveReviewq :: AppM ReviewJ
+  serveReviewq = do
+    tsv <- liftIO $ fromMaybe "cache/jellyfin-inventory/link-candidates.tsv" . mfilter (not . null) <$> lookupEnv "CLUTTER_INVENTORY"
+    got <- liftIO . try $ decodeUtf8 <$> readFileBS tsv
+    case got :: Either SomeException Text of
+      Left _ -> pure ReviewJ{rvRows = [], rvDone = 0, rvError = "No inventory: " <> toText tsv <> " (run scripts/jellyfin-inventory.py)"}
+      Right body -> do
+        decided <- liftIO $ collectionFile >>= reviewedFiles
+        am <- asks albumsR >>= readIORef
+        streams <- asks streamsR >>= readIORef
+        let rows = case map (TX.dropWhileEnd (== '\r')) (TX.lines body) of
+              (h : ls) ->
+                let cols = TX.splitOn "\t" h
+                 in [M.fromList (zip cols (TX.splitOn "\t" l)) | l <- ls, not (TX.null (TX.strip l))]
+              [] -> []
+            col r c = M.findWithDefault "" c r
+            unsure r = col r "grade" /= "sure" || not (TX.null (col r "flag"))
+            open = filter unsure rows
+            jid r = TX.toLower (col r "id")
+            done = length [() | r <- open, jid r `Set.member` decided]
+            -- the release that has this stream, if one does
+            holderOf s = viaNonEmpty head [k | (k, ss) <- M.toList streams, s `elem` ss]
+            proposal r = do
+              k <- parseKey (col r "match")
+              let k' = fromMaybe k (holderOf k)
+              b <- M.lookup k' am
+              pure CandV{cvKey = k', cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = ""}
+            why r = case (col r "grade", col r "flag") of
+              ("sure", f) -> f <> " fit — the inventory chose one"
+              ("likely", "") -> "the artist differs a little"
+              ("likely", f) -> "the artist differs a little; " <> f
+              (_, "") -> "only the title agrees"
+              (_, f) -> "only the title agrees; " <> f
+            rank r = case col r "grade" of
+              "likely" -> 0 :: Int
+              "sure" -> 1
+              _ -> 2
+            row r = do
+              let j = jid r
+              guard (not (j `Set.member` decided))
+              f <- M.lookup (J j) am
+              let cands = take 5 (L.nubBy ((==) `on` cvKey) (maybeToList (proposal r) <> candidatesFor am f))
+              pure
+                ( (rank r, TX.toLower (albumArtist f))
+                , ReviewRow
+                    { rrKey = J j
+                    , rrTitle = albumTitle f
+                    , rrArtist = albumArtist f
+                    , rrYear = col r "year"
+                    , rrMins = col r "mins"
+                    , rrStorage = fromMaybe "" (viaNonEmpty head (mapMaybe (TX.stripPrefix "storage.") (albumTags f)))
+                    , rrFolder = fromMaybe "" (viaNonEmpty last (filter (not . TX.null) (TX.splitOn "/" (col r "path"))))
+                    , rrUrl = albumURL f
+                    , rrWhy = why r
+                    , rrCands = cands
+                    }
+                )
+        pure ReviewJ{rvRows = map snd (sortOn fst (mapMaybe row open)), rvDone = done, rvError = ""}
+
+  serveAlbumskip :: AlbumKey -> AppM ReqJ
+  serveAlbumskip i = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        answer ok info = ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+    am <- asks albumsR >>= readIORef
+    case (i, M.lookup i am) of
+      (J _, Just f) -> do
+        wrote <- liftIO . try $ collectionFile >>= \fn -> appendSkip fn now f
+        case wrote :: Either SomeException () of
+          Left _ -> pure $ answer False "Could not write the collection log (nothing changed)"
+          Right () -> pure $ answer True ("Skipped “" <> albumTitle f <> "”")
+      (J _, Nothing) -> pure $ answer False "No such file album"
+      _ -> pure $ answer False "Only a file album (J…) is skipped"
+
+  -- the keep mark for many albums: those clutter holds and whose mark is not that already
+  serveAlbumskeep :: Maybe Text -> [AlbumKey] -> AppM ReqJ
+  serveAlbumskeep mv keys = do
+    now <- liftIO getZonedTime
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        answer ok info = ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
+        mark = case mv of
+          Just "yes" -> Just (Just True, "Kept ")
+          Just "no" -> Just (Just False, "Marked as not for me: ")
+          Just "unset" -> Just (Nothing, "Mark taken off ")
+          _ -> Nothing
+    am <- asks albumsR >>= readIORef
+    marks <- asks marksR >>= readIORef
+    case mark of
+      Nothing -> pure $ answer False "value must be yes, no or unset"
+      Just (m, said) -> do
+        let todo = [a | k <- ordNub keys, Just a <- [M.lookup k am], M.lookup k marks /= m]
+            n = length todo
+            counted c = show c <> (if c == 1 then " album" else " albums")
+            same = length (ordNub keys) - n
+            rest = if same > 0 then " (" <> show same <> " as before or not in clutter)" else ""
+        if null todo
+          then pure $ answer True ("Nothing to change" <> rest)
+          else do
+            wrote <- liftIO . try $ collectionFile >>= \fn -> forM_ todo (\a -> appendMark fn now a m)
+            case wrote :: Either SomeException () of
+              -- lines written before the failure are in the log and count at the next start
+              Left _ -> pure $ answer False "Could not write the collection log"
+              Right () -> do
+                envSetMarks (map albumID todo) m
+                liftIO $ hPutStrLn stderr ("keep mark: " <> show n <> " albums " <> fromMaybe "?" (toString <$> mv))
+                pure $ answer True (said <> counted n <> rest)
 
   serveParamsq :: AppM ParamsJ
   serveParamsq = do

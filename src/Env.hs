@@ -14,6 +14,7 @@ module Env (
   envUpdateMenuParams,
   envRefreshPlays,
   envSetMark,
+  envSetMarks,
   envSetLink,
   envSetStream,
 )
@@ -630,6 +631,13 @@ envSetMark :: AlbumKey -> Maybe Bool -> AppM ()
 envSetMark k m = do
   mr <- asks marksR
   modifyIORef' mr (M.alter (const m) k)
+  envRefreshPlays
+
+-- the same for many albums at once (bulk Keep in a list): one recomputation of the tags
+envSetMarks :: [AlbumKey] -> Maybe Bool -> AppM ()
+envSetMarks ks m = do
+  mr <- asks marksR
+  modifyIORef' mr (\ms -> foldl' (flip (M.alter (const m))) ms ks)
   envRefreshPlays
 
 -- make a file album a version of an album (Just), or take the link off (Nothing); the log

@@ -1,5 +1,6 @@
 module GetStuff ( getNow
                 , getUrl
+                , postStrings
                 , _encodeURIComponent
                 , pushHistory
                 , historyBack
@@ -15,7 +16,9 @@ import Affjax.ResponseFormat as ResponseFormat
 import Data.Either (Either(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Affjax.RequestBody as RequestBody
+import Data.Argonaut.Encode (encodeJson)
 import Effect.Now (nowDateTime, getTimezoneOffset)
 import Data.DateTime (DateTime, adjust)
 import Data.Time.Duration (negateDuration)
@@ -32,6 +35,14 @@ getUrl url = do
   result <- AN.get ResponseFormat.string url
   pure case result of
            Left err -> "GET / api response failed to decode: " <> AN.printError err
+           Right response -> response.body
+
+-- POST a list of strings as a JSON array (many album keys do not fit in a URL)
+postStrings :: String -> Array String -> Aff String
+postStrings url xs = do
+  result <- AN.post ResponseFormat.string url (Just (RequestBody.json (encodeJson xs)))
+  pure case result of
+           Left err -> "POST / api response failed to decode: " <> AN.printError err
            Right response -> response.body
 
 foreign import _encodeURIComponent :: String -> String

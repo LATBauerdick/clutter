@@ -29,6 +29,12 @@
 -- scripts/import-location-links.py (via "discogs-location") and are not read any more.
 -- Lines with another "op" are left alone.
 --
+-- A file album that the review of the inventory's unsure matches passed over (none of the
+-- albums offered is it) gets a "skip" line, so that it is not offered again; linking it by
+-- hand later still works:
+--
+--   {"ts":"…","op":"skip","version":"J32aa…","artist":"…","title":"…"}
+--
 -- The rule: an album is in the collection if it is marked yes; or it is not marked and is
 -- a record on a shelf (a Discogs release outside the stand-in folders) or has been played.
 -- Tags, recomputed whenever the plays are: collection.in / collection.inbox (not judged
@@ -44,6 +50,8 @@ module Collection (
   readCollection,
   appendMark,
   appendLink,
+  appendSkip,
+  reviewedFiles,
   attachLinks,
   masterKey,
   attachCollection,
@@ -256,6 +264,42 @@ appendLink fn now j = \case
         , "title" .= albumTitle a
         ]
   Nothing -> appendLine fn $ object ["ts" .= stamp now, "op" .= ("unlink" :: Text), "version" .= J j]
+
+-- append a skip: the review of the unsure matches found none of the albums offered to be
+-- this file album (the album given is the file album itself)
+appendSkip :: FilePath -> ZonedTime -> Album -> IO ()
+appendSkip fn now a = case albumID a of
+  J j ->
+    appendLine fn $
+      object
+        [ "ts" .= stamp now
+        , "op" .= ("skip" :: Text)
+        , "version" .= J j
+        , "artist" .= albumArtist a
+        , "title" .= albumTitle a
+        ]
+  _ -> pure ()
+
+-- the file albums (Jellyfin ids) that the log has a link, unlink or skip line for: decided
+-- once, by hand or by the import, and not offered for review again
+reviewedFiles :: FilePath -> IO (Set Text)
+reviewedFiles fn = do
+  exists <- doesFileExist fn
+  if not exists
+    then pure S.empty
+    else do
+      ls <- BS8.lines <$> readFileBS fn
+      pure . S.fromList $
+        [ j
+        | l <- ls
+        , Right v <- [eitherDecodeStrict l]
+        , Right (op, ver) <- [parseEither opVersion v]
+        , op `elem` ["link", "unlink", "skip" :: Text]
+        , Just (J j) <- [ver >>= parseKey]
+        ]
+ where
+  opVersion :: Value -> Parser (Text, Maybe Text)
+  opVersion = withObject "collection event" $ \o -> (,) <$> o .: "op" <*> o .:? "version"
 
 -- append a stream link of a release (True), or its unlink (False)
 appendStream :: FilePath -> ZonedTime -> AlbumKey -> Album -> Bool -> IO ()

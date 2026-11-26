@@ -4,6 +4,62 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 11 — bulk Keep in a list (built 2026-11-25, late)
+
+Uncommitted (with slice 10); bundle installed. **Live after a restart.**
+
+- List toolbar: **Select** (becomes "Done"). In select mode a click on a cover
+  selects the album instead of opening it (outlined, dimmed); a bar shows
+  "n selected", **All n shown** (everything the focus and the search box
+  leave), None, and **Keep · Not for me · Take mark off** for the selection.
+  After a mark the list is loaded anew (in the Inbox the marked albums are
+  gone) and the selection is empty; select mode stays on until Done or until
+  another view opens. The selection is emptied whenever the list is loaded
+  (focus, sort).
+- `POST /api/albumskeep?value=yes|no|unset`, body: JSON array of album keys
+  (thousands do not fit in a URL; `GetStuff.postStrings`). One `keep` line in
+  the log per album whose mark changes, one recomputation of the tags
+  (`Env.envSetMarks`); unknown keys and unchanged marks are counted in the
+  answer, not written.
+- Tested on 8084 with a scratch log: 3 albums yes / again (nothing written) /
+  no / unset, tags and list sizes follow; bad value, empty list, a malformed
+  key (HTTP 400); 3,000 Inbox albums kept and unmarked again in 0.2 s each.
+  **Not tested:** select mode in a browser.
+
+## Slice 10 — review of the unsure matches (built 2026-11-25, late)
+
+Uncommitted; bundle installed (`frontend/index.js`). **Live after a restart**
+(until then the sidebar entry answers "no answer from the server").
+
+- Sidebar, On the server › **Unsure matches**: one block per file album the
+  inventory matched but did not link for sure (grade not `sure`, or several
+  clutter albums fit) — title, artist, year, minutes, storage location, folder,
+  a Jellyfin link, why it is unsure — and under it up to five albums it may be:
+  the inventory's choice first (a Tidal album that a release has → that
+  release), then the title rule of "Same album as…". **Link** per album,
+  **None of these** per block; either way the block goes. Names open the
+  albums; Back returns to the review (`VReview`), which is asked for anew.
+- `GET /api/reviewq` reads `cache/jellyfin-inventory/link-candidates.tsv`
+  (`CLUTTER_INVENTORY` overrides) each time; leaves out file albums the log has
+  a `link`, `unlink` or `skip` line for (`Collection.reviewedFiles`) and those
+  not in the Jellyfin store. Order: artist differs → several fit → title only.
+- `GET /api/albumskip/J…` appends `{"op":"skip","version":"J…"}` to the
+  collection log (new op; readers that do not know it leave it alone — the
+  scripts too). A skipped album can still be linked by hand on its page.
+  Link is the existing `/api/albumlink`.
+- Numbers: 234 unsure rows in the TSV → **193 to review** (39 are ghost
+  entries not in the store, 2 were linked by hand already): 58 artist differs,
+  48 two fit, 87 title only (mostly wrong, as sampled before — "None of
+  these" is the usual answer there).
+- Tested on 8084 with a scratch copy of the log: list, link (row gone, album
+  has the files and the storage tag), skip (row gone, log line), refusals
+  (a release, an unknown id), bundle and style served. **Not tested:** the
+  page in a browser.
+- The sandbox cannot reach localhost any more and cannot link the binary:
+  build and test ran outside it (`cabal build --offline exe:clutter` in the
+  scratch copy; frontend with `purs compile … -g js,corefn` + `purs-backend-es
+  bundle-app`, spago itself fails on its cache database).
+
 ## Slice 9 — a file album and its stream (built 2026-11-25)
 
 Uncommitted (with slices 7 and 8), bundle installed; **live after a restart.**

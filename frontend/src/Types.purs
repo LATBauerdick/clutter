@@ -6,6 +6,8 @@ module Types  ( Album
               , AlbumXJ
               , FileV
               , CandV
+              , ReviewRow
+              , ReviewJ
               , Track
               , Credit
               , AlbumTracks
@@ -28,6 +30,7 @@ import Prelude (class Eq, class Show, (<<<), ($))
 import Data.Newtype
 import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple (Tuple)
+import Data.Set (Set)
 import Data.DateTime (DateTime)
 import Web.Event.Event (Event)
 -- import Web.UIEvent.MouseEvent (MouseEvent)
@@ -126,6 +129,23 @@ type CandV =      { cvKey :: String
                   , cvReleased :: String
                   , cvHas :: Maybe String -- the release's present album of that service, "" if none
                   }
+-- /api/reviewq: a file album the inventory could not link for sure, with the albums it may
+-- be a version of (the inventory's choice first)
+type ReviewRow =  { rrKey :: String
+                  , rrTitle :: String
+                  , rrArtist :: String
+                  , rrYear :: String
+                  , rrMins :: String
+                  , rrStorage :: String
+                  , rrFolder :: String -- its folder on the server, the last part
+                  , rrUrl :: String -- the album in Jellyfin
+                  , rrWhy :: String -- why it was not linked for sure
+                  , rrCands :: Array CandV
+                  }
+type ReviewJ =    { rvRows :: Array ReviewRow
+                  , rvDone :: Int -- already decided
+                  , rvError :: String
+                  }
 -- a file album (Jellyfin) as a version of another album
 type FileV =      { fvKey :: String
                   , fvTitle :: String
@@ -201,6 +221,9 @@ type State =      { apiUrl :: String
                   , aboutOpen :: Boolean -- the review is shown in full; folded again with each album
                   , listName :: AlbumList
                   , albumList :: Array Album
+                  , review :: Maybe ReviewJ -- the review of the unsure matches is on show
+                  , selecting :: Boolean -- a list in select mode: a click on a cover selects it (bulk Keep)
+                  , selected :: Set String -- the album ids selected; emptied whenever the list is loaded
                   , loading :: Boolean
                   , albumID :: String
                   , now :: DateTime
@@ -227,9 +250,10 @@ type ParamsJ =    { timeStamp :: String
                   , params :: MenuParams
                   }
 
--- a view to go back to: an album, or a list with its focus and sort
+-- a view to go back to: an album, or a list with its focus and sort, or the review
 data View = VAlbum String
           | VList AlbumList String (Array (Tuple String Boolean)) String SortOrder
+          | VReview
 
 data Action = ToggleSortOrder
             | SetSortOrder SortOrder
@@ -254,6 +278,14 @@ data Action = ToggleSortOrder
             | LinkFile String String -- album id (D…, T…), file album id (J…): the files are a version of that album
             | UnlinkFile String String -- album id, file album id (J…): these files are not this album
             | KeepAlbum String String -- album id; yes | no | unset: the keep mark (docs/jellyfin-plan.md)
+            | ToggleSelect -- a list: select mode on or off
+            | SelectAlbum String -- in select mode: this album in or out of the selection
+            | SelectShown -- everything the list shows (what the search box lets through)
+            | SelectNone
+            | KeepSelected String -- yes | no | unset: the keep mark for the selection
+            | ShowReview -- the review of the inventory's unsure matches
+            | ReviewLink String String -- album id, file album id (J…): link them, the row goes
+            | ReviewSkip String -- file album id (J…): none of the albums offered; the row goes
             | AskDrop Boolean -- "Remove from clutter": ask (true), or never mind (false)
             | DropAlbum String -- remove this stream album from clutter, then show the Tidal list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list

@@ -88,12 +88,16 @@ What is actually next lives in the project hub (`~/Notes/Claude/ws/clutter.md`
 
 In the order proposed to LATB; the first is the recommendation.
 
-- **Review page for the unsure matches.** 234 file albums in
-  `cache/jellyfin-inventory/link-candidates.tsv` were not linked by the
-  import: 186 where the artist differs slightly, 48 where several clutter
-  albums fit (vinyl and CD). A list in clutter, Link / Skip per row.
-- **Bulk Keep in a list.** The Inbox has about 6,400 albums; select several,
-  or "keep everything in this focus".
+- ~~**Review page for the unsure matches.**~~ Built 2026-11-25 (sidebar, On
+  the server › Unsure matches; `docs/jellyfin-plan.md` › Slice 10): 193 to
+  review. To check in a browser after the restart. Ideas if it is missed: a
+  free search per block for an album the title rule does not offer; "None of
+  these" for all title-only rows at once.
+- ~~**Bulk Keep in a list.**~~ Built 2026-11-25 (`docs/jellyfin-plan.md` ›
+  Slice 11): "Select" in the list toolbar, then Keep / Not for me / Take mark
+  off for the selection; "All n shown" selects what focus and search leave.
+  To check in a browser. Ideas: shift-click for a range; the keep state as a
+  badge on the covers.
 - **Tracks for file albums** from Jellyfin's API (the page says "no source
   for tracks"); needs the key at request time, as Tidal's token is read.
 - **Classical and Music Johannes** as Jellyfin libraries (LATB adds them),

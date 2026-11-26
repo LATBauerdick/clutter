@@ -1043,3 +1043,21 @@ body { margin: 0; }
 .pill.av-on { background: #dfe6ff; border-color: #b9c4f5; color: #2a3fb0; }
 .av-keep .pill { margin-right: 6px; }
 .av-files, .av-keep { margin-top: 16px; }
+
+/* the review of the inventory's unsure matches (docs/jellyfin-plan.md) */
+.review { max-width: 860px; padding: 18px 24px 60px; }
+.rv-head { font-size: 13px; color: #55555a; margin: 0 0 14px; }
+.rv-row { border-top: 1px solid #e8e5de; padding: 12px 0 6px; }
+.rv-file { font-size: 15px; font-weight: 600; }
+.rv-file small { font-weight: 400; color: #6b6b70; }
+.rv-jf { margin-left: 10px; font-size: 12px; font-weight: 400; }
+.rv-why { font-size: 12px; color: #8a8a8f; margin: 2px 0 8px; overflow-wrap: anywhere; }
+.rv-row .av-file small { color: #6b6b70; }
+.pill.rv-skip { color: #6b6b70; }
+
+/* bulk Keep: a list in select mode */
+.selbar { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: #eef0fc; }
+.sel-n { font-size: 12.5px; font-weight: 600; color: #2a3fb0; min-width: 86px; }
+.sel-gap { width: 14px; }
+.album-sel .cover-container { outline: 4px solid #5b5bd6; outline-offset: -4px; }
+.album-sel .cover-image { opacity: .6; }

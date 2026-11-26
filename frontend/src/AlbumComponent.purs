@@ -22,8 +22,11 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, AlbumsJ, ListenedJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
-import GetStuff (getUrl, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, isClamped)
+import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
+import Data.Array (filter) as A
+import Data.Set as Set
+import RenderTopMenu (shownAlbums)
+import GetStuff (getUrl, postStrings, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, isClamped)
 import Render (render)
 
 aComponent :: forall query input output m. MonadAff m => State -> H.Component query input output m
@@ -132,8 +135,9 @@ handleAction = case _ of
     case index vs j of
       Nothing -> pure unit -- an entry from before a reload: nothing to show
       Just v -> do
-        H.modify_ _ { views = vs, pos = j, menuOpen = Nothing, sideOpen = false, search = "" }
+        H.modify_ _ { views = vs, pos = j, menuOpen = Nothing, sideOpen = false, search = "", review = Nothing }
         case v of
+          VReview -> loadReview
           VAlbum aid -> showAlbum aid
           VList alist ln ffs sn so -> do
             -- the entry brings its own sort; going back into the play log, keep the lists' sort
@@ -203,7 +207,7 @@ handleAction = case _ of
     H.liftAff $ Console.log msg
     H.modify_ _ { nodeMsg = Just msg }
   UpdateDiscogs -> do
-    H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "" }
+    H.modify_ _ { menuOpen = Nothing, sideOpen = false, search = "", review = Nothing }
     H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, tracksTidal = false, loading = true, listName = AlbumList Nothing }
     now <- H.liftAff getNow
     H.liftAff $ Console.logShow now
@@ -290,6 +294,39 @@ handleAction = case _ of
           Left _ -> H.modify_ _ { notice = Just i }
       Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
       Left _ -> H.modify_ _ { notice = Just "Keep mark: no answer" }
+  -- bulk Keep: select albums in a list, then mark them all at once
+  ToggleSelect -> H.modify_ \st -> st { selecting = not st.selecting, selected = (Set.empty :: Set.Set String) }
+  SelectAlbum aid -> H.modify_ \st -> st { selected = if Set.member aid st.selected then Set.delete aid st.selected else Set.insert aid st.selected }
+  SelectShown -> H.modify_ \st -> st { selected = Set.fromFoldable (map _.albumID (shownAlbums st)) }
+  SelectNone -> H.modify_ _ { selected = (Set.empty :: Set.Set String) }
+  KeepSelected value -> do
+    st <- H.get
+    if Set.isEmpty st.selected then pure unit else do
+      H.modify_ _ { loading = true, notice = Just ("Marking " <> show (Set.size st.selected) <> " albums…") }
+      r <- H.liftAff $ postStrings (st.apiUrl <> "albumskeep?value=" <> value) (Set.toUnfoldable st.selected)
+      let msg = case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+                  Right { reqInfo: i } -> i
+                  Left _ -> "Keep mark: no answer"
+      -- the list anew: in the Inbox the marked albums are gone from it
+      updateAlbumList
+      H.modify_ _ { notice = Just msg }
+  ShowReview -> pushView *> loadReview
+  -- from the review: the files are a version of that album; the row goes, the page stays
+  ReviewLink aid version -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumlink/" <> aid <> "?version=" <> version <> "&op=link")
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: i, reqResult: 1 } -> reviewDone version i
+      Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Link: no answer" }
+  -- none of the albums offered: logged as a skip, not offered again
+  ReviewSkip version -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumskip/" <> version)
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: i, reqResult: 1 } -> reviewDone version i
+      Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Skip: no answer" }
   AskDrop ask -> H.modify_ _ { confirmDrop = ask }
   -- the backend marks the album as removed in the Tidal album store and forgets it; its
   -- plays stay in the log
@@ -341,8 +378,25 @@ handleAction = case _ of
           Nothing -> pure unit
         _, _ -> pure unit
 
+    -- the review of the unsure matches: asked for anew each time it is shown
+    loadReview :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
+    loadReview = do
+      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, listName = AlbumList Nothing, loading = true, notice = Nothing }
+      api <- H.gets _.apiUrl
+      r <- H.liftAff $ getUrl (api <> "reviewq")
+      case (decodeJson =<< parseJson r) :: Either JsonDecodeError ReviewJ of
+        Right rv -> H.modify_ _ { review = Just rv, loading = false, notice = if rv.rvError == "" then Nothing else Just rv.rvError }
+        Left _ -> H.modify_ _ { review = Just { rvRows: [], rvDone: 0, rvError: "" }, loading = false, notice = Just "Review: no answer from the server" }
+
+    -- a row of the review is decided: it leaves the list
+    reviewDone :: forall output' m'. MonadAff m' => String -> String -> H.HalogenM State Action () output' m' Unit
+    reviewDone version msg =
+      H.modify_ \st -> st { notice = Just msg
+                          , review = map (\rv -> rv { rvRows = A.filter (\row -> row.rrKey /= version) rv.rvRows, rvDone = rv.rvDone + 1 }) st.review }
+
     currentView :: State -> Maybe View
     currentView st = case st.listName, st.album of
+      _, _ | st.review /= Nothing -> Just VReview
       AlbumList Nothing, Just a -> Just (VAlbum a.albumID)
       AlbumList Nothing, Nothing -> Nothing
       l, _ -> Just (VList l st.menu.ln st.menu.ffs st.menu.sortName st.menu.sso)
@@ -358,6 +412,9 @@ handleAction = case _ of
         Just v -> do
           H.modify_ _ { views = snoc (take st.pos st.views) v, pos = st.pos + 1 }
           H.liftEffect $ pushHistory (st.pos + 1)
+      -- whatever comes next is not the review (ShowReview loads it again after this),
+      -- and select mode ends with the view
+      H.modify_ _ { review = Nothing, selecting = false, selected = (Set.empty :: Set.Set String) }
 
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
     showAlbum aid = do
@@ -447,7 +504,7 @@ handleAction = case _ of
           pure case lje of
             Right { lalbums: ls' } -> map (\a -> (fst a) { albumShelf = (snd a) } ) ls'
             Left _ -> []
-      H.modify_ _ { loading = false, albumList = ls }
+      H.modify_ _ { loading = false, albumList = ls, selected = (Set.empty :: Set.Set String) }
 
     -- "Listened" -> all years, "Listened 2026" -> 2026
     listenedYear :: String -> Maybe String

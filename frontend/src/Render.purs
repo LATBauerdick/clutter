@@ -14,6 +14,7 @@ import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, 
 import Control.Alt ((<|>))
 import Data.Foldable (minimum, maximum, sum)
 import Data.Traversable (traverse)
+import Data.Set as Set
 import Data.Int (fromString)
 import Halogen as H
 import Halogen.HTML as HH
@@ -27,7 +28,7 @@ import Data.String (take, drop, length, indexOf, contains, stripPrefix, joinWith
 import Data.String.Common (replaceAll)
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
-import Types (Album, AlbumRef, Track, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
+import Types (Album, AlbumRef, ReviewJ, Track, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
 import RenderTopMenu (renderSide, renderTop, renderTools, shownAlbums)
 
 render :: forall m0. State -> H.ComponentHTML Action () m0
@@ -37,9 +38,10 @@ render state =
     [ renderSide state
     , HH.div [ HP.class_ (HH.ClassName "main") ] $
         [ renderTop state ]
-        <> case state.listName of
-             AlbumList Nothing -> [ albumView state.album state.now ]
-             _ -> [ renderTools state, renderListView ]
+        <> case state.review, state.listName of
+             Just rv, _ -> [ reviewView rv ]
+             _, AlbumList Nothing -> [ albumView state.album state.now ]
+             _, _ -> [ renderTools state, renderListView ]
     -- a click beside an open menu or the drawer closes it
     , if state.menuOpen /= Nothing || state.sideOpen
         then HH.div [ HP.class_ (HH.ClassName "backdrop"), HE.onClick \_ -> ClosePops ] []
@@ -47,6 +49,50 @@ render state =
     ]
 
   where
+  -- The review of the inventory's unsure matches (docs/jellyfin-plan.md): one block per file
+  -- album -- what it is and where it lies -- and under it the albums it may be a version
+  -- of, the inventory's choice first. Link makes the files a version of that album, "None
+  -- of these" logs a skip; either way the block goes. The names open the albums.
+  reviewView :: forall m. ReviewJ -> H.ComponentHTML Action () m
+  reviewView rv =
+    HH.div [ rc "review" ] $
+      [ HH.p [ rc "rv-head" ]
+          [ HH.text (if rv.rvError /= "" then rv.rvError
+                     else if null rv.rvRows then "Nothing left to review."
+                     else show (length rv.rvRows) <> " file albums on the server may be versions of albums in clutter. "
+                          <> "Link the right one, or pass with “None of these”."
+                          <> (if rv.rvDone > 0 then " " <> show rv.rvDone <> " done." else "")) ]
+      ] <> map block rv.rvRows
+    where
+    rc :: forall r i. String -> HP.IProp ( class :: String | r ) i
+    rc = HP.class_ <<< HH.ClassName
+    block row =
+      HH.div [ rc "rv-row" ] $
+        [ HH.div [ rc "rv-file" ]
+            [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum row.rrKey, HP.title "Open the file album" ]
+                   [ HH.text (row.rrTitle <> " — " <> (if row.rrArtist == "" then "no album artist" else row.rrArtist)) ]
+            , HH.small_ [ HH.text (" " <> S.joinWith " · " (filter (_ /= "")
+                            [ row.rrYear, if row.rrMins == "" || row.rrMins == "0" then "" else row.rrMins <> " min", row.rrStorage ])) ]
+            , if row.rrUrl == "" then HH.text "" else
+                HH.a [ rc "rv-jf", HP.href row.rrUrl, HP.target "_blank", HP.title "Open in Jellyfin" ] [ HH.text "Jellyfin ↗" ]
+            ]
+        , HH.p [ rc "rv-why" ] [ HH.text (row.rrFolder <> (if row.rrFolder == "" then "" else " — ") <> row.rrWhy) ]
+        ]
+        <> map (cand row) row.rrCands
+        <> [ HH.p [ rc "av-file" ]
+               [ HH.button [ rc "pill rv-skip", HE.onClick \_ -> ReviewSkip row.rrKey
+                           , HP.title "None of these is this album: do not offer it again" ]
+                           [ HH.text "None of these" ] ] ]
+    cand row c =
+      HH.p [ rc "av-file" ]
+        [ HH.button [ rc "pill", HE.onClick \_ -> ReviewLink c.cvKey row.rrKey
+                    , HP.title "These files are a version of this album: link them" ]
+                    [ HH.text "Link" ]
+        , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum c.cvKey, HP.title "Open this album" ]
+               [ HH.text (c.cvTitle <> " — " <> c.cvArtist) ]
+        , HH.small_ [ HH.text (" " <> c.cvFormat <> (if c.cvReleased == "" then "" else " · " <> S.take 4 c.cvReleased)) ]
+        ]
+
   albumView :: forall m. Maybe Album -> DateTime -> H.ComponentHTML Action () m
   albumView am now = case am of
                     Just a -> HH.div_ [ renderAlbumView a now
@@ -76,10 +122,11 @@ render state =
   renderAlbumTN :: forall m. Int -> Album -> H.ComponentHTML Action () m
   renderAlbumTN idx' a =
     let idx = maybe idx' snd a.albumShelf in
-    HH.div [ HP.class_ $ HH.ClassName "album-thumb" ]
+    -- in select mode (bulk Keep) a click on the cover selects the album instead of opening it
+    HH.div [ HP.class_ $ HH.ClassName (if state.selecting && Set.member a.albumID state.selected then "album-thumb album-sel" else "album-thumb") ]
       [ HH.div [ HP.class_ $ HH.ClassName "cover-container" ] (
           [ HH.div [ HP.class_ $ HH.ClassName "cover-img" ]
-              [ HH.button [ HE.onClick \_ -> ShowAlbum (a.albumID) ]
+              [ HH.button [ HE.onClick \_ -> if state.selecting then SelectAlbum a.albumID else ShowAlbum (a.albumID) ]
                 [ HH.img [ HP.src (if a.albumCover == "" then "/icons/no-cover.png" else a.albumCover)
                           , HP.alt "cover image"
                           , HP.class_ $ HH.ClassName "cover-image"

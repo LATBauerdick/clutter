@@ -19,6 +19,7 @@ import Halogen.HTML.Events as HE
 import Data.Array (length, filter, null, elem, nub, mapMaybe, head, last, reverse, sort)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Map as M
+import Data.Set as Set
 import Data.Tuple (Tuple(..), fst)
 import Data.String (take, drop, toLower, contains, split, indexOf, trim) as S
 import Data.String.Pattern (Pattern(..))
@@ -115,7 +116,12 @@ renderSide state =
     if null server then [] else
       [ HH.details (if elem current server then [ HP.attr (HH.AttrName "open") "" ] else [])
           ([ HH.summary_ [ HH.text "On the server" ] ]
-           <> map (\n -> itemAs (if n == "Server" then "Everything" else S.drop 7 n) n) server)
+           <> map (\n -> itemAs (if n == "Server" then "Everything" else S.drop 7 n) n) server
+           -- the review of the inventory's matches that were not linked for sure
+           <> [ HH.button [ cls (if state.review /= Nothing then "nav-item nav-on" else "nav-item")
+                          , HE.onClick \_ -> ShowReview
+                          , HP.title "File albums that may be versions of albums in clutter: link or pass" ]
+                          [ HH.text "Unsure matches" ] ])
       ]
   -- folded; open when the list on show is in it
   fold title ns =
@@ -171,6 +177,12 @@ renderTop state =
     Nothing -> ""
   title
     | state.loading = [ HH.text (fromMaybe "Loading…" state.notice) ]
+    | Just rv <- state.review =
+        [ HH.text "Unsure matches"
+        , HH.small_ [ HH.text (show (length rv.rvRows) <> " to review") ]
+        ] <> case state.notice of
+               Just m -> [ HH.small [ cls "notice" ] [ HH.text m ] ]
+               Nothing -> []
     | inList state =
         let n = length (shownAlbums state)
             all = length state.albumList in
@@ -200,6 +212,10 @@ renderTools state =
        ]
     <> (if null ffs then [] else [ HH.button [ cls "pill", HE.onClick \_ -> SetFocus [] ] [ HH.text "Clear" ] ])
     <> [ HH.span [ cls "grow" ] []
+       -- bulk Keep: select mode, where a click on a cover selects it
+       , HH.button [ cls (if state.selecting then "pill av-on" else "pill"), HE.onClick \_ -> ToggleSelect
+                   , HP.title "Select albums in this list, then mark them all: Keep / Not for me" ]
+                   [ HH.text (if state.selecting then "Done" else "Select") ]
        , HH.span [ cls "pop-anchor" ]
            [ HH.button [ cls "pill", HE.onClick \_ -> TogglePop "sort" ] [ HH.text ("Sort: " <> state.menu.sortName <> " ▾") ]
            , HH.div [ cls (pop "sort" <> " pop-right") ]
@@ -213,8 +229,24 @@ renderTools state =
                                 Asc -> "↑"
                                 Desc -> "↓") ]
        ]
+    <> (if not state.selecting then [] else
+          [ HH.div [ cls "selbar" ]
+              [ HH.span [ cls "sel-n" ] [ HH.text (show nsel <> " selected") ]
+              , HH.button [ cls "pill", HE.onClick \_ -> SelectShown, HP.title "Select every album the list shows now (focus and search applied)" ]
+                          [ HH.text ("All " <> show (length (shownAlbums state)) <> " shown") ]
+              , HH.button [ cls "pill", HE.onClick \_ -> SelectNone, HP.disabled (nsel == 0) ] [ HH.text "None" ]
+              , HH.span [ cls "sel-gap" ] []
+              , HH.button [ cls "pill", HE.onClick \_ -> KeepSelected "yes", HP.disabled (nsel == 0 || state.loading)
+                          , HP.title "Keep the selected albums: they are in the collection" ] [ HH.text "Keep" ]
+              , HH.button [ cls "pill", HE.onClick \_ -> KeepSelected "no", HP.disabled (nsel == 0 || state.loading)
+                          , HP.title "The selected albums are not for me: out of the collection and the Inbox" ] [ HH.text "Not for me" ]
+              , HH.button [ cls "pill", HE.onClick \_ -> KeepSelected "unset", HP.disabled (nsel == 0 || state.loading)
+                          , HP.title "Take the mark off the selected albums: back to the rule" ] [ HH.text "Take mark off" ]
+              ]
+          ])
   where
   ffs = state.menu.ffs
+  nsel = Set.size state.selected
   pop p = if state.menuOpen == Just p then "pop pop-open" else "pop"
   -- a tag of the focus: a click on its name flips has / has not, × takes it out
   chip (Tuple t on) =
