@@ -121,6 +121,7 @@ type AlbumXJ =    { xid :: String
                   , xcandidates :: Maybe (Array CandV) -- for a file album: albums it may be a version of
                   , xfiles :: Maybe (Array FileV) -- file albums on the server that are versions of this album
                   , xnode :: Maybe Boolean -- the album's files are in a share the Node has indexed (▶ can play them)
+                  , xof :: Maybe CandV -- a file album: the album it is a version of
                   }
 -- an album a file album may be a version of
 type CandV =      { cvKey :: String
@@ -218,7 +219,9 @@ type State =      { apiUrl :: String
                   , albumX :: Maybe AlbumXJ -- details of that album, loaded after it
                   , albumT :: Maybe AlbumTJ -- its tracks, credits and review, loaded last (may take a moment)
                   , tracksLoading :: Boolean
-                  , tracksSrc :: String -- whose tracks the album page shows: "" its own, "tidal" its Tidal version's (a Discogs release), "files" its files'; back to "" with each album
+                  , version :: String -- the album page's version (Versions block): "" the album itself, "tidal" its Tidal album (a Discogs release), "J…" one of its file albums; the facts, tracks and ▶ follow it; back to "" with each album
+                  , verX :: Maybe AlbumXJ -- a file-album version's details (/api/albumxq/J…)
+                  , verA :: Maybe Album -- a file-album version itself (/api/albumq/J…)
                   , aboutLong :: Boolean -- the review is longer than the lines shown, so "more" is offered
                   , aboutOpen :: Boolean -- the review is shown in full; folded again with each album
                   , listName :: AlbumList
@@ -297,7 +300,7 @@ data Action = ToggleSortOrder
             | UpdateServer -- take in what Jellyfin has now (new and gone file albums), then show the server list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
             | ToggleAbout -- the review: all of it, or its first lines
-            | TracksSource String -- "" the album's own tracks, "tidal" its Tidal version's, "files" its files' (see tracksSrc)
+            | ShowVersion String -- the album page shows this version: "" the album, "tidal", "J…" (see version)
             | RefreshTracks -- fetch the tracks, credits and review of the album again
             | TogglePop String -- open or close a menu: focus | sort | more
             | ClosePops -- a click beside the menus: close them and the drawer

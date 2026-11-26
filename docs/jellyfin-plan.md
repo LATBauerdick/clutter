@@ -4,6 +4,56 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 19 — Versions on the album page (built 2026-11-26)
+
+Uncommitted; bundle and style installed (they work with the running server;
+"Version of" on a file album's page needs the new backend). **Backend after a
+restart.**
+
+LATB: an album with several copies (record, Tidal, files) could choose what ▶
+plays but not whose facts are shown, and the file versions under "On the
+server" could not be opened as album pages.
+
+- Side column, first: **Versions** — the album as opened (record: its format
+  and shelf; Tidal; Files · storage), its Tidal album (a release), each file
+  album on the server (storage; a different title or the release it is
+  linked to underneath). Shown where there are two or more.
+- A click on a version (`state.version`: "" / "tidal" / "J…") switches
+  **Length, Format, Quality, Label, Added** and the **tracks** to it, and ▶
+  plays it: the Tidal album, or that file album (by folder, where the Node has
+  it). For the album itself ▶ plays its Tidal album where there is one, else
+  its files. Rating, plays, the Tidal status, tags, the review and Read more
+  stay the album's. Back to the album itself with each new page.
+- This replaces the tracks buttons (Discogs release / Tidal version / Files)
+  and the Tidal/Files chooser by ▶; the word beside ▶ says what it plays
+  ("Tidal", "Files · music").
+- Per version: ↗ opens its own page (`ShowAlbum T…/J…`); a file album also
+  has J (Jellyfin), ≡ (all albums of its storage location) and × (wrong
+  match). A file album's own page says **"Version of <format> · <title>"**
+  with a link back (`AlbumXJ.xof`, from the collection log's links), and its
+  Format reads "Files · <storage>" instead of "Jellyfin".
+- A file-album version's tracks come from its own cache (`J….json`), its
+  facts from `/api/albumq/J…` and `/api/albumxq/J…`.
+- Tested in headless Chrome against a test server (8085; stand-ins for
+  Jellyfin and the Node; dummy Discogs/Tidal tokens, so a record's and a Tidal
+  album's tracks stay empty there): Eat The Elephant (vinyl + Tidal + two file
+  albums): each version switches facts, tracks and ▶, and back; the file
+  album's own page with "Version of"; a Tidal album and a lone file album
+  without the block. **Not tested:** real Tidal/Discogs tracks per version,
+  playing on the Node.
+- **Confirmations** (LATB, same day): the browser's own "are you sure?"
+  dialog (`GetStuff.confirmBox`, `window.confirm`; native on iPad/iPhone)
+  before Keep / Not for me / taking the mark off (one album, or a selection
+  with its count), × on a file album or a stream, "None of these" in Unsure
+  matches, and ✓ Album Played ("It goes into the play log, an Obsidian note and a
+  Day One entry."). Not
+  asked: linking (undone with ×; the review would get tedious), updates,
+  playing; Remove from clutter keeps its own in-page question. Tested in
+  headless Chrome: Cancel writes nothing, OK writes the line.
+- Next steps toward the album layer: the same versions in the lists (one row
+  per album); Apple Music and Qobuz as versions (today only in "Link a
+  stream"); remember the chosen version per album.
+
 ## Slice 18 — the album page without waiting for Discogs (built 2026-11-26)
 
 Live since LATB's restart on 2026-11-26. Measured on the live server after it

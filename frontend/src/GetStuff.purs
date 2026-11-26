@@ -1,4 +1,5 @@
-module GetStuff ( getNow
+module GetStuff ( confirmBox
+  , getNow
                 , getUrl
                 , postStrings
                 , _encodeURIComponent
@@ -57,3 +58,6 @@ foreign import onPopState :: (Int -> Effect Unit) -> Effect Unit
 
 -- is the element (a CSS selector) cut off by its line clamp?
 foreign import isClamped :: String -> Effect Boolean
+
+-- the browser's "are you sure?" dialog: true for OK
+foreign import confirmBox :: String -> Effect Boolean

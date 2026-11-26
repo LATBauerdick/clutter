@@ -225,6 +225,7 @@ data AlbumXJ = AlbumXJ
   , xcandidates :: [CandV] -- for a file album: the albums it may be a version of, best first
   , xstreams :: [AlbumKey] -- the Tidal / Apple albums this release has from the collection log (they can be taken off here)
   , xnode :: Bool -- the album's files (its own, or its first file version's) are in a share the Node has indexed
+  , xof :: Maybe CandV -- a file album: the album it is a version of (linked in the collection log)
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
@@ -645,10 +646,14 @@ clutterServer sd =
     links <- asks linksR >>= readIORef
     streams <- asks streamsR >>= readIORef
     onNode <- liftIO $ maybe (pure False) (fmap isJust . nodeFolder) (M.lookup i am >>= fileKey)
+    let versionOf = case i of
+          J j | Just k <- M.lookup j links, Just b <- M.lookup k am ->
+            Just CandV{cvKey = k, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = ""}
+          _ -> Nothing
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a, xstreams = M.findWithDefault [] i streams}
+      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a, xstreams = M.findWithDefault [] i streams, xof = versionOf}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = []}
+      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do

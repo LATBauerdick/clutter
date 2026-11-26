@@ -10,7 +10,7 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null, cons, any, nub)
+import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null, cons, any, nub, find)
 import Control.Alt ((<|>))
 import Data.Foldable (minimum, maximum, sum)
 import Data.Traversable (traverse)
@@ -210,7 +210,7 @@ render state =
       , chipsView
       , HH.div [ cls "av-body" ]
         [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> [ playsView ])
-        , HH.div [ cls "av-side" ] [ factsView, readMoreView, openInView, streamView, filesView, sameAsView, keepView, removeView ]
+        , HH.div [ cls "av-side" ] [ versionsView, factsView, readMoreView, openInView, streamView, sameAsView, keepView, removeView ]
         ]
       , HH.div_ stripsView
       ]
@@ -273,7 +273,7 @@ render state =
                   ]
               ]
             else [] )
-        <> ( if not (tidalPlays || hasFiles) then [] else
+        <> ( if not canPlay then [] else
                [ HH.span [ cls "av-play" ]
                    [ HH.button [ cls "av-btn av-primary", HE.onClick \_ -> play "replace"
                                , HP.title ("Play " <> what <> " on " <> state.nodeName <> ", replacing its queue") ]
@@ -283,16 +283,10 @@ render state =
                    , modeBtn "last" [ queueIcon "M2 3h12 M2 7h12 M8 12h6 M2 9.5v2.5h4 M4.5 10.5L6 12 4.5 13.5" ] "Queue it last: at the end of the queue"
                    ]
                ]
-               -- what ▶ plays, beside the buttons (not among them): a chooser where there
-               -- are both, a word where there are only the files
-               <> ( if tidalPlays && hasFiles
-                      then [ HH.select [ cls "av-source", HE.onValueChange \v -> SetPlayFiles (v == "files")
-                                       , HP.title "What ▶ plays: the Tidal version, or the files from the player's own library" ]
-                               [ HH.option [ HP.value "tidal", HP.selected (not useFiles) ] [ HH.text "Tidal" ]
-                               , HH.option [ HP.value "files", HP.selected useFiles ] [ HH.text "Files" ]
-                               ] ]
-                      else if hasFiles then [ HH.span [ cls "av-source-one", HP.title "▶ plays the files, from the player's own library" ] [ HH.text "Files" ] ]
-                      else [] ) )
+               -- what ▶ plays, beside the buttons: the version chosen in Versions, or for the
+               -- album itself its Tidal album, else its files
+               <> [ HH.span [ cls "av-source-one", HP.title ("▶ plays " <> what <> " — choose another in Versions") ]
+                            [ HH.text (if useFiles then "Files" <> maybe "" (\f -> if f.fvStorage == "" then "" else " · " <> f.fvStorage) playFile else "Tidal") ] ] )
         <> [ HH.button [ cls "av-btn", HE.onClick \_ -> AlbumPlayed a.albumID ] [ HH.text "✓ Album Played" ] ]
         <> case state.nodeMsg of
              Just m -> [ HH.span [ cls "av-msg" ] [ HH.text m ] ]
@@ -308,10 +302,24 @@ render state =
       Nothing -> false)) && (case detail of
       Just d -> fromMaybe true d.xnode
       Nothing -> false)
-    -- the files where they are all there is, else what the chooser says
-    useFiles = hasFiles && (not tidalPlays || state.playFiles)
+    -- the version chosen in Versions decides what ▶ plays: the Tidal album, a file album
+    -- (where the player has its folder), or for the album itself its Tidal album where
+    -- there is one, else its files
+    verIsFile = S.take 1 state.version == "J"
+    verDetail = case state.verX of
+      Just x | x.xid == state.version -> Just x
+      _ -> Nothing
+    verNode = verIsFile && maybe false (\x -> fromMaybe true x.xnode) verDetail
+    useTidal = not verIsFile && tidalPlays
+    useFiles = if verIsFile then verNode else not useTidal && hasFiles
+    canPlay = useTidal || useFiles
+    -- the file album ▶ plays: the chosen one, else the album's first
+    playFile = find (\f -> f.fvKey == (if verIsFile then state.version else "J" <> fromMaybe "" a.albumJellyfin)) files
     what = if useFiles then "the files, from the player's own library," else "the Tidal album"
-    play mode = if useFiles then NodePlayFiles a.albumID mode else NodePlay tidalId mode
+    play mode
+      | verIsFile = NodePlayFiles state.version mode
+      | useTidal = NodePlay tidalId mode
+      | otherwise = NodePlayFiles a.albumID mode
     modeBtn mode label tip =
       HH.button [ cls "av-btn av-primary av-mode", HE.onClick \_ -> play mode, HP.title tip ] label
     -- a small line drawing of the queue: its lines, and an arrow to where the album goes
@@ -343,30 +351,45 @@ render state =
     np = length a.albumListenedDates
     early = a.albumPlays > np -- the Discogs "Plays" mark also holds plays from before the log
     -- no length on record: the sum of the track durations, if every track has one
-    tracksSecs = case state.albumT of
-      Just t | t.tjId == a.albumID, Just at <- t.tjTracks, not (null at.atTracks) ->
+    tracksSecs = case tj of
+      Just t | Just at <- t.tjTracks, not (null at.atTracks) ->
         map sum (traverse _.tkSecs at.atTracks)
       _ -> Nothing
+    -- the version's facts (Length, Format, Quality, Label, Added) follow the Versions
+    -- choice; rating, plays, Tidal status and tags are the album's
+    verFacts = _.xfacts <$> verDetail
+    lengthRow s n = row "Length" [ HH.text (show ((s + 30) / 60) <> " min" <> maybe "" (\k -> " · " <> show k <> " tracks") n) ]
     factsView =
       HH.div [ cls "av-facts" ] $ concat
-        [ case (facts >>= _.afLength) <|> tracksSecs of
-            Just s -> row "Length" [ HH.text (show ((s + 30) / 60) <> " min"
-                                              <> maybe "" (\n -> " · " <> show n <> " tracks") (facts >>= _.afTracks)) ]
-            Nothing -> []
-        , row "Format" [ HH.text a.albumFormat ]
-        , case facts >>= _.afQuality of
-            Just q -> row (if isDiscogs then "Tidal" else "Quality")
-                          [ HH.text (q <> if maybe false _.afExplicit facts then " · explicit" else "") ]
-            -- a file album: its files' format, once the tracks are there
-            Nothing | S.take 1 a.albumID == "J", Just q <- tracks >>= _.atQuality -> row "Quality" [ HH.text q ]
-                    | otherwise -> []
-        , case facts >>= _.afLabel of
+        [ case state.version of
+            "" -> case (facts >>= _.afLength) <|> tracksSecs of
+                    Just s -> lengthRow s (facts >>= _.afTracks)
+                    Nothing -> []
+            "tidal" -> maybe [] (\s -> lengthRow s (length <$> (tracks <#> _.atTracks))) tracksSecs
+            _ -> case (verFacts >>= _.afLength) <|> tracksSecs of
+                    Just s -> lengthRow s (length <$> (tracks <#> _.atTracks))
+                    Nothing -> []
+        , row "Format" [ HH.text (case state.version of
+                                    "" | isFile -> "Files" <> maybe "" (" · " <> _) ownStorage
+                                       | otherwise -> a.albumFormat
+                                    "tidal" -> "Stream · Tidal"
+                                    _ -> "Files" <> maybe "" (\f -> if f.fvStorage == "" then "" else " · " <> f.fvStorage) playFile) ]
+        , case state.version of
+            "" -> case facts >>= _.afQuality of
+                    Just q -> row (if isDiscogs then "Tidal" else "Quality")
+                                  [ HH.text (q <> if maybe false _.afExplicit facts then " · explicit" else "") ]
+                    -- a file album: its files' format, once the tracks are there
+                    Nothing | isFile, Just q <- tracks >>= _.atQuality -> row "Quality" [ HH.text q ]
+                            | otherwise -> []
+            "tidal" -> maybe [] (\q -> row "Quality" [ HH.text (q <> if maybe false _.afExplicit facts then " · explicit" else "") ]) (facts >>= _.afQuality)
+            _ -> maybe [] (\q -> row "Quality" [ HH.text q ]) (tracks >>= _.atQuality)
+        , if state.version /= "" then [] else case facts >>= _.afLabel of
             Just l -> row "Label" [ HH.text l ]
             Nothing -> []
         , if a.albumRating > 0
             then row "Rating" [ HH.span [ cls "av-stars" ] [ HH.text (stars a.albumRating) ] ]
             else []
-        , case a.albumAdded of
+        , case (if verIsFile then state.verA >>= _.albumAdded else if state.version == "" then a.albumAdded else Nothing) of
             Just d | d /= "" -> row "Added" [ HH.text (S.take 10 d) ]
             _ -> []
         , locationRow
@@ -425,32 +448,60 @@ render state =
         <<< replaceAll (Pattern "+") (Replacement "%2B")
         <<< replaceAll (Pattern "%") (Replacement "%25")
 
-    -- the file albums on the server that are versions of this album (docs/jellyfin-plan.md):
-    -- where they are stored (a click shows that storage location), a link into Jellyfin,
-    -- and × for a wrong match
-    filesView =
-      let files = fromMaybe [] (detail >>= _.xfiles)
-          one f =
-            HH.p [ cls "av-file" ] $
-              (if f.fvStorage == "" then [] else
-                 [ HH.button [ cls "av-tag", HE.onClick \_ -> ShowList (AlbumList (Just ("Server " <> f.fvStorage)))
-                             , HP.title ("On the server: " <> f.fvStorage) ]
-                             [ HH.text f.fvStorage ] ])
-              <> [ if f.fvUrl == "" then HH.text f.fvTitle
-                   else HH.a [ HP.href f.fvUrl, HP.target "_blank", HP.title (f.fvArtist <> " — open in Jellyfin") ] [ HH.text f.fvTitle ] ]
-              -- linked to another release of this album: say which, a click opens it
-              <> (case f.fvOwner of
-                    Just o -> [ HH.small_ [ HH.text " on the " ]
-                              , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum o, HP.title "The release these files are linked to" ]
-                                     [ HH.text (fromMaybe "other release" f.fvOwnerFormat) ] ]
-                    Nothing -> [])
-              <> (if not f.fvLogged then [] else
-                    [ HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> UnlinkFile a.albumID f.fvKey
-                                , HP.title "Not this album: take these files off it" ]
-                                [ HH.text "×" ] ])
+    -- the file albums on the server that are versions of this album (docs/jellyfin-plan.md)
+    files = fromMaybe [] (detail >>= _.xfiles)
+    ownStorage = head (mapMaybe (S.stripPrefix (Pattern "storage.")) a.albumTags)
+
+    -- Versions: the album itself (the record, the Tidal album or the files it was opened
+    -- as), its Tidal album (a release), and its file albums on the server. A click shows
+    -- that version: its facts, its tracks, and ▶ plays it. ↗ opens a version's own page;
+    -- a file album also has its storage location (a click shows it), Jellyfin, and × for a
+    -- wrong match. Shown where there is more than one.
+    versionsView =
+      let pick key label tip extra =
+            HH.div [ cls (if state.version == key then "av-ver av-ver-on" else "av-ver") ] $
+              [ HH.button [ cls "av-ver-pick", HE.onClick \_ -> ShowVersion key, HP.title tip ] [ HH.text label ] ] <> extra
+          ownLabel
+            | isDiscogs = S.trim (fromMaybe a.albumFormat (head (S.split (Pattern ",") a.albumFormat)))
+                          <> maybe "" (\(Tuple shelf i) -> " · " <> shelf <> " #" <> show i) whereIs
+            | isFile = "Files" <> maybe "" (" · " <> _) ownStorage
+            | otherwise = "Tidal"
+          tidalRow =
+            if isDiscogs && hasTidal
+              then [ pick "tidal" ("Tidal" <> if isGone then " · gone" else "") "The Tidal album: its tracks, quality and ▶"
+                       [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum ("T" <> tidalId), cls "av-ver-open", HP.title "Open the Tidal album's own page" ] [ HH.text "↗" ] ] ]
+              else []
+          fileRow f =
+            pick f.fvKey ("Files" <> (if f.fvStorage == "" then "" else " · " <> f.fvStorage))
+                 (f.fvTitle <> " — " <> f.fvArtist <> ": its tracks, quality and ▶")
+                 ( [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum f.fvKey, cls "av-ver-open", HP.title "Open this file album's own page" ] [ HH.text "↗" ] ]
+                   <> (if f.fvUrl == "" then [] else
+                         [ HH.a [ HP.href f.fvUrl, HP.target "_blank", cls "av-ver-open", HP.title "Open in Jellyfin" ] [ HH.text "J" ] ])
+                   <> (if f.fvStorage == "" then [] else
+                         [ HH.button [ cls "av-tag", HE.onClick \_ -> ShowList (AlbumList (Just ("Server " <> f.fvStorage)))
+                                     , HP.title ("All albums stored in " <> f.fvStorage) ] [ HH.text "≡" ] ])
+                   <> (if not f.fvLogged then [] else
+                         [ HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> UnlinkFile a.albumID f.fvKey
+                                     , HP.title "Not this album: take these files off it" ] [ HH.text "×" ] ])
+                   -- a different title, or linked to another release of this album: say so
+                   <> (if f.fvTitle /= a.albumTitle then [ HH.small [ cls "av-ver-sub" ] [ HH.text f.fvTitle ] ] else [])
+                   <> (case f.fvOwner of
+                         Just o -> [ HH.small [ cls "av-ver-sub" ]
+                                       [ HH.text "linked to the "
+                                       , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum o, HP.title "The release these files are linked to" ]
+                                              [ HH.text (fromMaybe "other release" f.fvOwnerFormat) ] ] ]
+                         Nothing -> []) )
+          rows = [ pick "" ownLabel "The album as it was opened" [] ] <> tidalRow <> map fileRow files
+          -- a file album linked to an album: that album, with all its versions, one click away
+          ofRow = case detail >>= _.xof of
+            Just o -> [ HH.p [ cls "av-ver-of" ]
+                          [ HH.text "Version of "
+                          , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum o.cvKey, HP.title (o.cvArtist <> " — " <> o.cvTitle <> ": the album and all its versions") ]
+                                 [ HH.text (S.trim (fromMaybe o.cvFormat (head (S.split (Pattern ",") o.cvFormat))) <> " · " <> o.cvTitle) ] ] ]
+            Nothing -> []
       in
-      if null files then HH.text "" else
-        HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "On the server" ] ] <> map one files)
+      if length rows < 2 && null ofRow then HH.text "" else
+        HH.div [ cls "av-files av-versions" ] ([ HH.h3_ [ HH.text "Versions" ] ] <> ofRow <> (if length rows < 2 then [] else rows))
 
     -- a Discogs release: give it its Tidal / Apple Music album by hand -- paste T<id>, A<id>
     -- or a share link -- where it has none yet; streams linked this way can be taken off
@@ -555,31 +606,33 @@ render state =
     -- the album at Discogs and the streaming services
     openInView =
       let qry = enc (a.albumArtist <> " - " <> a.albumTitle)
+          -- a small mark of the service in front of each link
+          icon f = HH.img [ HP.src (state.menu.params.muhq <> "icons/" <> f), HP.alt "", cls "av-link-icon" ]
           -- web pages open in a new tab; app links (tidal://, music://) go to the app
-          ext url txt = [ HH.a [ HP.href url, HP.target "_blank" ] [ HH.text txt ] ]
-          app url txt = [ HH.a [ HP.href url ] [ HH.text txt ] ]
+          ext f url txt = [ HH.a [ HP.href url, HP.target "_blank" ] [ icon f, HH.text txt ] ]
+          app f url txt = [ HH.a [ HP.href url ] [ icon f, HH.text txt ] ]
           -- the Music app for a catalog album; a library album only has its web page
           apple am = if S.take 2 am == "l."
-                       then ext ("https://music.apple.com/library/albums/" <> am) "Apple Music"
-                       else app ("music://music.apple.com/us/album/" <> am) "Apple Music"
+                       then ext "am-is.png" ("https://music.apple.com/library/albums/" <> am) "Apple Music"
+                       else app "am-is.png" ("music://music.apple.com/us/album/" <> am) "Apple Music"
       in
       HH.div [ cls "av-links" ] $
         [ HH.h3_ [ HH.text "Open in" ] ]
-        <> (if isDiscogs then ext a.albumURL "Discogs"
-                         else ext ("https://www.discogs.com/search/?q=" <> qry <> "&type=all") "find on Discogs")
+        <> (if isDiscogs then ext "vinyl-icon.png" a.albumURL "Discogs"
+                         else ext "vinyl-icon.png" ("https://www.discogs.com/search/?q=" <> qry <> "&type=all") "find on Discogs")
         <> (case a.albumTidal of
-              Just t | t /= "" -> app ("tidal://album/" <> t) "Tidal app" <> ext ("https://listen.tidal.com/album/" <> t) "Tidal web"
+              Just t | t /= "" -> app "tidal-icon.png" ("tidal://album/" <> t) "Tidal app" <> ext "tidal-icon.png" ("https://listen.tidal.com/album/" <> t) "Tidal web"
               _ -> [])
         <> (case a.albumAMusic of
               Just am | am /= "" -> apple am
               _ -> [])
         <> (case a.albumJellyfin of
-              Just j | j /= "" && jellyfin /= "" -> ext (jellyfin <> "/web/#/details?id=" <> j) "Jellyfin"
+              Just j | j /= "" && jellyfin /= "" -> ext "jellyfin-icon-c.png" (jellyfin <> "/web/#/details?id=" <> j) "Jellyfin"
               _ -> [])
 
     -- tracks, credits and review from /api/albumtq, once they are there and belong to this album
     tj = case state.albumT of
-      Just t | t.tjId == a.albumID -> Just t
+      Just t | t.tjId == (if verIsFile then state.version else a.albumID) -> Just t
       _ -> Nothing
     tracks = tj >>= _.tjTracks
 
@@ -615,13 +668,7 @@ render state =
               <> (case tracks of
                     Just t -> [ HH.span_ [ HH.text ("from " <> t.atSource <> maybe "" (" · " <> _) t.atQuality <> " · " <> S.take 10 t.atFetched) ] ]
                     Nothing -> [])
-              -- an album shows its own tracks; its Tidal version's (a physical release) or its
-              -- files' on request: a button for each of the others
-              <> map srcButton
-                   ( (if state.tracksSrc /= "" then [ Tuple "" (if isDiscogs then "Discogs release" else "Own tracks") ] else [])
-                     <> (if state.tracksSrc /= "tidal" && isDiscogs && maybe false (_ /= "") a.albumTidal then [ Tuple "tidal" "Tidal version" ] else [])
-                     <> (if state.tracksSrc /= "files" && not isFile && maybe false (_ /= "") a.albumJellyfin then [ Tuple "files" "Files" ] else [])
-                   )
+              -- whose tracks: the version chosen in Versions
               <> [ HH.button [ cls "av-tag", HE.onClick \_ -> RefreshTracks, HP.disabled state.tracksLoading
                              , HP.title "Fetch tracks, credits and review again" ] [ HH.text "↻" ] ]
           ] <> case tracks of
@@ -630,10 +677,6 @@ render state =
                          | otherwise -> [ HH.p [ cls "av-note" ] [ HH.text (maybe "No tracks." (\t -> "No tracks: " <> t.tjError) tj) ] ]
       ]
     isFile = S.take 1 a.albumID == "J"
-    srcButton (Tuple src label) =
-      HH.button [ cls "av-tag", HE.onClick \_ -> TracksSource src, HP.disabled state.tracksLoading
-                , HP.title ("Show the tracks of the " <> (if src == "" then "album itself" else if src == "files" then "files on the server" else "Tidal version")) ]
-                [ HH.text label ]
     trackRows :: Array Track -> Array (H.ComponentHTML Action () m)
     trackRows ts =
       let discs = nub (map _.tkDisc ts)

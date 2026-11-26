@@ -1069,3 +1069,21 @@ body { margin: 0; }
 .sel-gap { width: 14px; }
 .album-sel .cover-container { outline: 4px solid #5b5bd6; outline-offset: -4px; }
 .album-sel .cover-image { opacity: .6; }
+
+/* Versions on the album page (docs/jellyfin-plan.md, slice 19): one row per version;
+   the chosen one drives the facts, the tracks and ▶ */
+.av-versions { margin-top: 0; margin-bottom: 14px; }
+.av-ver { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 4px 8px; margin: 2px 0; border-radius: 6px; font-size: 13px; }
+.av-ver-on { background: #dfe6ff; }
+.av-ver-pick { border: 0; background: none; padding: 0; font: inherit; color: #1d1d1f; cursor: pointer; text-align: left; }
+.av-ver-on .av-ver-pick { color: #2a3fb0; font-weight: 600; }
+.av-ver-pick:hover { text-decoration: underline; }
+.av-ver-open { color: #6b6b70; text-decoration: none; font-size: 12px; }
+.av-ver-open:hover { color: #2a3fb0; }
+.av-ver .av-tag { padding: 0 6px; }
+.av-ver-sub { flex-basis: 100%; color: #6b6b70; font-size: 12px; }
+.av-ver-of { margin: 2px 0 6px; font-size: 13px; color: #55555a; }
+.av-ver-of a { color: #2a3fb0; text-decoration: none; }
+/* the service marks in front of the "Open in" links (not the global img padding and glow) */
+.av-link-icon { width: 16px; height: 16px; padding: 0; border-radius: 0; object-fit: contain; vertical-align: -3px; margin-right: 7px; }
+.av-link-icon:hover { box-shadow: none; }

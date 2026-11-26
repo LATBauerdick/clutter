@@ -17,3 +17,6 @@ export const isClamped = (sel) => () => {
   const e = document.querySelector(sel);
   return !!e && e.scrollHeight > e.clientHeight + 1;
 };
+
+// the browser's own "are you sure?" dialog (native on iPad and iPhone too): true for OK
+export const confirmBox = (msg) => () => window.confirm(msg);
