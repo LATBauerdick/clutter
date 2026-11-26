@@ -469,6 +469,26 @@ render state =
       let pick key label tip extra =
             HH.div [ cls (if state.version == key then "av-ver av-ver-on" else "av-ver") ] $
               [ HH.button [ cls "av-ver-pick", HE.onClick \_ -> ShowVersion key, HP.title tip ] [ HH.text label ] ] <> extra
+          -- the album layer by hand (slice 3): every version of an album of two or more
+          -- can be taken off (×), and one that clutter holds can lead the album
+          -- (the server's list: not a stand-in release, nor the page of an Apple twin)
+          albumKeys = fromMaybe [] (detail >>= _.xmembers)
+          inAlbum k = elem k albumKeys
+          leadKey = fromMaybe a.albumID (detail >>= _.xlead)
+          leadSet = fromMaybe false (detail >>= _.xleadSet)
+          leadCtl k held
+            | not (inAlbum k) = []
+            | k == leadKey = [ HH.small [ cls "av-ver-sub", HP.title (if leadSet then "Chosen to lead the album: its title, cover and place in the lists" else "Leads the album by the rule: record, Tidal, files, Apple Music, Qobuz") ]
+                                [ HH.text (if leadSet then "leads" else "leads (rule)") ] ]
+                             <> (if leadSet then [ HH.button [ cls "av-tag", HE.onClick \_ -> LeadVersion a.albumID "", HP.title "Back to the rule: record, Tidal, files, Apple Music, Qobuz" ] [ HH.text "↺" ] ] else [])
+            | held = [ HH.button [ cls "av-tag", HE.onClick \_ -> LeadVersion a.albumID k, HP.title "Let this version lead the album: its title, cover and place in the lists" ] [ HH.text "lead" ] ]
+            | otherwise = []
+          -- a Tidal album that is no favourite is a version, but clutter does not hold it
+          -- (xversions: key alone, no title), so it cannot lead
+          tidalHeld = maybe true (\v -> v.cvTitle /= "") (find (\v -> v.cvKey == "T" <> tidalId) (fromMaybe [] (detail >>= _.xversions)))
+          splitCtl k = if inAlbum k
+            then [ HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> SplitVersion a.albumID k, HP.title "Not this album: take this version off (an album of its own again)" ] [ HH.text "×" ] ]
+            else []
           ownLabel
             | isDiscogs = S.trim (fromMaybe a.albumFormat (head (S.split (Pattern ",") a.albumFormat)))
                           <> maybe "" (\(Tuple shelf i) -> " · " <> shelf <> " #" <> show i) whereIs
@@ -478,7 +498,8 @@ render state =
             -- a release's or a file album's Tidal album (a Tidal album is its own row)
             if not isTidalAlbum && hasTidal
               then [ pick "tidal" ("Tidal" <> if isGone then " · gone" else "") "The Tidal album: its tracks, quality and ▶"
-                       [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum ("T" <> tidalId), cls "av-ver-open", HP.title "Open the Tidal album's own page" ] [ HH.text "↗" ] ] ]
+                       ([ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum ("T" <> tidalId), cls "av-ver-open", HP.title "Open the Tidal album's own page" ] [ HH.text "↗" ] ]
+                        <> leadCtl ("T" <> tidalId) tidalHeld <> splitCtl ("T" <> tidalId)) ]
               else []
           fileRow f =
             pick f.fvKey ("Files" <> (if f.fvStorage == "" then "" else " · " <> f.fvStorage))
@@ -489,9 +510,8 @@ render state =
                    <> (if f.fvStorage == "" then [] else
                          [ HH.button [ cls "av-tag", HE.onClick \_ -> ShowList (AlbumList (Just ("Server " <> f.fvStorage)))
                                      , HP.title ("All albums stored in " <> f.fvStorage) ] [ HH.text "≡" ] ])
-                   <> (if not f.fvLogged then [] else
-                         [ HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> UnlinkFile a.albumID f.fvKey
-                                     , HP.title "Not this album: take these files off it" ] [ HH.text "×" ] ])
+                   <> leadCtl f.fvKey true
+                   <> splitCtl f.fvKey
                    -- a different title, or linked to another release of this album: say so
                    <> (if f.fvTitle /= a.albumTitle then [ HH.small [ cls "av-ver-sub" ] [ HH.text f.fvTitle ] ] else [])
                    <> (case f.fvOwner of
@@ -516,8 +536,9 @@ render state =
               [ HH.span [ cls "av-ver-pick", HP.title (if held then v.cvTitle <> " — " <> v.cvArtist else v.cvKey <> ": not in clutter's library") ]
                         [ HH.text (kind <> (if held && v.cvReleased /= "" then " · " <> S.take 4 v.cvReleased else "")) ] ]
               <> (if held then [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum v.cvKey, cls "av-ver-open", HP.title "Open this version's own page" ] [ HH.text "↗" ] ] else [])
+              <> leadCtl v.cvKey held <> splitCtl v.cvKey
           others = filter (\v -> not (elem v.cvKey shownKeys)) (fromMaybe [] (detail >>= _.xversions))
-          rows = [ pick "" ownLabel "The album as it was opened" [] ] <> tidalRow <> map fileRow files <> map otherRow others
+          rows = [ pick "" ownLabel "The album as it was opened" (leadCtl a.albumID true <> splitCtl a.albumID) ] <> tidalRow <> map fileRow files <> map otherRow others
           -- a version that is not its album's lead: the album, with all its versions, one click away
           ofRow = case detail >>= _.xof of
             Just o -> [ HH.p [ cls "av-ver-of" ]
@@ -565,23 +586,37 @@ render state =
 
     -- on a file album's page: the albums it may be a version of (same or similar title);
     -- a click links the files to that album and shows it; the name opens it first
+    -- since slice 3 of the album layer: on any album's page (its row), the albums it may be
+    -- the same as, and a search for any other; Join makes the two one album (nothing is
+    -- replaced: a version that does not belong is taken off with × in Versions)
     sameAsView =
       let cands = fromMaybe [] (detail >>= _.xcandidates)
+          joinBtn c =
+            HH.button [ cls "pill", HE.onClick \_ -> JoinAlbum c.cvKey a.albumID
+                      , HP.title "The same album: join them (every version of both)" ] [ HH.text "Join" ]
+          name c =
+            [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum c.cvKey, HP.title "Open this album" ]
+                   [ HH.text (c.cvTitle <> " — " <> c.cvArtist) ]
+            , HH.small_ [ HH.text (" " <> c.cvFormat <> (if c.cvReleased == "" then "" else " · " <> S.take 4 c.cvReleased)
+                                   <> (case c.cvHas of
+                                         Just h | h /= "" -> " · has " <> h <> " (it stays: a second edition)"
+                                         _ -> "")) ] ]
           one c =
-            HH.p [ cls "av-file" ]
-              [ HH.button [ cls "pill"
-                          , HE.onClick \_ -> if S.take 1 a.albumID == "J" then LinkFile c.cvKey a.albumID else LinkStreamTo c.cvKey a.albumID
-                          , HP.title (if S.take 1 a.albumID == "J" then "These files are a version of this album: link them"
-                                      else "This is the stream of that release: link them") ]
-                          [ HH.text "Link" ]
-              , HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum c.cvKey, HP.title "Open this album" ]
-                     [ HH.text (c.cvTitle <> " — " <> c.cvArtist) ]
-              , HH.small_ [ HH.text (" " <> c.cvFormat <> (if c.cvReleased == "" then "" else " · " <> S.take 4 c.cvReleased)
-                                     <> (case c.cvHas of
-                                           Just h | h /= "" -> " · has " <> h <> ", to be replaced"
-                                           _ -> "")) ]
-              , HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> NotSame a.albumID c.cvKey true
+            HH.p [ cls "av-file" ] $
+              [ joinBtn c ] <> name c <>
+              [ HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> NotSame a.albumID c.cvKey true
                           , HP.title "Not the same album: don't suggest it again" ] [ HH.text "×" ]
+              ]
+          hit c = HH.p [ cls "av-file" ] ([ joinBtn c ] <> name c)
+          isRow = case detail of
+            Just x -> x.xof == Nothing
+            Nothing -> false
+          box =
+            HH.div [ cls "av-streambox" ]
+              [ HH.input [ HP.value state.findQ, HP.placeholder "Find another album: title, artist", HE.onValueInput SetFindQ
+                         , HP.title "Words of the title and the artist (beginnings are enough)" ]
+              , HH.button [ cls "pill", HP.type_ HP.ButtonButton, HE.onClick \_ -> FindAlbums a.albumID, HP.disabled (S.trim state.findQ == "") ]
+                          [ HH.text "Find" ]
               ]
           -- those marked × , small, each with ↺ to suggest it again
           notSame = fromMaybe [] (detail >>= _.xnotsame)
@@ -591,8 +626,8 @@ render state =
               , HH.button [ cls "av-tag", HE.onClick \_ -> NotSame a.albumID c.cvKey false
                           , HP.title "Suggest it again" ] [ HH.text "↺" ] ]
       in
-      if null cands && null notSame then HH.text "" else
-        HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "Same album as…" ] ] <> map one cands <> map gone notSame)
+      if not isRow then HH.text "" else
+        HH.div [ cls "av-files" ] ([ HH.h3_ [ HH.text "Same album as…" ] ] <> map one cands <> map gone notSame <> [ box ] <> map hit state.found)
 
     -- in the collection or not, why, and the keep mark (docs/jellyfin-plan.md, "Membership"):
     -- a record on a shelf and anything played is in; "Keep" puts an album in, "Not for me"

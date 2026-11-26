@@ -50,7 +50,7 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Collection (appendMark, appendMerge, appendNotSame, appendSkip, appendSplit, appendVersion, collectionFile, followMove, newAlbumId, notSame, parseStreamRef, readMoves, reviewedFiles, sameKind)
+import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendSkip, appendSplit, appendVersion, collectionFile, followMove, newAlbumId, notSame, parseStreamRef, readMoves, reviewedFiles, sameKind, standInFolderTags)
 import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedName, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
@@ -230,6 +230,9 @@ data AlbumXJ = AlbumXJ
   , xof :: Maybe CandV -- a version that is not its album's lead: the album's row (its lead version)
   , xnotsame :: [CandV] -- suggestions marked "not the same album" (×), which ↺ can bring back
   , xversions :: [CandV] -- every other version of the album, lead first (a stream clutter does not hold: its key alone)
+  , xlead :: AlbumKey -- the album's lead version (its row)
+  , xleadSet :: Bool -- a lead line chose it, not the rule
+  , xmembers :: [AlbumKey] -- the versions the page may take off or let lead (membersOf): none for an album of one version
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
@@ -360,6 +363,45 @@ type API23 =
     :> QueryParam "version" AlbumKey
     :> Get '[JSON] ReqJ
 
+-- the album layer by hand (docs/album-layer-plan.md › Slices, 3):
+--   /api/albumjoin/:aid?other=K     K's album and aid's are one album (version, merge lines)
+--   /api/albumsplit/:aid?version=K  K, a version of aid's album, is its own album again
+--   /api/albumlead/:aid?version=K   K leads aid's album; without version: back to the rule
+--   /api/albumfind/:aid?q=words     any album row whose title and artist have all the
+--                                   words, for "Same album as…" (not aid's own album)
+type API24 =
+  "api"
+    :> "albumjoin"
+    :> Capture "aid" AlbumKey
+    :> QueryParam "other" AlbumKey
+    :> Get '[JSON] RowJ
+    :<|> "api"
+      :> "albumsplit"
+      :> Capture "aid" AlbumKey
+      :> QueryParam "version" AlbumKey
+      :> Get '[JSON] RowJ
+    :<|> "api"
+      :> "albumlead"
+      :> Capture "aid" AlbumKey
+      :> QueryParam "version" AlbumKey
+      :> Get '[JSON] RowJ
+    :<|> "api"
+      :> "albumfind"
+      :> Capture "aid" AlbumKey
+      :> QueryParam "q" Text
+      :> Get '[JSON] [CandV]
+
+-- the answer to a change of the album layer: as ReqJ, and the key of the album's row
+-- afterwards (the page to show)
+data RowJ = RowJ
+  { rjTime :: Text
+  , rjInfo :: Text
+  , rjResult :: Int
+  , rjRow :: AlbumKey
+  }
+  deriving (Show, Generic)
+instance ToJSON RowJ
+
 data ReviewJ = ReviewJ
   { rvRows :: [ReviewRow]
   , rvDone :: Int -- the inventory's unsure rows already decided (linked, unlinked or skipped)
@@ -449,6 +491,7 @@ type ClutterAPI =
     :<|> API21
     :<|> API22
     :<|> API23
+    :<|> API24
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -528,6 +571,7 @@ clutterServer sd =
     :<|> (serveAlbumskip :<|> serveAlbumnotsame)
     :<|> serveAlbumskeep
     :<|> serveNodeplayfiles
+    :<|> (serveAlbumjoin :<|> serveAlbumsplit :<|> serveAlbumlead :<|> serveAlbumfind)
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -670,6 +714,7 @@ clutterServer sd =
     onNode <- liftIO $ maybe (pure False) (fmap isJust . nodeFolder) (M.lookup i am >>= fileKey)
     -- the suggestions marked "not the same album" (×) for this one
     excl <- liftIO $ M.findWithDefault [] i <$> (collectionFile >>= notSame)
+    sit <- liftIO standInFolderTags
     let candV b = CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = ""}
         others = filter (/= i) (versionsOfKey ly i)
         -- a version clutter does not hold (a stream that is no favourite): its key alone
@@ -677,9 +722,9 @@ clutterServer sd =
         -- a version that is not its album's lead: the album, with all its versions, is its lead's row
         versionOf = let r = rowOf ly i in if r /= i then candV <$> M.lookup r am else Nothing
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf ly am a, xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others}
+      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf ly am a, xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor sit ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else []}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = []}
+      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = [], xlead = i, xleadSet = False, xmembers = []}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do
@@ -738,6 +783,11 @@ clutterServer sd =
     D _ -> True
     _ -> False
 
+  isFileKey :: AlbumKey -> Bool
+  isFileKey k = case k of
+    J _ -> True
+    _ -> False
+
   isStreamKey :: AlbumKey -> Bool
   isStreamKey k = case k of
     T _ -> True
@@ -785,37 +835,43 @@ clutterServer sd =
   -- the same, or one title inside the other ("Mind Maps 6" in "FSOLdigital Presents Mind
   -- Maps 6"), or most words shared -- with a shared artist word breaking ties. The automatic
   -- import (scripts/import-inventory-links.py) only takes exact pairs; these are for a click.
-  candidatesFor :: Layer -> Map AlbumKey Album -> Album -> [CandV]
+  candidatesFor :: Set Text -> Layer -> Map AlbumKey Album -> Album -> [CandV]
   --
-  -- Likewise for a Tidal or Apple Music album that stands alone: the Discogs releases
-  -- that have no album of that service yet -- it may be the stream of one of them.
+  -- Likewise for a stream album: the albums it may be a version of (a release, a file
+  -- album, another edition of the stream); and for a record, other records of the same
+  -- title and artist (a second pressing, the CD of a vinyl). Since slice 3 of the album
+  -- layer a suggestion joins the two albums (/api/albumjoin); nothing is replaced.
   -- Only for an album's row, and never an album it is a version of already.
-  candidatesFor ly am a
+  candidatesFor sit ly am a
     | hidden (albumID a) = []
-    | otherwise = case albumID a of
-        D _ -> []
-        _ ->
-          [ CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = has b}
-          | (_, b) <- take 8 (sortOn (Down . fst) scored)
-          ]
+    | otherwise =
+        [ CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = has b}
+        | (_, b) <- take 8 (sortOn (Down . fst) scored)
+        ]
    where
-    has b = case albumID a of
-      T _ -> maybe "" ("T" <>) (mfilter (not . T.null) (albumTidal b))
-      A _ -> maybe "" ("A" <>) (mfilter (not . T.null) (albumAMusic b))
+    -- the stream of that service the other album has already (it stays: a second edition)
+    -- (not for a Tidal or Apple album itself: its own id)
+    has b = case (albumID a, albumID b) of
+      (_, T _) -> ""
+      (_, A _) -> ""
+      (T _, _) -> maybe "" ("T" <>) (mfilter (not . T.null) (albumTidal b))
+      (A _, _) -> maybe "" ("A" <>) (mfilter (not . T.null) (albumAMusic b))
       _ -> ""
-    -- what the album can be linked to
+    -- what the album can be joined to: a record only to an album with a record of the same
+    -- Discogs master (by title, an opera's other recordings would all look the same:
+    -- Carmen, Aida); anything else to anything
     fits b = case (albumID a, albumID b) of
-      (J _, k) -> notFile k
-      -- also a release that has another edition of the stream: this one can take its place
-      (T n, D _) -> albumTidal b /= Just (show n)
-      (A n, D _) -> albumAMusic b /= Just (show n)
-      -- or of a file album that stands for itself
-      (T n, J _) -> albumTidal b /= Just (show n)
-      (A n, J _) -> albumAMusic b /= Just (show n)
-      _ -> False
+      -- (not a stand-in release of the folders Streaming and Files: it is no version, slice 6)
+      (D _, D _) -> not (Set.null (masters a `Set.intersection` masters b)) && not (standIn a || standIn b)
+      (D _, _) -> False
+      _ -> True
+    isRecord = case albumID a of D _ -> True; _ -> False
+    masters x = Set.fromList (filter ("dm:" `TX.isPrefixOf`) (albumWikiKeys x))
+    standIn x = any ((`Set.member` sit) . TX.toCaseFold) (albumTags x)
     -- shown as another album's row: a version of an album, a stand-in
     hidden k = rowOf ly k /= k
-    ws = filter ((> 1) . T.length) . T.words . T.map (\c -> if Ch.isAlphaNum c then Ch.toLower c else ' ') . dropBrackets
+    -- words of two letters or more, and numbers ("Mind Maps 6" is not "Mind Maps 7")
+    ws = filter (\w -> T.length w > 1 || TX.all Ch.isDigit w) . T.words . T.map (\c -> if Ch.isAlphaNum c then Ch.toLower c else ' ') . dropBrackets
     dropBrackets t = case T.breakOn "(" t of
       (x, r) | not (T.null r), not (T.null (T.strip x)) -> x
       _ -> t
@@ -832,9 +888,9 @@ clutterServer sd =
       , let shared = not (Set.null (aa `Set.intersection` Set.fromList (ws (albumArtist b))))
       -- the same title is enough; a title inside a longer one ("The Gold" in "The Gold
       -- Collection", "Chopin", "Blues") or a similar one needs an artist word in common too
-      , s == 3 || (s >= 1 && shared)
+      -- (a record: the same master is enough, fits)
+      , isRecord || s == 3 || (s >= 1 && shared)
       ]
-    notFile k = case k of J _ -> False; _ -> True
     titleScore :: [Text] -> [Text] -> Int
     titleScore x y
       | null x || null y = 0
@@ -883,7 +939,7 @@ clutterServer sd =
             let replaced = filter (sameKind s) mine
                 ns = nameAny ly s
                 along = case ns of
-                  C _ | ns /= nameAny ly i -> ", together with the album it was a version of (" <> show (length (filter (/= s) (M.findWithDefault [] ns (lyVersions ly)))) <> " more versions; undone only with slice 3)"
+                  C _ | ns /= nameAny ly i -> ", together with the album it was a version of (" <> show (length (filter (/= s) (M.findWithDefault [] ns (lyVersions ly)))) <> " more versions; × in Versions takes one off)"
                   _ -> ""
              in logged (\fn -> forM_ replaced (\o -> appendSplit fn now o a) >> joinLines now ly False i s a fn) $ do
                   envReloadLog
@@ -934,6 +990,158 @@ clutterServer sd =
         | otherwise -> pure $ answer False "These files are not linked to this album"
       _ -> pure $ answer False "version must be a file album (J…), op link or unlink"
 
+  -- The album layer by hand (docs/album-layer-plan.md › Slices, 3). Each answer carries
+  -- the key of the album's row afterwards, the page the album is shown on.
+  rowAnswer :: Bool -> Text -> AlbumKey -> AppM RowJ
+  rowAnswer ok info k = do
+    now <- liftIO getZonedTime
+    pure RowJ{rjTime = toText (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now), rjInfo = info, rjResult = if ok then 1 else 0, rjRow = k}
+
+  -- write the lines, read the log again, answer with the row of k's album as it is now
+  layerWrite :: (FilePath -> IO ()) -> Text -> AlbumKey -> AppM RowJ
+  layerWrite act info k = do
+    wrote <- liftIO . try $ collectionFile >>= act
+    case wrote :: Either SomeException () of
+      Left _ -> rowAnswer False "Could not write the collection log (nothing changed)" k
+      Right () -> do
+        envReloadLog
+        ly <- asks layerR >>= readIORef
+        rowAnswer True info (rowOf ly k)
+
+  -- what a version is, for the answers
+  versionName :: AlbumKey -> Text
+  versionName k = case k of
+    D _ -> "the record"
+    T _ -> "the Tidal album"
+    A _ -> "the Apple Music album"
+    Q _ -> "the Qobuz album"
+    J _ -> "the file album"
+    C _ -> "the album"
+
+  -- the versions of the album a key belongs to, as the page may act on them: for an album
+  -- with an id its versions without the stand-in releases (shown as the row of an album
+  -- none of whose versions clutter holds, but no version); otherwise the key alone
+  membersOf :: Layer -> AlbumKey -> [AlbumKey]
+  membersOf ly k = case nameOf ly k of
+    C _ -> filter (`notElem` concat (M.elems (lyStandIns ly))) (versionsOfKey ly k)
+    _ -> [k]
+
+  isAlbumId :: AlbumKey -> Bool
+  isAlbumId k = case k of C _ -> True; _ -> False
+
+  -- other's album and aid's are one album: other's joins aid's (a version line, a new id
+  -- and two version lines, or a merge into aid's: joinLines). Any two albums -- a file
+  -- album to anything, a second edition of a stream, a second record; nothing is
+  -- replaced (a version that does not belong is taken off with albumsplit).
+  serveAlbumjoin :: AlbumKey -> Maybe AlbumKey -> AppM RowJ
+  serveAlbumjoin i mo = do
+    now <- liftIO getZonedTime
+    am <- asks albumsR >>= readIORef
+    ly <- asks layerR >>= readIORef
+    let n k = length (membersOf ly k)
+    case (M.lookup i am, mo, mo >>= (`M.lookup` am)) of
+      _ | not (lyFormat ly) -> rowAnswer False notAlbumFormat i
+      (Nothing, _, _) -> rowAnswer False "Not in clutter" i
+      (_, Nothing, _) -> rowAnswer False "other is missing: the album to join this one" i
+      (_, _, Nothing) -> rowAnswer False "The other album is not in clutter" i
+      (Just a, Just o, Just b)
+        | nameAny ly i == nameAny ly o -> rowAnswer False "These are one album already" i
+        | otherwise ->
+            layerWrite
+              (joinLines now ly False i o a)
+              ( (if albumTitle a == albumTitle b then "The two “" <> albumTitle a <> "”" else "“" <> albumTitle b <> "” and “" <> albumTitle a <> "”")
+                  <> " are one album now, of " <> show (n i + n o) <> " versions"
+              )
+              i
+
+  -- version v is taken off aid's album: its own album again (a split line). What was
+  -- recorded against v's key goes with it (its plays); what was recorded against the
+  -- album's id stays with the album.
+  serveAlbumsplit :: AlbumKey -> Maybe AlbumKey -> AppM RowJ
+  serveAlbumsplit i mv = do
+    now <- liftIO getZonedTime
+    am <- asks albumsR >>= readIORef
+    ly <- asks layerR >>= readIORef
+    let vs = membersOf ly i
+        rest = filter (/= v') vs
+        v' = fromMaybe i mv
+        -- the Apple Music album a Tidal version of the album names (store lookup): split
+        -- off, it would be that Tidal album's twin again, the same album (buildLayer)
+        names t n = (albumAMusic =<< M.lookup t am) == Just (show n)
+        twinOfHere = case v' of
+          A n -> any (\k -> case k of T _ -> names k n; _ -> False) rest
+          -- a Tidal album and the Apple album it names, alone: the Apple album would be
+          -- its twin again
+          T _ -> case rest of
+            [A n] -> names v' n
+            _ -> False
+          _ -> False
+    case (M.lookup i am, mv) of
+      _ | not (lyFormat ly) -> rowAnswer False notAlbumFormat i
+      (Nothing, _) -> rowAnswer False "Not in clutter" i
+      (_, Nothing) -> rowAnswer False "version is missing: the version to take off" i
+      (Just a, Just v)
+        | v `notElem` vs -> rowAnswer False "That is not a version of this album" i
+        | length vs < 2 -> rowAnswer False "An album of one version: nothing to take off" i
+        | twinOfHere -> rowAnswer False "The Tidal album names this Apple Music album (store lookup): the two stay one album" i
+        -- what was recorded against the album's id (keep mark, lead) stays with the rest:
+        -- the rest must be an album clutter shows
+        | not (any (`M.member` am) rest) -> rowAnswer False ("The rest of the album is not in clutter's library: take " <> versionName (fromMaybe v (viaNonEmpty head rest)) <> " off instead") i
+        | otherwise ->
+            layerWrite
+              (\fn -> appendSplit fn now v (fromMaybe a (M.lookup v am)))
+              ("Took " <> versionName v <> " off “" <> albumTitle a <> "”: an album of its own again")
+              -- the page shows the album that remains
+              (if v == i then fromMaybe i (find (`M.member` am) rest) else i)
+
+  -- version v leads aid's album (a lead line): the album's title, cover and row are v's.
+  -- Without a version: back to the rule (record, Tidal, files, Apple Music, Qobuz).
+  serveAlbumlead :: AlbumKey -> Maybe AlbumKey -> AppM RowJ
+  serveAlbumlead i mv = do
+    now <- liftIO getZonedTime
+    am <- asks albumsR >>= readIORef
+    ly <- asks layerR >>= readIORef
+    let nm = nameOf ly i
+        vs = membersOf ly i
+    case (M.lookup i am, mv) of
+      _ | not (lyFormat ly) -> rowAnswer False notAlbumFormat i
+      (Nothing, _) -> rowAnswer False "Not in clutter" i
+      _ | not (isAlbumId nm) -> rowAnswer False "An album of one version: it leads itself" i
+      (Just a, Just v)
+        | v `notElem` vs -> rowAnswer False "That is not a version of this album" i
+        | not (M.member v am) -> rowAnswer False "clutter does not hold that version, so it cannot be the album's row" i
+        | rowOf ly i == v && Set.member nm (lyLeadSet ly) -> rowAnswer False "That version leads already" v
+        | otherwise ->
+            layerWrite
+              (\fn -> appendLead fn now nm (Just v) a)
+              ("Now " <> versionName v <> " leads “" <> albumTitle a <> "”")
+              v
+      (Just a, Nothing)
+        | not (Set.member nm (lyLeadSet ly)) -> rowAnswer False "The album follows the rule already" i
+        | otherwise ->
+            layerWrite
+              (\fn -> appendLead fn now nm Nothing a)
+              "The lead follows the rule again (record, Tidal, files, Apple Music, Qobuz)"
+              i
+
+  -- any album row whose title and artist words begin with all the words asked for (two
+  -- letters at least), not aid's own album; at most 20, by title
+  serveAlbumfind :: AlbumKey -> Maybe Text -> AppM [CandV]
+  serveAlbumfind i mq = do
+    am <- asks albumsR >>= readIORef
+    ly <- asks layerR >>= readIORef
+    let norm = TX.words . TX.map (\c -> if Ch.isAlphaNum c then Ch.toLower c else ' ')
+        ws = filter (\w -> TX.length w > 1 || TX.all Ch.isDigit w) (norm (fromMaybe "" mq))
+        me = nameAny ly i
+        hit b = let tw = norm (albumTitle b <> " " <> albumArtist b) in all (\w -> any (w `TX.isPrefixOf`) tw) ws
+        candOf b = CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = ""}
+    pure $
+      if null ws
+        then []
+        else
+          map candOf . take 20 . sortOn (\b -> (TX.toLower (albumTitle b), TX.toLower (albumArtist b))) $
+            [b | b <- M.elems am, rowOf ly (albumID b) == albumID b, hit b, nameAny ly (albumID b) /= me]
+
   serveAlbumkeep :: AlbumKey -> Maybe Text -> AppM ReqJ
   serveAlbumkeep i mv = do
     now <- liftIO getZonedTime
@@ -979,6 +1187,7 @@ clutterServer sd =
         let decided = logged <> Set.fromList [j | (J j, C _) <- M.toList (lyName ly)]
         -- the inventory has the ids of its day; a folder moved since has a new one
         moves <- liftIO $ collectionFile >>= readMoves
+        sit <- liftIO standInFolderTags
         am <- asks albumsR >>= readIORef
         let rows = case map (TX.dropWhileEnd (== '\r')) (TX.lines body) of
               (h : ls) ->
@@ -1013,7 +1222,8 @@ clutterServer sd =
               let j = jid r
               guard (not (j `Set.member` decided))
               f <- M.lookup (J j) am
-              let cands = take 5 (L.nubBy ((==) `on` cvKey) (maybeToList (proposal r) <> candidatesFor ly am f))
+              -- (the review links with albumlink: no other file album as the target)
+              let cands = take 5 (L.nubBy ((==) `on` cvKey) (maybeToList (proposal r) <> filter (not . isFileKey . cvKey) (candidatesFor sit ly am f)))
               pure
                 ( (rank r, TX.toLower (albumArtist f))
                 , ReviewRow

@@ -22,7 +22,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
+import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, CandV, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
 import Data.Array (filter) as A
 import Data.Set as Set
 import RenderTopMenu (shownAlbums)
@@ -116,6 +116,55 @@ handleAction = case _ of
     case (decodeJson =<< parseJson rx) :: Either JsonDecodeError AlbumXJ of
       Right x -> H.modify_ \st -> if map _.albumID st.album == Just aid then st { albumX = Just x } else st
       Left _ -> pure unit
+  -- the album layer by hand (docs/album-layer-plan.md › Slices, 3): the backend writes the
+  -- lines and answers with the album's row afterwards, which is then shown
+  JoinAlbum aid other -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumjoin/" <> aid <> "?other=" <> other)
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjResult :: Int, rjRow :: String } of
+      Right { rjInfo: i, rjResult: 1, rjRow: row } -> do
+        pushView
+        showAlbum row
+        H.modify_ _ { notice = Just i, findQ = "", found = [] }
+      Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Join: no answer" }
+  SplitVersion aid v -> do
+    t <- titleOf aid
+    ok <- H.liftEffect (confirmBox ("Take " <> versionName v <> " off " <> t <> "?\n\nIt becomes an album of its own again; its plays go with it. To put it back, join it again under \"Same album as…\"."))
+    when ok do
+      api <- H.gets _.apiUrl
+      r <- H.liftAff $ getUrl (api <> "albumsplit/" <> aid <> "?version=" <> v)
+      case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjResult :: Int, rjRow :: String } of
+        Right { rjInfo: i, rjResult: 1, rjRow: row } -> do
+          showAlbum row
+          H.modify_ _ { notice = Just i }
+        Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
+        Left _ -> H.modify_ _ { notice = Just "Take off: no answer" }
+  LeadVersion aid v -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumlead/" <> aid <> (if v == "" then "" else "?version=" <> v))
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjResult :: Int, rjRow :: String } of
+      Right { rjInfo: i, rjResult: 1, rjRow: row } -> do
+        showAlbum row
+        H.modify_ _ { notice = Just i }
+      Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Lead: no answer" }
+  SetFindQ s -> H.modify_ _ { findQ = s }
+  FindAlbums aid -> do
+    api <- H.gets _.apiUrl
+    q <- H.gets _.findQ
+    let enc = replaceAll (Pattern " ") (Replacement "%20")
+          <<< replaceAll (Pattern "+") (Replacement "%2B")
+          <<< replaceAll (Pattern "&") (Replacement "%26")
+          <<< replaceAll (Pattern "#") (Replacement "%23")
+          <<< replaceAll (Pattern "?") (Replacement "%3F")
+          <<< replaceAll (Pattern "%") (Replacement "%25")
+    r <- H.liftAff $ getUrl (api <> "albumfind/" <> aid <> "?q=" <> enc q)
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError (Array CandV) of
+      -- only on the page it was asked from
+      Right cs -> H.modify_ \st -> if map _.albumID st.album /= Just aid then st
+                                   else st { found = cs, notice = if cs == [] then Just ("Nothing found for “" <> q <> "”") else Nothing }
+      Left _ -> H.modify_ _ { notice = Just "Find: no answer" }
   ShowVersion v -> do
     H.modify_ _ { version = v, verX = Nothing, verA = Nothing, albumT = Nothing, nodeMsg = Nothing }
     _ <- H.fork (loadTracks false)
@@ -508,9 +557,17 @@ handleAction = case _ of
                       "Q" -> "the Qobuz album "
                       _ -> "") <> S.drop 1 s
 
+    versionName v = case S.take 1 v of
+      "D" -> "the record"
+      "T" -> "the Tidal album"
+      "A" -> "the Apple Music album"
+      "Q" -> "the Qobuz album"
+      "J" -> "the file album"
+      _ -> "this version"
+
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
     showAlbum aid = do
-      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, version = "", verX = Nothing, verA = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing }
+      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, version = "", verX = Nothing, verA = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing, findQ = "", found = [] }
       now <- H.liftAff getNow
       H.liftAff $ Console.logShow now
       api <- H.gets _.apiUrl

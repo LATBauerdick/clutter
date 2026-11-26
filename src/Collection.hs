@@ -63,6 +63,7 @@ module Collection (
   appendMark,
   appendVersion,
   appendSplit,
+  appendLead,
   appendMerge,
   newAlbumId,
   appendSkip,
@@ -205,6 +206,7 @@ buildLayer al am =
     , lyRow = rows
     , lyVersions = versions
     , lyKeep = AL.alKeep al
+    , lyLeadSet = S.fromList [n | (n, k) <- M.toList (AL.alLead al), k `elem` M.findWithDefault [] n heldOrdered]
     , lyStandIns = M.fromListWith (flip (<>)) [(n, [k]) | (k, n) <- M.toList aliased]
     , lyIds = S.fromList (M.keys (AL.albumsWithIds al)) <> S.fromList (map C (M.keys (AL.alMerges al) <> M.elems (AL.alMerges al)))
     , -- a play counts if clutter holds its version, or its version is one of an album
@@ -451,8 +453,14 @@ appendVersion fn now c k a =
   appendLine fn . object $
     ["ts" .= stamp now, "op" .= ("version" :: Text), "album" .= c, "key" .= k, "via" .= ("clutter" :: Text)] <> named a
 
+-- the version that leads an album (named by its C id); Nothing: back to the rule
+appendLead :: FilePath -> ZonedTime -> AlbumKey -> Maybe AlbumKey -> Album -> IO ()
+appendLead fn now n mk a =
+  appendLine fn . object $
+    ["ts" .= stamp now, "op" .= ("lead" :: Text), "album" .= n] <> maybe [] (\k -> ["key" .= k]) mk <> ["via" .= ("clutter" :: Text)] <> named a
+
 -- a version is its own album again
-appendSplit :: FilePath -> ZonedTime -> AlbumKey -> Album -> IO ()
+appendSplit ::FilePath -> ZonedTime -> AlbumKey -> Album -> IO ()
 appendSplit fn now k a =
   appendLine fn . object $
     ["ts" .= stamp now, "op" .= ("split" :: Text), "key" .= k, "via" .= ("clutter" :: Text)] <> named a

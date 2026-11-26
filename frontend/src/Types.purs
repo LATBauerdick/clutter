@@ -124,6 +124,9 @@ type AlbumXJ =    { xid :: String
                   , xof :: Maybe CandV -- a version that is not its album's lead: the album's row
                   , xnotsame :: Maybe (Array CandV) -- suggestions marked "not the same album" (×)
                   , xversions :: Maybe (Array CandV) -- every other version of the album (a stream clutter does not hold: key only, cvTitle "")
+                  , xlead :: Maybe String -- the album's lead version (its row)
+                  , xleadSet :: Maybe Boolean -- a lead line chose it, not the rule
+                  , xmembers :: Maybe (Array String) -- the versions the page may take off or let lead; none for an album of one version
                   }
 -- an album a file album may be a version of
 type CandV =      { cvKey :: String
@@ -215,6 +218,8 @@ type State =      { apiUrl :: String
                   , search :: String
                   , tagFilter :: String
                   , streamRef :: String -- the album page's "link a stream" box: T<id>, A<id> or a share link
+                  , findQ :: String -- the album page's "Same album as…" search box
+                  , found :: Array CandV -- what that search found (/api/albumfind)
                   , views :: Array View
                   , pos :: Int
                   , album :: Maybe Album
@@ -303,6 +308,11 @@ data Action = ToggleSortOrder
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
             | ToggleAbout -- the review: all of it, or its first lines
             | NotSame String String Boolean -- album, suggestion: not the same album (true), or bring it back (false)
+            | JoinAlbum String String -- album, other album: one album now (album layer); then its row is shown
+            | SplitVersion String String -- album, version: take that version off, an album of its own again
+            | LeadVersion String String -- album, version: that version leads the album; "": back to the rule
+            | SetFindQ String
+            | FindAlbums String -- album: search any album for "Same album as…"
             | ShowVersion String -- the album page shows this version: "" the album, "tidal", "J…" (see version)
             | RefreshTracks -- fetch the tracks, credits and review of the album again
             | TogglePop String -- open or close a menu: focus | sort | more

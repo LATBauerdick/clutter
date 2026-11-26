@@ -79,6 +79,8 @@ initialState = do -- should eventually be saved in preferences
         , search: ""
         , tagFilter: ""
         , streamRef: ""
+        , findQ: ""
+        , found: []
         , views: []
         , pos: 0
         , album: Nothing

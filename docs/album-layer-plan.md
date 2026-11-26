@@ -391,6 +391,63 @@ Status:
   test/album-layer-check.py` OK (Python 59, Haskell 57: the server's old
   reader is gone). Page checked in headless Chrome (Blonde On Blonde from
   four versions, a stand-in row).
+- Slice 3 — built 2026-11-26 (session 888b4579), uncommitted; built before slice 4
+  at LATB's word (slice 3 does not need it; slice 4 is still needed before `--write`).
+  Server (`App.hs`, `API24`): `/api/albumjoin/:aid?other=K` joins K's whole album to
+  aid's (`joinLines`: a version line, a new id and two, or a merge into aid's;
+  nothing is replaced, so a second edition of a stream or a second file copy stays
+  beside the first); `/api/albumsplit/:aid?version=K` (a split line; refused for an
+  album of one version or a key not in it); `/api/albumlead/:aid?version=K` (a lead
+  line against the C id; refused for a version clutter does not hold; without
+  `version`: back to the rule); `/api/albumfind/:aid?q=` (album rows whose title and
+  artist words begin with all the words asked, not aid's album, 20 by title). Each
+  answer (`RowJ`) carries the album's row afterwards, which the page shows.
+  `Collection.appendLead`; `Layer.lyLeadSet` (albums whose lead a lead line chose);
+  `AlbumXJ.xlead`, `xleadSet`. Suggestions (`candidatesFor`): any album row may be
+  suggested for a file album or a stream (also another file album, another edition);
+  a record only another record of the same Discogs master (by title, 182 record
+  pages got suggestions, mostly other recordings of the same opera), never a
+  Streaming/Files stand-in; numbers count as words ("Mind Maps 6" is not "7"). The
+  unsure-matches review keeps out file albums as targets (it links with albumlink).
+  Page: "Same album as…" on every album row: suggestions with **Join**, and a find
+  box (Find → rows with Join); Versions: × on every version of an album of two or
+  more (a split, confirmed), "lead" on a held version, "leads" / "leads (rule)" on
+  the lead, ↺ back to the rule. The stream box (Link a stream) is unchanged: it
+  still puts a stream of the same service in place of the one the album has.
+  Check, on a migrated scratch copy of today's log, server on 8085, by the API and
+  in headless Chrome (`clutter-w/slice3.mjs`): Doggystyle's second copy suggested on
+  the first's page and joined (one version line into the album with its Tidal
+  album; both copies' rows then carry the album's play and both storages), lead to
+  the second copy and ↺ back, × splits it off again: both copies' tags and plays
+  exactly as before. Cream's *Wheels Of Fire* hirez copy is suggested on its own
+  page and joins the record (storage.hirez back on the record's row). A merge of
+  two albums with ids works; taking a wrongly merged album apart again is a ×
+  per version (no one-click undo of a merge). Refusals checked: lead twice, lead
+  of an un-held version, rule twice, split twice, join of an un-held album.
+  `test/album-layer-check.py` still OK (59 / 57). Not done: the bundle is not
+  installed in `frontend/index.js` — the old live server has no `/api/albumjoin`,
+  so Join would fail there; build it (`make run` in `frontend/`) with the restart
+  after `--write`.
+  **Fable reviewed it the same day** (by reading; Haskell type-checked): the lines
+  written match the spec in every combination, JSON names match; four modest bugs,
+  all fixed: (1) a stand-in's page of a stream clutter does not hold offered × and
+  wrote split lines that change nothing, with a "Took … off" answer; (2) pages that
+  are no version (a stand-in, an Apple twin) offered × and lead on their own row —
+  the server now sends `xmembers` (`membersOf`: an album with an id, its versions
+  without stand-ins; none for an album of one version), which the page and both
+  endpoints use; (3) an Apple album that a Tidal version names cannot be split off
+  (it would be that Tidal album's twin again), nor the Tidal album from an album of
+  just those two — refused; (4) a split that leaves the rest of the album without
+  a version clutter holds (keep mark and plays would go to an album nobody sees)
+  is refused, naming the other version to take off instead. Nits fixed: × on the
+  page's own version shows the album that remains; a late Find answer only lands
+  on the page it was asked from; "has T…" no longer shown on a Tidal candidate
+  (its own id); the join's version count leaves out stand-ins. Left as is: split
+  and lead do not add a Back entry; the review's 8 suggestions are taken before
+  its file albums are left out; a lead line whose version was split off leads
+  again if that version rejoins (as the spec reads). Rechecked on a fresh
+  migrated copy: 217 Streaming-list pages (199 with members, 13 stand-ins of an
+  un-held stream now without × and lead), every refusal, and the page run.
 
 ### Questions for LATB — answered 2026-11-26: OK to all five
 
