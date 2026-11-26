@@ -4,6 +4,64 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 14 — Update from the server (built 2026-11-25, night)
+
+Uncommitted (with slice 13); bundle installed. **Live after a restart.**
+
+- Three indexes of the same files: Jellyfin (scans by itself), clutter's store
+  (`jellyfin-albums.json`, only when the script runs), the Node's library (only
+  when the player re-indexes). Nothing carried a change past Jellyfin.
+- ⋯ menu › **Update from the server** (`/api/req?event=jellyfin`): runs
+  `scripts/update-jellyfin-albums.py`, then `Env.envJellyfinReload` takes the
+  store in without a restart — new file albums come, vanished ones go (also off
+  the albums they were versions of), playing times are read again — and shows
+  the server list. The answer counts new, gone, and **links that point at files
+  that are gone** (a moved or renamed folder gets a new Jellyfin id; the link,
+  keep mark and plays stay on the old one). The script's last error line is
+  shown if it fails.
+- Tested on 8084 with a scratch store and a stand-in script: 1 new, 3 gone, 1
+  dangling link; the new album is listed with its tags, the linked release lost
+  its files and storage tag; failure of the script is reported. **Not tested:**
+  the real script from the server (it could not reach Jellyfin from the test
+  server), the menu entry in a browser.
+- Not built: re-attaching dangling links by artist and title (needed before
+  folders are reorganised); asking the Node to re-index; a nightly run.
+- Also: queue next / last on the album page are icons now; the Tidal / Files
+  chooser and the "Files" word sit beside the button group, not in it.
+
+## Slice 13 — files on the Node by folder (built 2026-11-25, night)
+
+Uncommitted; bundle installed (works with the slice-12 server). **Live after a
+restart.** Slice 12 is committed (`7f36fa9`).
+
+- LATB hit the text match's weak side at once (*Istanbul*, not in the share →
+  "not in the player's library", but the button was offered). Now by folder,
+  which is exact:
+  - The player lists its shares as the top of its folder browse
+    (`/library/v1/Folders?service=LocalMusic` → `//umini/media/music/Music`) and
+    queues a folder with everything below it: `/Add?service=LocalMusic&path=
+    <share>/<folders>` ("Play now" of the Folder context in `/Services`).
+  - clutter knows each file album's folder from the Jellyfin store (`path`,
+    `Jellyfin.jellyfinPaths`, re-read when the store file changes). The share
+    is laid over the Jellyfin path where the end of the share's name occurs in
+    it (at least two folder names, or all but the host): `App.folderOn`. No
+    configuration, no host names in code.
+  - `/api/nodeplayfiles` plays by folder where a share holds the album, else by
+    album and artist tag as before. `/api/albumxq` says `xnode`; the page offers
+    Files only then. The shares are asked for at most every two minutes
+    (`nodeShares`); an unreachable player has none.
+- Tested on 8084 against a stand-in for the player (`fake-node.py` in the
+  scratch copy): the paths sent for a file album, one with `&` and umlauts, a
+  release with files; an album outside the share falls back to tags and is not
+  offered. **Not tested on the Node**: `/Add?path=` itself — it was re-indexing
+  LATB's new share (all of Music) and answered "Nothing here can be played" to
+  everything. To check when indexing is done: that a box set's disc folders
+  come along and in order, and that the Tidal mode parameters (`clear=1`,
+  `where=nextAlbum`) do for a folder what they do for an album (the folder
+  menu itself uses `where=next`).
+- While the player indexes, its library is empty: Files is offered (the share
+  is listed) but nothing plays — the message says so.
+
 ## Slice 12 — playing files on the Node (built 2026-11-25, night)
 
 Uncommitted; bundle installed. **Live after a restart.**

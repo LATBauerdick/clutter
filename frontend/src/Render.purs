@@ -272,23 +272,25 @@ render state =
               ]
             else [] )
         <> ( if not (tidalPlays || hasFiles) then [] else
-               [ HH.span [ cls "av-play" ] $
+               [ HH.span [ cls "av-play" ]
                    [ HH.button [ cls "av-btn av-primary", HE.onClick \_ -> play "replace"
                                , HP.title ("Play " <> what <> " on " <> state.nodeName <> ", replacing its queue") ]
                                [ HH.text ("▶ " <> state.nodeName) ]
-                   , modeBtn "now" "Play it now, after that go on with the queue"
-                   , modeBtn "next" "Queue it after the current album"
-                   , modeBtn "last" "Add it to the end of the queue"
+                   , modeBtn "now" [ queueIcon "M8 4h6 M2 8.5h12 M2 13h12 M2 1.5v2.5h4 M4.5 2.5L6 4 4.5 5.5" ] "Play it now and keep the queue: it goes on after this album"
+                   , modeBtn "next" [ queueIcon "M2 3h12 M8 8h6 M2 13h12 M2 5.5v2.5h4 M4.5 6.5L6 8 4.5 9.5" ] "Queue it next: after the album that is playing"
+                   , modeBtn "last" [ queueIcon "M2 3h12 M2 7h12 M8 12h6 M2 9.5v2.5h4 M4.5 10.5L6 12 4.5 13.5" ] "Queue it last: at the end of the queue"
                    ]
-                   <> ( if tidalPlays && hasFiles
-                          then [ HH.select [ cls "av-source", HE.onValueChange \v -> SetPlayFiles (v == "files")
-                                           , HP.title "What ▶ plays: the Tidal version, or the files from the player's own library" ]
-                                   [ HH.option [ HP.value "tidal", HP.selected (not useFiles) ] [ HH.text "Tidal" ]
-                                   , HH.option [ HP.value "files", HP.selected useFiles ] [ HH.text "Files" ]
-                                   ] ]
-                          else if hasFiles then [ HH.small [ cls "av-source-one" ] [ HH.text "files" ] ]
-                          else [] )
-               ] )
+               ]
+               -- what ▶ plays, beside the buttons (not among them): a chooser where there
+               -- are both, a word where there are only the files
+               <> ( if tidalPlays && hasFiles
+                      then [ HH.select [ cls "av-source", HE.onValueChange \v -> SetPlayFiles (v == "files")
+                                       , HP.title "What ▶ plays: the Tidal version, or the files from the player's own library" ]
+                               [ HH.option [ HP.value "tidal", HP.selected (not useFiles) ] [ HH.text "Tidal" ]
+                               , HH.option [ HP.value "files", HP.selected useFiles ] [ HH.text "Files" ]
+                               ] ]
+                      else if hasFiles then [ HH.span [ cls "av-source-one", HP.title "▶ plays the files, from the player's own library" ] [ HH.text "Files" ] ]
+                      else [] ) )
         <> [ HH.button [ cls "av-btn", HE.onClick \_ -> AlbumPlayed a.albumID ] [ HH.text "✓ Album Played" ] ]
         <> case state.nodeMsg of
              Just m -> [ HH.span [ cls "av-msg" ] [ HH.text m ] ]
@@ -296,16 +298,30 @@ render state =
     tidalId = fromMaybe "" a.albumTidal
     hasTidal = tidalId /= ""
     tidalPlays = hasTidal && not isGone
-    -- a file album, or an album with file versions
-    hasFiles = S.take 1 a.albumID == "J" || (case a.albumJellyfin of
+    -- a file album, or an album with file versions -- where the player has their folder in
+    -- one of its shares (the backend asks the player; an older backend does not say, and
+    -- then the files are offered and the player answers)
+    hasFiles = (S.take 1 a.albumID == "J" || (case a.albumJellyfin of
       Just j -> j /= ""
+      Nothing -> false)) && (case detail of
+      Just d -> fromMaybe true d.xnode
       Nothing -> false)
     -- the files where they are all there is, else what the chooser says
     useFiles = hasFiles && (not tidalPlays || state.playFiles)
     what = if useFiles then "the files, from the player's own library," else "the Tidal album"
     play mode = if useFiles then NodePlayFiles a.albumID mode else NodePlay tidalId mode
-    modeBtn mode tip =
-      HH.button [ cls "av-btn av-primary av-mode", HE.onClick \_ -> play mode, HP.title tip ] [ HH.text mode ]
+    modeBtn mode label tip =
+      HH.button [ cls "av-btn av-primary av-mode", HE.onClick \_ -> play mode, HP.title tip ] label
+    -- a small line drawing of the queue: its lines, and an arrow to where the album goes
+    queueIcon d =
+      HH.elementNS svgNS (HH.ElemName "svg")
+        [ HP.attr (HH.AttrName "viewBox") "0 0 16 16", HP.attr (HH.AttrName "width") "15", HP.attr (HH.AttrName "height") "15"
+        , HP.attr (HH.AttrName "class") "av-qicon", HP.attr (HH.AttrName "aria-hidden") "true" ]
+        [ HH.elementNS svgNS (HH.ElemName "path")
+            [ HP.attr (HH.AttrName "d") d, HP.attr (HH.AttrName "fill") "none", HP.attr (HH.AttrName "stroke") "currentColor"
+            , HP.attr (HH.AttrName "stroke-width") "1.6", HP.attr (HH.AttrName "stroke-linecap") "round", HP.attr (HH.AttrName "stroke-linejoin") "round" ]
+            [] ]
+    svgNS = HH.Namespace "http://www.w3.org/2000/svg"
 
     -- genres as chips; a click shows that genre from all albums
     genres = mapMaybe (S.stripPrefix (Pattern "genre.")) a.albumTags

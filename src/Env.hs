@@ -9,6 +9,7 @@ module Env (
   envUpdateAlbum,
   envTidalConnect,
   envTidalReload,
+  envJellyfinReload,
   envGetTag,
   envUpdateSort,
   envUpdateMenuParams,
@@ -250,6 +251,34 @@ envTidalReload = do
       fresh = M.filterWithKey (\k _ -> k `elem` ["Tidal", "All"]) rebuilt
   writeIORef (listsR env) (fresh <> oldLists)
   pure new
+
+-- Take clutter's Jellyfin album store in again (after scripts/update-jellyfin-albums.py),
+-- without a restart: the file albums are replaced by the store's; those no longer in it
+-- leave, also as versions of other albums; playing times are read again. Links in the
+-- collection log stay as they are -- one whose file album is gone (Jellyfin gives a moved
+-- folder a new id) is left dangling and counted. Returns (new, gone, dangling links).
+envJellyfinReload :: AppM (Int, Int, Int)
+envJellyfinReload = do
+  env <- ask
+  old <- readIORef (albumsR env)
+  jstore <- liftIO readJellyfinStore
+  liftIO readDetailStore >>= writeIORef (albumFactsR env) . factsFor
+  let isFile a = case albumID a of
+        J _ -> True
+        _ -> False
+      (oldFiles, others) = M.partition isFile old
+      files = M.fromList [(albumID a, a) | a <- jellyfinAlbums jstore]
+      there j = M.member (J j) files
+      -- a file version that is gone leaves its album; attachLinks puts the rest back
+      pruned = M.map (\a -> let fs = filter there (albumFiles a) in if fs == albumFiles a then a else a{albumFiles = fs, albumJellyfin = viaNonEmpty head fs}) others
+      new = M.size (files `M.difference` oldFiles)
+      gone = M.size (oldFiles `M.difference` files)
+  links <- readIORef (linksR env)
+  let dangling = length (filter (not . there) (M.keys links))
+  allAlbums <- withPlays (files <> pruned)
+  writeIORef (albumsR env) allAlbums
+  writeIORef (tagsR env) (buildTags (M.elems allAlbums))
+  pure (new, gone, dangling)
 
 -- also update folders and lists, update other metadata
 envUpdate :: Maybe Text -> Maybe Text -> Int -> AppM ()

@@ -17,6 +17,9 @@ where
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Numeric (showHex)
+import Jellyfin (jellyfinPaths)
+import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
+import System.IO.Unsafe (unsafePerformIO)
 import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 
 import Control.Exception (try)
@@ -43,6 +46,7 @@ import Env (
   envSetStream,
   envTidalConnect,
   envTidalReload,
+  envJellyfinReload,
   envUpdate,
   envUpdateAlbum,
   envUpdateMenuParams,
@@ -213,6 +217,7 @@ data AlbumXJ = AlbumXJ
   , xfiles :: [FileV] -- the file albums on the server that are versions of this album
   , xcandidates :: [CandV] -- for a file album: the albums it may be a version of, best first
   , xstreams :: [AlbumKey] -- the Tidal / Apple albums this release has from the collection log (they can be taken off here)
+  , xnode :: Bool -- the album's files (its own, or its first file version's) are in a share the Node has indexed
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
@@ -627,10 +632,11 @@ clutterServer sd =
     lcs <- asks locsR >>= readIORef
     links <- asks linksR >>= readIORef
     streams <- asks streamsR >>= readIORef
+    onNode <- liftIO $ maybe (pure False) (fmap isJust . nodeFolder) (M.lookup i am >>= fileKey)
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a, xstreams = M.findWithDefault [] i streams}
+      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf links am a, xcandidates = candidatesFor am a, xstreams = M.findWithDefault [] i streams}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = []}
+      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = []}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do
@@ -1009,6 +1015,29 @@ clutterServer sd =
         pure $ case failed of
           Nothing -> sj{reqInfo = show new <> (if new == 1 then " new album" else " new albums") <> " from Tidal"}
           Just e -> sj{reqInfo = e, reqResult = 0}
+      -- the file server: scripts/update-jellyfin-albums.py asks Jellyfin for its albums and
+      -- writes clutter's store; then the store is taken in again, without a restart
+      Just "jellyfin" -> do
+        ran <- liftIO . try $ readProcessWithExitCode "python3" ["scripts/update-jellyfin-albums.py"] ""
+        let failed = case ran :: Either SomeException (ExitCode, String, String) of
+              Right (ExitSuccess, _, _) -> Nothing
+              -- the script's last line says why (Jellyfin not reachable, no key)
+              Right (ExitFailure _, _, err) -> Just ("Update from the server failed: " <> maybe "no reason given" toText (viaNonEmpty last (filter (not . null) (lines' err))))
+              Left _ -> Just "scripts/update-jellyfin-albums.py could not be run"
+            lines' = map toString . TX.lines . toText
+        case failed of
+          Just e -> do
+            liftIO $ hPutStrLn stderr (toString e)
+            pure sj{reqInfo = e, reqResult = 0}
+          Nothing -> do
+            (new, gone, dangling) <- envJellyfinReload
+            let n c sg pl = show c <> " " <> (if c == 1 then sg else pl)
+                info =
+                  "From the server: " <> n new "new album" "new albums"
+                    <> (if gone > 0 then ", " <> show gone <> " gone" else "")
+                    <> (if dangling > 0 then "; " <> n dangling "link points" "links point" <> " at files that are gone (moved or renamed folders)" else "")
+            liftIO $ hPutStrLn stderr (toString info)
+            pure sj{reqInfo = info}
       _ -> liftIO (print r) >> pure sj
 
   serveNodeplay :: Int -> Maybe Text -> AppM ReqJ
@@ -1040,8 +1069,14 @@ clutterServer sd =
       Nothing -> pure $ answer False "No files of this album are known to clutter"
       Just f -> do
         base <- liftIO bluosBase
-        (ok, info) <- liftIO $ bluosAddLocal base (albumTitle f) (albumArtist f) (fromMaybe "replace" mm)
-        liftIO $ hPutStrLn stderr ("nodeplayfiles " <> show (albumID f) <> ": " <> toString info)
+        let mode = fromMaybe "replace" mm
+        -- by folder where the player has the album's folder in one of its shares (exact);
+        -- else by album and artist tag
+        mfolder <- liftIO $ maybe (pure Nothing) nodeFolder (fileKey f)
+        (ok, info) <- liftIO $ case mfolder of
+          Just folder -> bluosAddFolder base folder (albumTitle f) mode
+          Nothing -> bluosAddLocal base (albumTitle f) (albumArtist f) mode
+        liftIO $ hPutStrLn stderr ("nodeplayfiles " <> show (albumID f) <> maybe " (by tags)" (\p -> " (" <> toString p <> ")") mfolder <> ": " <> toString info)
         pure $ answer ok info
 
   serveNodectl :: Text -> AppM ReqJ
@@ -1067,9 +1102,6 @@ clutterServer sd =
             _ -> (False, "Node: no name in /SyncStatus")
     liftIO $ hPutStrLn stderr ("nodeinfo: " <> toString info)
     pure ReqJ{reqTime = dtl, reqInfo = info, reqResult = if ok then 1 else 0}
-
-  bluosBase :: IO String
-  bluosBase = fromMaybe "http://lblue.local:11000" <$> lookupEnv "CLUTTER_BLUOS"
 
   serveAlbump :: AlbumKey -> AppM AlbumJ
   serveAlbump i = do
@@ -1136,6 +1168,10 @@ clutterServer sd =
     html <- renderAlbumsView ln [] aids
     pure . RawHtml $ L.renderBS html
 
+-- the player's address: CLUTTER_BLUOS, else the Node's mDNS name
+bluosBase :: IO String
+bluosBase = fromMaybe "http://lblue.local:11000" <$> lookupEnv "CLUTTER_BLUOS"
+
 -- BluOS: queue a Tidal album by its Tidal album id and play it. The parameters are
 -- those of the "Play now" entry in the player's own /Services menu (Tidal-Album);
 -- tested live on the Node 2026-11-21, see ~/Notes/Claude/2026-11-21-bluos-api-for-clutter.md
@@ -1154,17 +1190,91 @@ bluosAddLocal base title artist mode = do
     if not ok && "Nothing here can be played" `T.isInfixOf` info
       then (False, "Not in the player's library: “" <> title <> "” by " <> artist <> " (its folder is not shared with the player, or it is tagged differently there)")
       else (ok, info)
+
+-- BluOS: queue a folder of the player's library, with everything below it (the discs of a
+-- box) -- "Play now" of the Folder context in /Services. The path is the share as the
+-- player names it plus the folder below, "//host/share/…/Artist/Album".
+bluosAddFolder :: String -> Text -> Text -> Text -> IO (Bool, Text)
+bluosAddFolder base folder title mode = do
+  (ok, info) <- bluosAddWhat base (toString ("service=LocalMusic&path=" <> urlEnc folder)) mode
+  pure $
+    if not ok && "Nothing here can be played" `TX.isInfixOf` info
+      then (False, "The player finds nothing to play in the folder of “" <> title <> "” (still indexing, or files it cannot play)")
+      else (ok, info)
+
+-- percent-encoding of the UTF-8 bytes; letters, digits and -._~ stay
+urlEnc :: Text -> Text
+urlEnc = toText . concatMap enc . BS.unpack . encodeUtf8
  where
-  -- percent-encoding of the UTF-8 bytes; letters, digits and -._~ stay
-  urlEnc :: Text -> Text
-  urlEnc = toText . concatMap enc . BS.unpack . encodeUtf8
   enc w
     | w < 128 && (Ch.isAlphaNum c || c `elem` ("-._~" :: String)) = [c]
     | otherwise = '%' : (if w < 16 then "0" else "") <> map Ch.toUpper (showHex w "")
    where
     c = Ch.chr (fromIntegral w)
 
--- the album to add ("service=…&albumid=…" or "service=…&album=…&artist=…") and the mode
+-- the file album whose files stand for an album: itself, or its first file version
+fileKey :: Album -> Maybe Text
+fileKey a = case albumID a of
+  J j -> Just j
+  _ -> viaNonEmpty head (albumFiles a)
+
+-- The shares the player has indexed, as it names them ("//umini/media/music/Music"): the
+-- top of its folder browse. Asked for at most every two minutes; an unreachable player
+-- has none.
+nodeShares :: IO [Text]
+nodeShares = do
+  now <- getCurrentTime
+  cached <- readIORef nodeSharesCache
+  case cached of
+    Just (t, ss) | diffUTCTime now t < 120 -> pure ss
+    _ -> do
+      base <- bluosBase
+      r <- bluosGet base "/library/v1/Folders?service=LocalMusic"
+      let ss = case r of
+            Right b -> map unescape (between b)
+            Left _ -> []
+      writeIORef nodeSharesCache (Just (now, ss))
+      pure ss
+ where
+  between b = case TX.breakOn "<folder>" b of
+    (_, rest) | not (TX.null rest) -> let (x, more) = TX.breakOn "</folder>" (TX.drop 8 rest) in x : between more
+    _ -> []
+  unescape = TX.replace "&amp;" "&" . TX.replace "&apos;" "'" . TX.replace "&quot;" "\"" . TX.replace "&gt;" ">" . TX.replace "&lt;" "<"
+
+{-# NOINLINE nodeSharesCache #-}
+nodeSharesCache :: IORef (Maybe (UTCTime, [Text]))
+nodeSharesCache = unsafePerformIO (newIORef Nothing)
+
+-- The folder of a file album as the player names it, if one of its shares holds it.
+-- Jellyfin and the player see the same folders under different roots
+-- ("/media/music/Music/…" and "//umini/media/music/Music/…"), so the share is laid over
+-- the Jellyfin path where the end of the share's name occurs in it -- at least two folder
+-- names, or everything but the host -- and the rest of the path is the folder below.
+nodeFolder :: Text -> IO (Maybe Text)
+nodeFolder j = do
+  paths <- jellyfinPaths
+  case M.lookup j paths of
+    Nothing -> pure Nothing
+    Just p -> (\ss -> folderOn ss p) <$> nodeShares
+
+folderOn :: [Text] -> Text -> Maybe Text
+folderOn shares path = viaNonEmpty head . map snd . sortOn (Down . fst) $ mapMaybe try1 shares
+ where
+  comps = filter (not . TX.null) . TX.splitOn "/"
+  p = comps path
+  try1 share =
+    let s = comps share
+        fits k =
+          let suf = drop (length s - k) s
+           in viaNonEmpty head [rest | i <- [0 .. length p - k], take k (drop i p) == suf, let rest = drop (i + k) p, not (null rest)]
+     in viaNonEmpty head
+          [ (k, TX.dropWhileEnd (== '/') share <> "/" <> TX.intercalate "/" rest)
+          | k <- reverse [1 .. length s]
+          , k >= 2 || k == length s - 1
+          , Just rest <- [fits k]
+          ]
+
+-- the album to add ("service=…&albumid=…", "service=…&album=…&artist=…" or "service=…&path=…") and the mode
 bluosAddWhat :: String -> String -> Text -> IO (Bool, Text)
 bluosAddWhat base what mode = do
   let ps :: String

@@ -16,13 +16,16 @@ module Jellyfin (
   readJellyfinStore,
   jellyfinAlbums,
   jellyfinSecs,
+  jellyfinPaths,
 ) where
 
 import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.!=), (.:?))
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Relude
-import System.Directory (doesFileExist)
+import Data.Time (UTCTime)
+import System.Directory (doesFileExist, getModificationTime)
+import System.IO.Unsafe (unsafePerformIO)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn)
 import Types (Album (..), AlbumKey (..), ArtistRef (..), TagFolder (..))
@@ -36,6 +39,7 @@ data JAlbum = JAlbum
   , jaSecs :: Int
   , jaStorage :: Text
   , jaImage :: Bool
+  , jaPath :: Text -- the album's folder as Jellyfin sees it, "" if the store has none
   }
 
 instance FromJSON JAlbum where
@@ -49,6 +53,7 @@ instance FromJSON JAlbum where
       <*> o .:? "secs" .!= 0
       <*> o .:? "storage" .!= ""
       <*> o .:? "image" .!= False
+      <*> o .:? "path" .!= ""
 
 data JellyfinStore = JellyfinStore
   { jsWeb :: Text -- Jellyfin as a browser reaches it, no trailing slash; "" if not known
@@ -124,3 +129,28 @@ jellyfinAlbums (JellyfinStore web as) = uncurry toAlbum <$> M.toList as
           ]
       , albumFiles = []
       }
+
+-- The folder of every file album as Jellyfin sees it (item id -> "/media/music/…"), for
+-- finding the same folder on a player that has the share (App: playing files on the Node).
+-- Read from the store when first asked for and again when the file has changed.
+jellyfinPaths :: IO (Map Text Text)
+jellyfinPaths = do
+  fn <- storePath
+  ok <- doesFileExist fn
+  if not ok
+    then pure M.empty
+    else do
+      mt <- getModificationTime fn
+      readIORef pathsCache >>= \case
+        Just (t, ps) | t == mt -> pure ps
+        _ ->
+          eitherDecode <$> readFileLBS fn >>= \case
+            Left _ -> pure M.empty
+            Right (StoreFile _ as) -> do
+              let ps = M.filter (not . T.null) (M.map jaPath (M.mapKeys T.toLower as))
+              writeIORef pathsCache (Just (mt, ps))
+              pure ps
+
+{-# NOINLINE pathsCache #-}
+pathsCache :: IORef (Maybe (UTCTime, Map Text Text))
+pathsCache = unsafePerformIO (newIORef Nothing)

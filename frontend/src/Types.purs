@@ -120,6 +120,7 @@ type AlbumXJ =    { xid :: String
                   , xstreams :: Maybe (Array String) -- Tidal / Apple albums linked to this release in clutter's log (T…, A…)
                   , xcandidates :: Maybe (Array CandV) -- for a file album: albums it may be a version of
                   , xfiles :: Maybe (Array FileV) -- file albums on the server that are versions of this album
+                  , xnode :: Maybe Boolean -- the album's files are in a share the Node has indexed (▶ can play them)
                   }
 -- an album a file album may be a version of
 type CandV =      { cvKey :: String
@@ -291,6 +292,7 @@ data Action = ToggleSortOrder
             | ReviewSkip String -- file album id (J…): none of the albums offered; the row goes
             | AskDrop Boolean -- "Remove from clutter": ask (true), or never mind (false)
             | DropAlbum String -- remove this stream album from clutter, then show the Tidal list
+            | UpdateServer -- take in what Jellyfin has now (new and gone file albums), then show the server list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
             | ToggleAbout -- the review: all of it, or its first lines
             | TracksSource Boolean -- a Discogs release: its own tracks (false) or the Tidal version's (true)
