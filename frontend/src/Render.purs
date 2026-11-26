@@ -130,6 +130,8 @@ render state =
                 [ HH.img [ HP.src (if a.albumCover == "" then "/icons/no-cover.png" else a.albumCover)
                           , HP.alt "cover image"
                           , HP.class_ $ HH.ClassName "cover-image"
+                          -- a list has thousands: fetch a cover when it comes near the window
+                          , HP.attr (HH.AttrName "loading") "lazy"
                           ]
                 ]
               ]

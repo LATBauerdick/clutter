@@ -163,8 +163,11 @@ renderTop state =
                         , HP.title "Take in new Tidal favourites and the Save for later list" ]
                         [ HH.text "Update from Tidal" ]
             , HH.button [ cls "menuitem", HE.onClick \_ -> UpdateServer, HP.disabled state.loading
-                        , HP.title "Take in what Jellyfin has now: new albums on the file server, and those that are gone" ]
+                        , HP.title "Take in the albums Jellyfin has added on the file server (seconds)" ]
                         [ HH.text "Update from the server" ]
+            , HH.button [ cls "menuitem", HE.onClick \_ -> UpdateServerFull, HP.disabled state.loading
+                        , HP.title "Ask Jellyfin for every album: also finds those that left, moved or were retagged. Takes minutes." ]
+                        [ HH.text "Full update from the server…" ]
             , HH.form [ cls "lookup", HE.onSubmit \ev -> MakeRequest ev ]
                 [ HH.label_ [ HH.text "Open an album by id" ]
                 , HH.input [ HP.value state.albumID, HP.placeholder "D6715388, T283130328", HE.onValueInput SetAlbumID ]

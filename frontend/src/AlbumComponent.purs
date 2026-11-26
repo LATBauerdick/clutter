@@ -352,24 +352,10 @@ handleAction = case _ of
       Right { reqInfo: i } -> H.modify_ _ { notice = Just i, loading = false }
       Left _ -> H.modify_ _ { notice = Just "Removing: no answer", loading = false }
 
-  -- the backend asks Jellyfin for its albums and takes the store in again (no restart);
-  -- then everything on the server, newest first, and the menu's lists anew
-  UpdateServer -> do
-    pushView
-    H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, loading = true, notice = Just "Updating from the server…" }
-    api <- H.gets _.apiUrl
-    r <- H.liftAff $ getUrl (api <> "req?event=jellyfin")
-    let msg = case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String } of
-                Right { reqInfo: i } -> i
-                Left _ -> "Update from the server: no answer"
-    ps <- H.liftAff $ getUrl (api <> "paramsq/all")
-    case (decodeJson =<< parseJson ps) :: Either JsonDecodeError ParamsJ of
-      Right { params: p } -> H.modify_ \st -> st { menu { params = p { muhq = st.menu.params.muhq } } }
-      Left _ -> pure unit
-    adjustSort "Server"
-    H.modify_ _ { listName = AlbumList (Just "Server"), menu { ln = "Server", ffs = [] } }
-    updateAlbumList
-    H.modify_ _ { notice = Just msg }
+  -- the backend asks Jellyfin for its new albums (or, full, for all of them: minutes) and
+  -- takes the store in again, no restart. The view stays; a list on show is loaded anew.
+  UpdateServer -> updateServer "jellyfin" "Updating from the server…"
+  UpdateServerFull -> updateServer "jellyfinfull" "Full update from the server: this takes minutes…"
 
   -- the backend runs update-json --tidal and takes the album store in again (no restart);
   -- then the Tidal list, newest first, and the menu's tags and lists anew
@@ -390,6 +376,24 @@ handleAction = case _ of
     updateAlbumList
 
   where
+    updateServer :: forall output' m'. MonadAff m' => String -> String -> H.HalogenM State Action () output' m' Unit
+    updateServer event busy = do
+      H.modify_ _ { menuOpen = Nothing, notice = Just busy }
+      api <- H.gets _.apiUrl
+      r <- H.liftAff $ getUrl (api <> "req?event=" <> event)
+      let msg = case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String } of
+                  Right { reqInfo: i } -> i
+                  Left _ -> "Update from the server: no answer"
+      ps <- H.liftAff $ getUrl (api <> "paramsq/all")
+      case (decodeJson =<< parseJson ps) :: Either JsonDecodeError ParamsJ of
+        Right { params: p } -> H.modify_ \st -> st { menu { params = p { muhq = st.menu.params.muhq } } }
+        Left _ -> pure unit
+      st <- H.get
+      case st.listName, st.review of
+        AlbumList (Just _), Nothing -> updateAlbumList
+        _, _ -> pure unit
+      H.modify_ _ { notice = Just msg }
+
     isListened :: String -> Boolean
     isListened n = S.take 8 n == "Listened"
 

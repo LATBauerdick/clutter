@@ -4,6 +4,45 @@ Status 2026-11-25, evening: inventory run; **slice 1 built** (below), sources
 in the working tree, uncommitted, **not live** — needs a restart of the server
 and then the new frontend bundle. Hub: `~/Notes/Claude/ws/clutter.md`.
 
+## Slice 15 — quick update; what was slow (built 2026-11-25, late night)
+
+Uncommitted; bundle installed. **Backend live after a restart; the script at
+the next run.** Slice 14 and the paging fix are committed (`b325704`,
+`13c5749`).
+
+- Measured (curl from lmini): **Jellyfin 10.11 takes about 40 ms per album it
+  lists**, whatever fields or sort are asked for — 100 albums 4 s, 500 albums
+  20–30 s, all 8,964 at once more than 5 min (so "the whole list in one
+  request" is no fallback). A full update is 18 pages ≈ 7 min. **`usrv.local`
+  takes 5.0 s to resolve** on lmini, for every request; `umini.local` 0.6 s,
+  `umini.taild2340b.ts.net` 0.004 s. `/Items/Counts` 1.4 s; newest 20 albums
+  1 s; a cover 25 ms. clutter's own part: reload 0.4 s, server list 0.1 s
+  (8 MB), then the browser drew 8,434 covers.
+- **Quick update** (the script's default once a full run has recorded
+  `listed`): newest first (`SortBy=DateCreated`, pages of 50) until a page
+  holds nothing unknown; adds only. `TotalRecordCount` against `listed` + new
+  tells whether anything else changed; if so the store gets `stale`, the script
+  says "run a full update" and the menu's answer ends "a full update is due".
+  `--full` asks for everything, up to three passes over the pages until the
+  ids are complete; if still short, nothing is taken off. Albums outside every
+  library are remembered (`outside_ids`) so they are not "new" each time.
+- Menu: **Update from the server** (quick) and **Full update from the
+  server…** (`/api/req?event=jellyfinfull`). The view stays; a list on show is
+  loaded anew. List covers are `loading="lazy"`.
+- Tested: the script against a stand-in Jellyfin (first run full; nothing new =
+  1 request; additions over several pages; a deletion → stale; additions while
+  stale; full; quick after full), and end to end on 8084. **Not run against
+  Jellyfin.** The live store has no `listed` yet, so the first click is a full
+  run (minutes) — which also brings back the ten albums skipped on 11-25.
+- Storage names (LATB): `Music/_Classical` stays `classical`; the Classical
+  library is `imspl` for now (to be renamed when LATB recalls the source) —
+  set in `storage-map.json` and patched into the store (3,283 albums); shows
+  after a restart.
+- LATB: playing files on the Node by folder works, multi-disc sets included
+  (songs appear in the queue; more checking to come).
+- To decide: point the store's `api` (and `web`?) at a name that resolves
+  fast.
+
 ## Slice 14 — Update from the server (built 2026-11-25, night)
 
 Uncommitted (with slice 13); bundle installed. **Live after a restart.**

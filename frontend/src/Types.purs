@@ -292,6 +292,7 @@ data Action = ToggleSortOrder
             | ReviewSkip String -- file album id (J…): none of the albums offered; the row goes
             | AskDrop Boolean -- "Remove from clutter": ask (true), or never mind (false)
             | DropAlbum String -- remove this stream album from clutter, then show the Tidal list
+            | UpdateServerFull -- the same, asking Jellyfin for every album: finds what left or moved; minutes
             | UpdateServer -- take in what Jellyfin has now (new and gone file albums), then show the server list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
             | ToggleAbout -- the review: all of it, or its first lines

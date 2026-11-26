@@ -1017,29 +1017,40 @@ clutterServer sd =
           Just e -> sj{reqInfo = e, reqResult = 0}
       -- the file server: scripts/update-jellyfin-albums.py asks Jellyfin for its albums and
       -- writes clutter's store; then the store is taken in again, without a restart
-      Just "jellyfin" -> do
-        ran <- liftIO . try $ readProcessWithExitCode "python3" ["scripts/update-jellyfin-albums.py"] ""
-        let failed = case ran :: Either SomeException (ExitCode, String, String) of
-              Right (ExitSuccess, _, _) -> Nothing
-              -- the script's last line says why (Jellyfin not reachable, no key)
-              Right (ExitFailure _, _, err) -> Just ("Update from the server failed: " <> maybe "no reason given" toText (viaNonEmpty last (filter (not . null) (lines' err))))
-              Left _ -> Just "scripts/update-jellyfin-albums.py could not be run"
-            lines' = map toString . TX.lines . toText
-        case failed of
-          Just e -> do
-            liftIO $ hPutStrLn stderr (toString e)
-            pure sj{reqInfo = e, reqResult = 0}
-          Nothing -> do
-            (new, gone, dangling) <- envJellyfinReload
-            let n c sg pl = show c <> " " <> (if c == 1 then sg else pl)
-                info =
-                  -- short: the top bar shows one line
-                  "Server: " <> show new <> " new"
-                    <> (if gone > 0 then ", " <> show gone <> " gone" else "")
-                    <> (if dangling > 0 then ", " <> n dangling "link" "links" <> " without files" else "")
-            liftIO $ hPutStrLn stderr (toString info)
-            pure sj{reqInfo = info}
+      Just "jellyfin" -> jellyfinUpdate []
+      -- every album, not only the new ones: minutes (Jellyfin takes about 40 ms per album)
+      Just "jellyfinfull" -> jellyfinUpdate ["--full"]
       _ -> liftIO (print r) >> pure sj
+
+  -- the file server: scripts/update-jellyfin-albums.py asks Jellyfin for its albums -- the
+  -- new ones, or with --full all of them -- and writes clutter's store; then the store is
+  -- taken in again, without a restart
+  jellyfinUpdate :: [String] -> AppM ReqJ
+  jellyfinUpdate flags = do
+    now <- liftIO getZonedTime
+    let sj = ReqJ{reqTime = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now, reqInfo = "", reqResult = 1}
+    ran <- liftIO . try $ readProcessWithExitCode "python3" ("scripts/update-jellyfin-albums.py" : flags) ""
+    let lastLine = viaNonEmpty last . filter (not . TX.null) . TX.lines . toText
+    case ran :: Either SomeException (ExitCode, String, String) of
+      Left _ -> pure sj{reqInfo = "scripts/update-jellyfin-albums.py could not be run", reqResult = 0}
+      -- the script's last line says why (Jellyfin not reachable, no key)
+      Right (ExitFailure _, _, err) -> do
+        let e = "Update from the server failed: " <> fromMaybe "no reason given" (lastLine err)
+        liftIO $ hPutStrLn stderr (toString e)
+        pure sj{reqInfo = e, reqResult = 0}
+      Right (ExitSuccess, _, err) -> do
+        (new, gone, dangling) <- envJellyfinReload
+        let n c sg pl = show c <> " " <> (if c == 1 then sg else pl)
+            -- the quick run saw by Jellyfin's album count that more than additions changed
+            due = maybe False ("full update" `TX.isInfixOf`) (lastLine err)
+            info =
+              -- short: the top bar shows one line
+              "Server: " <> show new <> " new"
+                <> (if gone > 0 then ", " <> show gone <> " gone" else "")
+                <> (if dangling > 0 then ", " <> n dangling "link" "links" <> " without files" else "")
+                <> (if due then " — albums left or moved: a full update is due" else "")
+        liftIO $ hPutStrLn stderr (toString info)
+        pure sj{reqInfo = info}
 
   serveNodeplay :: Int -> Maybe Text -> AppM ReqJ
   serveNodeplay tid mm = do
