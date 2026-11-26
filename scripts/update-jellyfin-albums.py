@@ -114,26 +114,32 @@ def main() -> None:
         for lib in api(url, key, "/Library/VirtualFolders")
         if lib.get("CollectionType") == "music"
     ]
-    raw, start = [], 0
+    query = {
+        "IncludeItemTypes": "MusicAlbum",
+        "Recursive": "true",
+        "Fields": "Path,ProviderIds,DateCreated",
+        "SortBy": "SortName",
+    }
+    raw, start, total = [], 0, 0
     while True:
-        page = api(
-            url,
-            key,
-            "/Items",
-            {
-                "IncludeItemTypes": "MusicAlbum",
-                "Recursive": "true",
-                "Fields": "Path,ProviderIds,DateCreated",
-                "SortBy": "SortName",
-                "StartIndex": start,
-                "Limit": PAGE,
-            },
-        )
+        page = api(url, key, "/Items", {**query, "StartIndex": start, "Limit": PAGE})
         items = page.get("Items", [])
+        total = page.get("TotalRecordCount", 0)
         raw.extend(items)
         start += len(items)
-        if not items or start >= page.get("TotalRecordCount", 0):
+        if not items or start >= total:
             break
+    # Pages are cut from a list Jellyfin sorts anew for each request: while it scans, or
+    # where sort names tie, an album can move between pages and be skipped (ten were on
+    # 2026-11-25, and reported as gone). So count the ids, and where some are missing ask
+    # for the whole list in one request, which cannot skip.
+    got = {a.get("Id") for a in raw}
+    if len(got) < total:
+        print(f"update-jellyfin-albums: the pages gave {len(got)} of {total} albums, asking for all at once", file=sys.stderr)
+        whole = api(url, key, "/Items", query).get("Items", [])
+        raw = list({a.get("Id"): a for a in raw + whole}.values())
+        if len(raw) < total:
+            fail(f"Jellyfin lists {total} albums but gave only {len(raw)}; the store is left as it was")
 
     albums, outside = {}, 0
     for a in raw:

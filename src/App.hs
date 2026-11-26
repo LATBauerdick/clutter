@@ -1033,9 +1033,10 @@ clutterServer sd =
             (new, gone, dangling) <- envJellyfinReload
             let n c sg pl = show c <> " " <> (if c == 1 then sg else pl)
                 info =
-                  "From the server: " <> n new "new album" "new albums"
+                  -- short: the top bar shows one line
+                  "Server: " <> show new <> " new"
                     <> (if gone > 0 then ", " <> show gone <> " gone" else "")
-                    <> (if dangling > 0 then "; " <> n dangling "link points" "links point" <> " at files that are gone (moved or renamed folders)" else "")
+                    <> (if dangling > 0 then ", " <> n dangling "link" "links" <> " without files" else "")
             liftIO $ hPutStrLn stderr (toString info)
             pure sj{reqInfo = info}
       _ -> liftIO (print r) >> pure sj
