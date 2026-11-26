@@ -99,6 +99,8 @@ data Want = Own | WantTidal | WantFiles
 -- own, from Jellyfin.
 sourceOf :: Want -> Album -> Maybe Source
 sourceOf want a = case (albumID a, tidalTwin) of
+  -- the Tidal version of a release or of a file album, when asked for
+  (k, Just t) | want == WantTidal, not (isT k) -> Just (FromTidal t)
   (J j, t) -> Just (FromJellyfin j t)
   (_, t) | want == WantFiles, Just f <- files -> Just (FromJellyfin f t)
   (T n, _) -> Just (FromTidal n)
@@ -109,6 +111,7 @@ sourceOf want a = case (albumID a, tidalTwin) of
  where
   tidalTwin = albumTidal a >>= readMaybe . toString . T.strip
   files = mfilter (not . T.null) (albumJellyfin a)
+  isT = \case T _ -> True; _ -> False
 
 -- refresh = True skips the cache. Left is a short human-readable reason. Never throws
 -- (asynchronous exceptions excepted: a cancelled request thread must stay cancellable).
@@ -132,6 +135,7 @@ albumTracks' refresh want a = do
       -- the Tidal version or the files of an album are cached next to its own tracks
       suffix = case (albumID a, msrc) of
         (D _, Just (FromTidal _)) -> "-tidal"
+        (J _, Just (FromTidal _)) -> "-tidal"
         (J _, _) -> ""
         (_, Just (FromJellyfin _ _)) -> "-files"
         _ -> ""

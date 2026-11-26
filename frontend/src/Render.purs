@@ -310,8 +310,16 @@ render state =
       Just x | x.xid == state.version -> Just x
       _ -> Nothing
     verNode = verIsFile && maybe false (\x -> fromMaybe true x.xnode) verDetail
-    useTidal = not verIsFile && tidalPlays
-    useFiles = if verIsFile then verNode else not useTidal && hasFiles
+    -- the album itself: a release or a Tidal album plays Tidal where it can; a file album
+    -- plays its own files (its Tidal album is a version of its own)
+    useTidal = case state.version of
+      "tidal" -> tidalPlays
+      "" -> tidalPlays && not isFile
+      _ -> false
+    useFiles = case state.version of
+      "tidal" -> false
+      "" -> not useTidal && hasFiles
+      _ -> verNode
     canPlay = useTidal || useFiles
     -- the file album ▶ plays: the chosen one, else the album's first
     playFile = find (\f -> f.fvKey == (if verIsFile then state.version else "J" <> fromMaybe "" a.albumJellyfin)) files
@@ -467,7 +475,8 @@ render state =
             | isFile = "Files" <> maybe "" (" · " <> _) ownStorage
             | otherwise = "Tidal"
           tidalRow =
-            if isDiscogs && hasTidal
+            -- a release's or a file album's Tidal album (a Tidal album is its own row)
+            if not isTidalAlbum && hasTidal
               then [ pick "tidal" ("Tidal" <> if isGone then " · gone" else "") "The Tidal album: its tracks, quality and ▶"
                        [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum ("T" <> tidalId), cls "av-ver-open", HP.title "Open the Tidal album's own page" ] [ HH.text "↗" ] ] ]
               else []
@@ -677,6 +686,7 @@ render state =
                          | otherwise -> [ HH.p [ cls "av-note" ] [ HH.text (maybe "No tracks." (\t -> "No tracks: " <> t.tjError) tj) ] ]
       ]
     isFile = S.take 1 a.albumID == "J"
+    isTidalAlbum = S.take 1 a.albumID == "T"
     trackRows :: Array Track -> Array (H.ComponentHTML Action () m)
     trackRows ts =
       let discs = nub (map _.tkDisc ts)

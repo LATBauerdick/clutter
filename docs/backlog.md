@@ -119,6 +119,31 @@ In the order proposed to LATB; the first is the recommendation.
   side; plays and locations per version. The end state of LATB's model and
   the largest step — after some days of use. Today's stop-gaps: releases of
   one Discogs master share their files; one stream of a kind per release.
+  **Next big issue (LATB 2026-11-26; maybe a session with Fable):** clutter
+  owns the album, every source is a version of it.
+  - Today the album is whichever source leads: a Discogs release (holds its
+    streams and files), a Tidal album (holds files), or a file album (holds
+    a stream). Links point from a version to that lead, so a file album
+    cannot lead, and a Tidal album clutter does not hold cannot gather
+    copies — e.g. Doggystyle: one file copy (1001) holds Tidal 280733973,
+    another (music) is unlinked, and they cannot be joined.
+  - Proposal: an album key of clutter's own in the collection log (e.g.
+    `{"op":"album","id":"C17","artist","title"}` and
+    `{"op":"version","album":"C17","key":"D…|T…|A…|Q…|J…"}`); Discogs
+    records are versions like the rest (the physical copies, with their
+    shelf). The album carries plays, the keep mark, its own tags and the
+    choice of cover/lead; each version keeps its format, quality, tracks.
+    A version in no group is its own album implicitly — no lines for the
+    thousands of single albums.
+  - Migration: today's groups become albums mechanically (release + its
+    streams + files; Tidal album + files; file album + stream); plays keyed
+    by D/T/J resolve to the album the key is a version of.
+  - Consequences: one row per album in the lists; the Versions block reads
+    the album; "Same album as…" merges two albums (and splits); Discogs
+    master ids and the inventory's matches become suggestions for merging.
+  - Open questions: id scheme; whether Wikidata/Wikipedia links sit on the
+    album or a version; how "Remove from clutter" and Tidal's Save for later
+    map onto albums; the old Location-field ids (already imported).
 - Smaller:
   - Playing files: which player, through what (BluOS, Roon, Jellyfin).
   - Retire the Discogs *Streaming* folder (219 stand-in releases): plays and

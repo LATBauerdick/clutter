@@ -41,6 +41,12 @@ server" could not be opened as album pages.
   album's own page with "Version of"; a Tidal album and a lone file album
   without the block. **Not tested:** real Tidal/Discogs tracks per version,
   playing on the Node.
+- Fix (LATB, Doggystyle): a file album with a Tidal album linked to it
+  (stream link held by the J key, no record) showed no Versions and ▶ played
+  Tidal. Now its Tidal album is a version too (any album but a Tidal album
+  gets the Tidal row), a file album's own ▶ plays its files, and
+  `Tracks.sourceOf` fetches a file album's Tidal tracks when asked
+  (`J…-tidal.json`).
 - **Confirmations** (LATB, same day): the browser's own "are you sure?"
   dialog (`GetStuff.confirmBox`, `window.confirm`; native on iPad/iPhone)
   before Keep / Not for me / taking the mark off (one album, or a selection
