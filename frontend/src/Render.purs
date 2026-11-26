@@ -278,8 +278,8 @@ render state =
                    [ HH.button [ cls "av-btn av-primary", HE.onClick \_ -> play "replace"
                                , HP.title ("Play " <> what <> " on " <> state.nodeName <> ", replacing its queue") ]
                                [ HH.text ("▶ " <> state.nodeName) ]
-                   , modeBtn "now" [ queueIcon "M8 4h6 M2 8.5h12 M2 13h12 M2 1.5v2.5h4 M4.5 2.5L6 4 4.5 5.5" ] "Play it now and keep the queue: it goes on after this album"
-                   , modeBtn "next" [ queueIcon "M2 3h12 M8 8h6 M2 13h12 M2 5.5v2.5h4 M4.5 6.5L6 8 4.5 9.5" ] "Queue it next: after the album that is playing"
+                   , modeBtn "now" [ queueIcon "M8 4h6 M2 8.5h12 M2 13h12 M2 1.5v2.5h4 M4.5 2.5L6 4 4.5 5.5" ] "Play it now, keeping the queue: what was queued after the song that was playing follows this album"
+                   , modeBtn "next" [ queueIcon "M2 3h12 M8 8h6 M2 13h12 M2 5.5v2.5h4 M4.5 6.5L6 8 4.5 9.5" ] "Queue it next: after the song that is playing"
                    , modeBtn "last" [ queueIcon "M2 3h12 M2 7h12 M8 12h6 M2 9.5v2.5h4 M4.5 10.5L6 12 4.5 13.5" ] "Queue it last: at the end of the queue"
                    ]
                ]

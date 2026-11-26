@@ -21,7 +21,7 @@ import Data.Aeson.Key (Key)
 import Data.Aeson.Types (Parser, parseMaybe)
 import qualified Data.ByteString as B
 import qualified Data.Char as Ch
-import Data.List (zipWith3)
+import Data.List (elemIndex, zipWith3)
 import qualified Data.Text as T
 import Data.Time (defaultTimeLocale, formatTime, getZonedTime)
 import Network.HTTP.Client (
@@ -359,28 +359,46 @@ fetchJellyfin j = do
     (_, Just k) -> do
       -- a big box takes long; the rest of the page does not wait for this
       mgr <- newTlsManagerWith tlsManagerSettings{managerResponseTimeout = responseTimeoutMicro 120000000}
-      httpGet
-        mgr
-        "Jellyfin"
-        (toString api <> "/Items")
-        [ ("ParentId", Just (encodeUtf8 j))
-        , ("Fields", Just "MediaStreams,Path")
-        , ("EnableImages", Just "false")
-        , ("EnableUserData", Just "false")
-        , ("EnableTotalRecordCount", Just "false")
-        ]
-        [("Authorization", "MediaBrowser Token=\"" <> encodeUtf8 k <> "\"")]
-        <&> \case
-          Left e -> Left e
-          Right (200, b) -> case rightToMaybe (eitherDecode b) >>= jellyfinItems of
-            Nothing -> Left "Jellyfin: unexpected response"
-            Just [] -> Left "Jellyfin: no tracks (the folder may have moved: update from the server)"
-            Just ts -> Right ((groupFileWorks (fst <$> ts), [], Nothing, Nothing), albumQuality (snd <$> ts))
-          Right (401, _) -> Left "Jellyfin: key refused"
-          Right (st, _) -> Left ("Jellyfin: HTTP " <> show st)
+      let request extra =
+            httpGet
+              mgr
+              "Jellyfin"
+              (toString api <> "/Items")
+              ( [ ("ParentId", Just (encodeUtf8 j))
+                , ("Fields", Just "MediaStreams,Path")
+                , ("EnableImages", Just "false")
+                , ("EnableUserData", Just "false")
+                , ("EnableTotalRecordCount", Just "false")
+                ]
+                  <> extra
+              )
+              [("Authorization", "MediaBrowser Token=\"" <> encodeUtf8 k <> "\"")]
+          answer = \case
+            Left e -> Left e
+            Right (200, b) -> case rightToMaybe (eitherDecode b) of
+              Just v | Just ts <- jellyfinItems v -> Right (ts, hasFolders v)
+              _ -> Left "Jellyfin: unexpected response"
+            Right (401, _) -> Left "Jellyfin: key refused"
+            Right (st, _) -> Left ("Jellyfin: HTTP " <> show st)
+      -- the album's children; where they are disc folders ("CD 1", "CD 2" -- Jellyfin
+      -- does not always fold them into the album), everything below them
+      once <- answer <$> request []
+      got <- case once of
+        Right ([], True) -> fmap fst . answer <$> request [("Recursive", Just "true"), ("IncludeItemTypes", Just "Audio")]
+        other -> pure (fst <$> other)
+      pure $ case got of
+        Left e -> Left e
+        Right [] -> Left "Jellyfin: no tracks (the folder may have moved: update from the server)"
+        Right ts -> Right ((groupFileWorks (fst <$> ts), [], Nothing, Nothing), albumQuality (snd <$> ts))
+ where
+  hasFolders = fromMaybe False . parseMaybe (withObject "jellyfin items" $ \o -> do
+    items <- o .:? "Items" .!= []
+    pure (any (fromMaybe False . parseMaybe (withObject "item" (\i -> i .:? "IsFolder" .!= False))) (items :: [Value])))
 
 -- the tracks in order (disc, number, file), each with its file's quality; anything that is
--- not a track is dropped. A track without a number is numbered by its place.
+-- not a track is dropped. A track without a number is numbered by its place. Where no
+-- track has a disc number but they lie in several folders ("CD 1", "CD 2" …), each folder
+-- is a disc, in the folders' natural order.
 jellyfinItems :: Value -> Maybe [(Track, Maybe Text)]
 jellyfinItems = parseMaybe $ withObject "jellyfin items" $ \o -> do
   items <- o .:? "Items" .!= []
@@ -401,8 +419,16 @@ jellyfinItems = parseMaybe $ withObject "jellyfin items" $ \o -> do
         let streams = fromMaybe inner top :: [Value]
             q = viaNonEmpty head (mapMaybe (parseMaybe audioQuality) streams)
             secs = (\t -> (t :: Integer) `div` 10000000) <$> ticks
-        pure ((fromMaybe 1 disc, fromMaybe maxBound (idx :: Maybe Int), path), Track (fromMaybe 1 disc) "" Nothing name (fromInteger <$> secs) artists, q)
-      ts = sortOn (\(k, _, _) -> k) (mapMaybe (parseMaybe track) items)
+        pure ((disc :: Maybe Int, fromMaybe maxBound (idx :: Maybe Int), path), Track (fromMaybe 1 disc) "" Nothing name (fromInteger <$> secs) artists, q)
+      raw = mapMaybe (parseMaybe track) items
+      dirOf p = T.dropWhileEnd (/= '/') p
+      dirs = sortOn natKey (ordNub [dirOf p | ((_, _, p), _, _) <- raw])
+      byFolder = all (\((d, _, _), _, _) -> isNothing d) raw && length dirs > 1
+      discOf ((d, _, p), _, _)
+        | byFolder = maybe 1 (+ 1) (elemIndex (dirOf p) dirs)
+        | otherwise = fromMaybe 1 d
+      withDisc = [((discOf r, i, natKey p), t{tkDisc = discOf r}, q) | r@((_, i, p), t, q) <- raw]
+      ts = sortOn (\(k, _, _) -> k) withDisc
       numbered = zipWith (\n ((_, i, _), t, q) -> (t{tkPos = show (if i == maxBound then n else i)}, q)) [1 :: Int ..] ts
   pure numbered
  where
@@ -415,6 +441,10 @@ jellyfinItems = parseMaybe $ withObject "jellyfin items" $ \o -> do
     br <- s .:? "BitRate"
     ch <- s .:? "Channels"
     pure (fileQuality codec rate bits br ch)
+
+-- a sort key in which "CD 2" comes before "CD 10": runs of digits as numbers
+natKey :: Text -> [Either Int Text]
+natKey = map (\g -> maybe (Right (T.toLower g)) Left (if T.all Ch.isDigit g then readMaybe (toString g) else Nothing)) . T.groupBy (\x y -> Ch.isDigit x == Ch.isDigit y)
 
 -- "FLAC 24/96", "ALAC 16/44.1", "DSD64", "MP3 320"
 fileQuality :: Text -> Maybe Int -> Maybe Int -> Maybe Int -> Maybe Int -> Text

@@ -127,6 +127,12 @@ cover art over 600 KB, `backlog.md` › Playback).
   neighbouring tracks share the work). No credits. Review: the linked Tidal
   album's, else the Wikipedia lead, as for the others. An empty answer says
   "the folder may have moved: update from the server".
+- Fix (LATB, Quadrophenia 2014 Pure Audio in hirez, 2026-11-26): Jellyfin
+  does not always fold disc folders into the album — the album's children
+  were the folders "CD 1"–"CD 3", so no tracks were found. When the first
+  answer has folders and no tracks, clutter asks again with `Recursive=true&
+  IncludeItemTypes=Audio` (51 tracks: 4 s); where no track has a disc
+  number, each folder is a disc, in natural order ("CD 2" before "CD 10").
 - Quality (`atQuality`): from the first audio stream of each track —
   "FLAC 16/44.1", "ALAC 24/96", "DSD64" (bit rate per channel over 44.1 kHz),
   "MP3 320"; the album's is the one value, or up to three different ones.

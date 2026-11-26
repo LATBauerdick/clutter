@@ -276,7 +276,7 @@ data Action = ToggleSortOrder
             | NodePlayFiles String String -- album id, mode: play its files on the Node from the player's own library
             | SetPlayFiles Boolean -- the album page's chooser: ▶ plays the files (true) or the Tidal version
             | ShowFocus String -- a tag: show all albums that carry it
-            | NodeCtl String -- toggle | stop
+            | NodeCtl String -- toggle | skip | stop
             | LoadNodeName -- on start: ask the backend for the player's name
             | UpdateDiscogs
             | SetStreamRef String

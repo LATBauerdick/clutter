@@ -1342,7 +1342,8 @@ bluosCtl base cmd = case cmdPath of
         let st = T.takeWhile (/= '<') . snd . T.breakOn ">" . snd $ T.breakOn "<state" b
          in if "<error" `T.isInfixOf` b
               then (False, "Node refused: " <> b)
-              else (True, "Node: " <> (if st == "" then b else fromMaybe st (T.stripPrefix ">" st)))
+              -- /Skip answers with the new track's id, not a state
+              else (True, "Node: " <> (if st == "" then (if cmd == "skip" then "next track" else b) else fromMaybe st (T.stripPrefix ">" st)))
  where
   cmdPath :: Maybe String
   cmdPath = case cmd of
@@ -1350,6 +1351,7 @@ bluosCtl base cmd = case cmdPath of
     "pause" -> Just "/Pause"
     "play" -> Just "/Play"
     "stop" -> Just "/Stop"
+    "skip" -> Just "/Skip" -- the next track in the queue
     _ -> Nothing
 
 -- one GET to the player; Left is a short, human-readable failure

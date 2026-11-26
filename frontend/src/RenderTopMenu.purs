@@ -149,6 +149,8 @@ renderTop state =
     , HH.span [ cls "player" ]
         [ HH.button [ cls "ic", HE.onClick \_ -> NodeCtl "toggle", HP.title (state.nodeName <> ": pause / resume" <> nodeTip) ]
                     [ HH.text "⏯" ]
+        , HH.button [ cls "ic", HE.onClick \_ -> NodeCtl "skip", HP.title (state.nodeName <> ": next track" <> nodeTip) ]
+                    [ HH.text "⏭" ]
         , HH.button [ cls "ic", HE.onClick \_ -> NodeCtl "stop", HP.title (state.nodeName <> ": stop" <> nodeTip) ]
                     [ HH.text "⏹" ]
         , HH.small_ [ HH.text state.nodeName ]
