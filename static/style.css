@@ -977,6 +977,11 @@ body { margin: 0; }
 .top-title small.notice { color: #5b5bd6; }
 .top-title small { font-weight: 400; color: #6b6b70; font-size: 13px; margin-left: 8px; }
 .search { border: 1px solid #dcd8d0; border-radius: 16px; padding: 6px 12px; width: 200px; font-family: inherit; font-size: 14px; background: white; }
+.top-search { width: 300px; }
+.top-search::placeholder { color: #a8a8ad; }
+.search-form { margin: 0; display: inline-flex; }
+.ic-loupe { display: inline-flex; align-items: center; padding: 6px 8px; }
+.ic-loupe.ic-on { color: #5b5bd6; }
 .player { display: inline-flex; align-items: center; gap: 2px; border: 1px solid #cfccc5; border-radius: 18px; padding: 1px 12px 1px 4px; white-space: nowrap; }
 .player small { font-size: 12px; color: #55555a; }
 .pop-anchor { position: relative; display: inline-block; }
@@ -1042,7 +1047,8 @@ body { margin: 0; }
   .top { gap: 2px; padding: 6px 8px; flex-wrap: wrap; }
   .player small { display: none; }
   .player { padding-right: 4px; }
-  .search { order: 9; width: 100%; margin-top: 4px; }
+  .search-form { order: 9; width: 100%; margin-top: 4px; }
+  .top-search { width: 100%; }
   .tools { padding: 8px; }
   .pop-focus { position: fixed; left: 8px; right: 8px; top: 110px; width: auto; }
 }

@@ -258,6 +258,7 @@ type State =      { apiUrl :: String
                   , sideOpen :: Boolean
                   , listenedOpen :: Boolean -- the sidebar's Listened fold, while a Listened list is on show
                   , search :: String
+                  , searchOpen :: Boolean -- the top bar's loupe opened its box (a list: search it; anywhere: an id)
                   , tagFilter :: String
                   , streamRef :: String -- the album page's "link a stream" box: T<id>, A<id> or a share link
                   , refsX :: Maybe (Tuple String (Array RefJ)) -- album id, what its Discogs references say (/api/albumrefq)
@@ -375,6 +376,9 @@ data Action = ToggleSortOrder
             | ListenedClick String -- the sidebar's "Listened": show that list (this year's) and open the fold; on a Listened list: open or close it
             | ToggleSide -- the sidebar as a drawer (narrow screens)
             | SetSearch String
+            | ToggleSearch -- the loupe: open the box, or close and empty it
+            | SearchSubmit Event -- Enter in the box: an id (D… T… C… J… A…) opens that album
+            | SearchKey String -- a key in the box: Escape closes it
             | SetTagFilter String
             | Back -- the ‹ button: the same as the browser's Back
             | Forward -- the › button: the same as the browser's Forward

@@ -24,10 +24,12 @@ import Web.Event.Event as Event
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
 import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, RefJ, CandV, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..), pageSize)
-import Data.Array (filter, length, mapMaybe, mapWithIndex) as A
+import Data.Array (filter, length, mapMaybe, mapWithIndex, null) as A
+import Data.Foldable (all)
+import Data.String.CodeUnits (toCharArray)
 import Data.Set as Set
 import RenderTopMenu (shownAlbums)
-import GetStuff (confirmBox, getUrl, postStrings, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, onNearBottom, isClamped, saveView, loadView)
+import GetStuff (confirmBox, getUrl, postStrings, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, onNearBottom, focusSel, isClamped, saveView, loadView)
 import Render (render)
 import Quality (bestVersion)
 
@@ -38,6 +40,20 @@ aComponent is =
   , render
   , eval: H.mkEval $ H.defaultEval { handleAction = handleAction, initialize = Just LoadNodeName }
   }
+
+-- shaped like an album key: D/T/A and digits (a record, a Tidal or an Apple Music album),
+-- C and six lower-case letters or digits (an album), J and 32 hex digits (a file album)
+looksLikeId :: String -> Boolean
+looksLikeId q = case S.take 1 q of
+  "D" -> digits
+  "T" -> digits
+  "A" -> digits
+  "C" -> length q == 7 && all (\c -> (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) rest
+  "J" -> length q == 33 && all (\c -> (c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) rest
+  _ -> false
+  where
+  rest = toCharArray (S.drop 1 q)
+  digits = length q > 1 && all (\c -> c >= '0' && c <= '9') rest
 
 handleAction :: forall output m. MonadAff m => Action -> H.HalogenM State Action () output m Unit
 handleAction = case _ of
@@ -231,6 +247,32 @@ handleAction = case _ of
         handleAction (ShowList (AlbumList (Just year)))
   ToggleSide -> H.modify_ \st -> st { sideOpen = not st.sideOpen, menuOpen = Nothing }
   SetSearch s -> H.modify_ _ { search = s }
+  ToggleSearch -> do
+    H.modify_ \st -> if st.searchOpen then st { searchOpen = false, search = "", notice = Nothing } else st { searchOpen = true }
+    H.liftEffect (focusSel ".top-search")
+  SearchKey k -> when (k == "Escape") $ H.modify_ _ { searchOpen = false, search = "", notice = Nothing }
+  -- Enter: a text shaped like an id opens that album (asked first, so a title that only
+  -- looks like a C id, "Cabaret", stays a search); on a list anything else just filters it
+  SearchSubmit ev -> do
+    H.liftEffect $ Event.preventDefault ev
+    q <- trim <$> H.gets _.search
+    onList <- H.gets \st -> case st.listName of
+      AlbumList Nothing -> false
+      _ -> true
+    if not (looksLikeId q)
+      then unless onList $ H.modify_ _ { notice = Just "On an album page the box takes an id: D…, T…, C…, J…, A…" }
+      else do
+        api <- H.gets _.apiUrl
+        r <- H.liftAff $ getUrl (api <> "albumq/" <> q)
+        case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumJ of
+          -- (an answer without an album does not decode)
+          Right _ -> do
+            H.modify_ _ { albumID = q, search = "", searchOpen = false, notice = Nothing }
+            handleAction (MakeRequest ev)
+          -- not found: say so, unless the text also filters the list on show ("Cabaret")
+          _ -> do
+            st <- H.get
+            unless (onList && not (A.null (shownAlbums st))) $ H.modify_ _ { notice = Just ("No album with the id " <> q) }
   SetTagFilter s -> H.modify_ _ { tagFilter = s }
 
   Back -> H.liftEffect historyBack

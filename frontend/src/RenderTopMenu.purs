@@ -15,6 +15,7 @@ import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
+import Web.UIEvent.KeyboardEvent as KE
 
 import Data.Array (length, filter, null, elem, nub, mapMaybe, head, last, reverse, sort, any)
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -161,10 +162,18 @@ renderTop state =
                 , HP.disabled (state.pos >= length state.views - 1) ]
                 [ HH.text "›" ]
     , HH.div [ cls "top-title" ] title
-    , if inList state
-        then HH.input [ cls "search", HP.placeholder "Search this list", HP.value state.search
-                      , HE.onValueInput SetSearch ]
+    -- the loupe: opens a box that searches the list on show as you type, and opens an
+    -- album by its id on Enter (on a list and on an album page); Escape closes it
+    , if state.searchOpen || state.search /= ""
+        then HH.form [ cls "search-form", HE.onSubmit SearchSubmit ]
+               [ HH.input [ cls "search top-search", HP.value state.search, HP.autofocus true
+                          , HP.placeholder (if inList state then "Search this list, or an id: D… T… C… J… A…"
+                                                            else "Go to an id: D… T… C… J… A…")
+                          , HE.onValueInput SetSearch, HE.onKeyDown \ev -> SearchKey (KE.key ev) ] ]
         else HH.text ""
+    , HH.button [ cls (if state.searchOpen then "ic ic-loupe ic-on" else "ic ic-loupe"), HE.onClick \_ -> ToggleSearch
+                , HP.title (if state.searchOpen then "Close the search" else "Search this list, or go to an album by its id") ]
+        [ loupe ]
     -- Bluesound Node transport; the last answer shows as the tooltip
     , HH.span [ cls "player" ]
         [ HH.button [ cls "ic", HE.onClick \_ -> NodeCtl "toggle", HP.title (state.nodeName <> ": pause / resume" <> nodeTip) ]
@@ -208,6 +217,17 @@ renderTop state =
     ]
   where
   pop p = if state.menuOpen == Just p then "pop pop-open" else "pop"
+  -- a magnifying glass, drawn like the other line icons
+  loupe =
+    HH.elementNS svgNS (HH.ElemName "svg")
+      [ HP.attr (HH.AttrName "viewBox") "0 0 16 16", HP.attr (HH.AttrName "width") "17", HP.attr (HH.AttrName "height") "17"
+      , HP.attr (HH.AttrName "aria-hidden") "true" ]
+      [ HH.elementNS svgNS (HH.ElemName "path")
+          [ HP.attr (HH.AttrName "d") "M6.8 2.2a4.6 4.6 0 1 0 0 9.2a4.6 4.6 0 1 0 0-9.2z M10.2 10.2L14 14"
+          , HP.attr (HH.AttrName "fill") "none", HP.attr (HH.AttrName "stroke") "currentColor"
+          , HP.attr (HH.AttrName "stroke-width") "1.7", HP.attr (HH.AttrName "stroke-linecap") "round" ]
+          [] ]
+  svgNS = HH.Namespace "http://www.w3.org/2000/svg"
   nodeTip = case state.nodeMsg of
     Just m -> " — last: " <> m
     Nothing -> ""

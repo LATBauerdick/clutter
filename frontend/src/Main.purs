@@ -79,6 +79,7 @@ initialState = do -- should eventually be saved in preferences
         , listenedOpen: false
         , sortKept: Nothing
         , search: ""
+        , searchOpen: false
         , tagFilter: ""
         , streamRef: ""
         , refsX: Nothing

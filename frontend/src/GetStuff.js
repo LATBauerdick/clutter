@@ -29,6 +29,10 @@ export const historyForward = () => { history.forward(); };
 export const onPopState = (cb) => () => {
   window.addEventListener("popstate", (e) => cb((e.state && e.state.i) || 0)());
 };
+// focus the first element matching the selector, once it is drawn
+export const focusSel = (sel) => () => {
+  requestAnimationFrame(() => { const e = document.querySelector(sel); if (e) e.focus(); });
+};
 // within two screens of the page's end: cb, at most once per animation frame
 export const onNearBottom = (cb) => () => {
   let queued = false;

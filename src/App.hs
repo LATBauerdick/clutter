@@ -804,8 +804,13 @@ clutterServer sd =
         case ran :: Either SomeException (ExitCode, String, String) of
           Right (ExitSuccess, _, _) -> envTidalReload >> envGetAlbum i
           _ -> pure Nothing
+      -- a key clutter does not hold itself but the log has as a version (an Apple Music
+      -- album, mostly): the album it is a version of
+      (Nothing, _) -> case [n | (n, vs) <- M.toList (lyVersions ly), i `elem` vs] of
+        (n : _) -> envGetAlbum (rowOfName ly n)
+        [] -> pure Nothing
       _ -> pure ma
-    pure AlbumJ{aid = i, album = ma'}
+    pure AlbumJ{aid = maybe i albumID ma', album = ma'}
 
   serveAlbumrefresh :: AlbumKey -> AppM AlbumJ
   serveAlbumrefresh i = AlbumJ i <$> envRefreshAlbum i
