@@ -192,7 +192,7 @@ renderTop state =
                         [ HH.text "Full update from the server…" ]
             , HH.form [ cls "lookup", HE.onSubmit \ev -> MakeRequest ev ]
                 [ HH.label_ [ HH.text "Open an album by id" ]
-                , HH.input [ HP.value state.albumID, HP.placeholder "D6715388, T283130328", HE.onValueInput SetAlbumID ]
+                , HH.input [ HP.value state.albumID, HP.placeholder "D6715388, T283130328, C3d99nt", HP.title "A record (D…), a Tidal album (T…, taken into clutter if it does not hold it yet), a file album (J…) or an album (C…: opens its lead)", HE.onValueInput SetAlbumID ]
                 , HH.button [ HP.type_ HP.ButtonSubmit, HP.disabled state.loading ] [ HH.text "Open" ]
                 ]
             ]

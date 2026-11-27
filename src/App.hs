@@ -69,7 +69,7 @@ import Network.Wai.Handler.Warp
 import Relude
 import Render (renderAlbumJournal, renderAlbumText, renderAlbumView, renderAlbumsView, renderApp)
 import Servant
-import System.Directory (doesFileExist, makeAbsolute)
+import System.Directory (doesFileExist, getTemporaryDirectory, makeAbsolute)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (hPutStrLn)
@@ -243,6 +243,7 @@ data AlbumXJ = AlbumXJ
   , xmembers :: [AlbumKey] -- the versions the page may take off or let lead (membersOf): none for an album of one version
   , xrefs :: [Text] -- the Discogs entries that describe the album ("master/…", "release/…"), not owned
   , xquality :: Maybe Text -- a file album: its files' quality, once its tracks are in the cache ("FLAC 24/96")
+  , xname :: AlbumKey -- the album's name: its C id, or the key itself for an album of one version
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
@@ -783,14 +784,28 @@ clutterServer sd =
 
   -- the album as clutter holds it, at once (slice 18): Discogs is asked afterwards, by
   -- the page, through /api/albumrefresh
+  -- an album by its key. A C id opens the album's row (its lead); a Tidal album clutter does
+  -- not hold (a version linked from a record, an id typed in) is taken into the store first,
+  -- as update-tidal-albums.py --take does (held from then on, like a played non-favourite)
   serveAlbumq :: AlbumKey -> AppM AlbumJ
-  serveAlbumq i = do
-    liftIO $ print ("-------serveAlbumq " :: Text, i)
+  serveAlbumq i0 = do
+    liftIO $ print ("-------serveAlbumq " :: Text, i0)
+    ly <- asks layerR >>= readIORef
+    let i = case i0 of
+          C _ -> rowOfName ly i0
+          _ -> i0
     ma <- envGetAlbum i
-    let aj = case ma of
-          Just a -> AlbumJ{aid = i, album = Just a}
-          _ -> AlbumJ{aid = i, album = Nothing}
-    pure aj
+    ma' <- case (ma, i) of
+      (Nothing, T n) -> do
+        tmp <- liftIO getTemporaryDirectory
+        let fn = tmp <> "/clutter-take-" <> show n <> ".txt"
+        liftIO $ TIO.writeFile fn (show n <> "\n")
+        ran <- liftIO . try . withStoreLock $ readProcessWithExitCode "python3" ["scripts/update-tidal-albums.py", "--take", fn, "--found-only"] ""
+        case ran :: Either SomeException (ExitCode, String, String) of
+          Right (ExitSuccess, _, _) -> envTidalReload >> envGetAlbum i
+          _ -> pure Nothing
+      _ -> pure ma
+    pure AlbumJ{aid = i, album = ma'}
 
   serveAlbumrefresh :: AlbumKey -> AppM AlbumJ
   serveAlbumrefresh i = AlbumJ i <$> envRefreshAlbum i
@@ -828,9 +843,9 @@ clutterServer sd =
         -- a version that is not its album's lead: the album, with all its versions, is its lead's row
         versionOf = let r = rowOf ly i in if r /= i then candV <$> M.lookup r am else Nothing
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = map (\f -> case fvKey f of J j -> f{fvQuality = qualityOf j, fvNode = onNodeOf j}; _ -> f) (filesOf ly am a), xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor sit ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else [], xrefs = lyRefs ly i, xquality = case i of J j -> qualityOf j; _ -> Nothing}
+      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = map (\f -> case fvKey f of J j -> f{fvQuality = qualityOf j, fvNode = onNodeOf j}; _ -> f) (filesOf ly am a), xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor sit ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else [], xrefs = lyRefs ly i, xquality = case i of J j -> qualityOf j; _ -> Nothing, xname = nameOf ly i}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = [], xlead = i, xleadSet = False, xmembers = [], xrefs = [], xquality = Nothing}
+      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = [], xlead = i, xleadSet = False, xmembers = [], xrefs = [], xquality = Nothing, xname = i}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do

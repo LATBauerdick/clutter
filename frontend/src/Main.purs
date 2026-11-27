@@ -16,7 +16,7 @@ import Halogen.Aff as HA
 import Halogen.VDom.Driver (runUI)
 
 import GetStuff (getUrl, getNow)
-import Types (AlbumsJ, State, AlbumList(..), MenuState, MenuParams, ParamsJ, SortOrder(..))
+import Types (AlbumsJ, State, AlbumList(..), MenuState, MenuParams, ParamsJ, SortOrder(..), pageSize)
 
 import AlbumComponent (aComponent)
 
@@ -72,6 +72,7 @@ initialState = do -- should eventually be saved in preferences
         , playFiles: false
         , selecting: false
         , selected: Set.empty
+        , shownMax: pageSize
         , notice: Nothing
         , confirmDrop: false
         , sideOpen: false

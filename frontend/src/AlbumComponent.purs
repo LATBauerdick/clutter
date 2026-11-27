@@ -23,11 +23,11 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, RefJ, CandV, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
-import Data.Array (filter, mapMaybe, mapWithIndex) as A
+import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, RefJ, CandV, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..), pageSize)
+import Data.Array (filter, length, mapMaybe, mapWithIndex) as A
 import Data.Set as Set
 import RenderTopMenu (shownAlbums)
-import GetStuff (confirmBox, getUrl, postStrings, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, isClamped, saveView, loadView)
+import GetStuff (confirmBox, getUrl, postStrings, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, onNearBottom, isClamped, saveView, loadView)
 import Render (render)
 import Quality (bestVersion)
 
@@ -314,6 +314,8 @@ handleAction = case _ of
     _ <- H.subscribe emitter
     H.liftEffect initHistory
     H.liftEffect $ onPopState (\j -> HS.notify listener (GoTo j))
+    -- a long list draws its cards in steps, the next ones as the page nears its end
+    H.liftEffect $ onNearBottom (HS.notify listener ShowMore)
     -- the last view shown in this browser (an album, or a list with its focus and sort);
     -- none: the start list (Collection) stays
     saved <- H.liftEffect loadView
@@ -480,6 +482,9 @@ handleAction = case _ of
   SelectAlbum aid -> H.modify_ \st -> st { selected = if Set.member aid st.selected then Set.delete aid st.selected else Set.insert aid st.selected }
   SelectShown -> H.modify_ \st -> st { selected = Set.fromFoldable (map _.albumID (shownAlbums st)) }
   SelectNone -> H.modify_ _ { selected = (Set.empty :: Set.Set String) }
+  -- only on a list (not an album page), and only while the list has more than it draws
+  ShowMore -> H.modify_ \st ->
+    if not (isJust st.album) && st.shownMax < A.length st.albumList then st { shownMax = st.shownMax + pageSize } else st
   KeepSelected value -> do
     sel <- H.gets _.selected
     ok <- if Set.isEmpty sel then pure false else H.liftEffect (confirmBox (let n = show (Set.size sel) <> (if Set.size sel == 1 then " album" else " albums")
@@ -816,7 +821,7 @@ handleAction = case _ of
           pure case lje of
             Right { lalbums: ls', lversions: vs } -> withVersions vs (map (\a -> (fst a) { albumShelf = (snd a) } ) ls')
             Left _ -> []
-      H.modify_ _ { loading = false, albumList = ls, selected = (Set.empty :: Set.Set String) }
+      H.modify_ _ { loading = false, albumList = ls, selected = (Set.empty :: Set.Set String), shownMax = pageSize }
       -- remembered for a refresh or restart (not the review, not the album page's list)
       when (ln /= "") $ H.liftEffect $ saveView $ joinWith "\t"
         [ "list", ln, sn, show so, joinWith "\n" (map (\(Tuple t b) -> (if b then "1" else "0") <> t) ffs) ]

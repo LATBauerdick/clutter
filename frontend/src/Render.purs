@@ -10,7 +10,7 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null, cons, any, nub, find, sortWith, mapWithIndex)
+import Data.Array (range, length, replicate, take, zip, head, mapMaybe, elem, filter, concat, index, null, cons, any, nub, find, sortWith, mapWithIndex)
 import Control.Alt ((<|>))
 import Data.Foldable (minimum, maximum, sum)
 import Data.Traversable (traverse)
@@ -111,10 +111,17 @@ render state =
   renderListView :: forall m. H.ComponentHTML Action () m
   renderListView =
     HH.div  [ HP.class_ $ HH.ClassName "albums" ]
-            [ HH.div
-              [ HP.class_ $ HH.ClassName "row"]
-              ( map (\(Tuple i a) -> renderAlbumTN i a) $ zip idxs  as )
-            ]
+            ( [ HH.div
+                [ HP.class_ $ HH.ClassName "row"]
+                ( map (\(Tuple i a) -> renderAlbumTN i a) $ take state.shownMax $ zip idxs  as )
+              ]
+              -- a long list draws its cards in steps (State.shownMax): more as the page
+              -- nears its end, or with this button
+              <> (if length as <= state.shownMax then [] else
+                    [ HH.div [ HP.class_ $ HH.ClassName "list-more" ]
+                        [ HH.button [ HP.class_ $ HH.ClassName "av-btn", HE.onClick \_ -> ShowMore ]
+                            [ HH.text ("Show more · " <> show state.shownMax <> " of " <> show (length as) <> " drawn") ] ] ])
+            )
     where as = shownAlbums state -- what the search box lets through
           idxs = if pLocList state.listName
             then replicate (length as) 0
@@ -431,6 +438,12 @@ render state =
         , if otherTags == [] then [] else
             row "Tags" (map (\t -> HH.button [ cls "av-tag", HE.onClick \_ -> ShowFocus t, HP.title ("All albums: #" <> t) ]
                                              [ HH.text t ]) otherTags)
+        -- the ids, to type into "Open an album by id": the album's (C…, where it has
+        -- versions) and the version shown
+        , let shown = if state.version == "" then a.albumID else if state.version == "tidal" then "T" <> tidalId else state.version
+              name = fromMaybe a.albumID (detail >>= _.xname)
+          in row "Id" [ HH.span [ cls "av-ids", HP.title "Type one into Open an album by id (menu)" ]
+                          [ HH.text (if name == shown then shown else name <> " · " <> shown) ] ]
         ]
     -- the rating from the rated.* tags ("rated.****": 4), 0 if none
     rating = fromMaybe 0 (maximum (mapMaybe (\t -> S.stripPrefix (Pattern "rated.*") t <#> \r -> 1 + S.length r) a.albumTags))
@@ -536,14 +549,14 @@ render state =
           tidalRow =
             -- a release's or a file album's Tidal album (a Tidal album is its own row)
             if not isTidalAlbum && hasTidal
-              then [ pick "tidal" ("Tidal" <> if isGone then " · gone" else "") "The Tidal album: its tracks, quality and ▶"
+              then [ pick "tidal" ("Tidal" <> if isGone then " · gone" else "") ("The Tidal album: its tracks, quality and ▶ · T" <> tidalId)
                        (qualNote (facts >>= _.afQuality)
                         <> [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum ("T" <> tidalId), cls "av-ver-open", HP.title "Open the Tidal album's own page" ] [ HH.text "↗" ] ]
                         <> leadCtl ("T" <> tidalId) tidalHeld <> splitCtl ("T" <> tidalId)) ]
               else []
           fileRow f =
             pick f.fvKey ("Files" <> (if f.fvStorage == "" then "" else " · " <> f.fvStorage))
-                 (f.fvTitle <> " — " <> f.fvArtist <> ": its tracks, quality and ▶")
+                 (f.fvTitle <> " — " <> f.fvArtist <> ": its tracks, quality and ▶ · " <> f.fvKey)
                  ( qualNote f.fvQuality
                    <> [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum f.fvKey, cls "av-ver-open", HP.title "Open this file album's own page" ] [ HH.text "↗" ] ]
                    <> (if f.fvUrl == "" then [] else
@@ -582,9 +595,9 @@ render state =
             -- another record of the album that clutter holds is picked like the other
             -- versions (its facts and tracklist); the rest are named only
             if held && S.take 1 v.cvKey == "D"
-              then pick v.cvKey label (v.cvTitle <> " — " <> v.cvArtist <> ": its facts and tracklist") extra
+              then pick v.cvKey label (v.cvTitle <> " — " <> v.cvArtist <> ": its facts and tracklist · " <> v.cvKey) extra
               else HH.div [ cls "av-ver" ] $
-                     [ HH.span [ cls "av-ver-pick", HP.title (if held then v.cvTitle <> " — " <> v.cvArtist else v.cvKey <> ": not in clutter's library") ]
+                     [ HH.span [ cls "av-ver-pick", HP.title (if held then v.cvTitle <> " — " <> v.cvArtist <> " · " <> v.cvKey else v.cvKey <> ": not in clutter's library") ]
                                [ HH.text label ] ]
                      <> extra
           -- a version clutter does not hold (an Apple Music or Qobuz album only linked, not in
@@ -593,7 +606,7 @@ render state =
           -- (its tracks are fetched and it plays on the Node).
           others = filter (\v -> not (elem v.cvKey shownKeys) && (v.cvTitle /= "" || S.take 1 v.cvKey == "T"))
                           (fromMaybe [] (detail >>= _.xversions))
-          ownRow = pick "" ownLabel "The album as it was opened" (qualNote ownQuality <> leadCtl a.albumID true <> splitCtl a.albumID)
+          ownRow = pick "" ownLabel ("The album as it was opened · " <> a.albumID)(qualNote ownQuality <> leadCtl a.albumID true <> splitCtl a.albumID)
           keyed = [ Tuple a.albumID ownRow ]
                   <> map (Tuple ("T" <> tidalId)) tidalRow
                   <> map (\f -> Tuple f.fvKey (fileRow f)) files

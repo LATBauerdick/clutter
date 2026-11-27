@@ -29,6 +29,19 @@ export const historyForward = () => { history.forward(); };
 export const onPopState = (cb) => () => {
   window.addEventListener("popstate", (e) => cb((e.state && e.state.i) || 0)());
 };
+// within two screens of the page's end: cb, at most once per animation frame
+export const onNearBottom = (cb) => () => {
+  let queued = false;
+  window.addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      const doc = document.documentElement;
+      if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2 * window.innerHeight) cb();
+    });
+  }, { passive: true });
+};
 
 // is the first element matching the selector taller inside than it shows (line clamp)?
 export const isClamped = (sel) => () => {

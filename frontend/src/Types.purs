@@ -27,6 +27,7 @@ module Types  ( Album
               , Action (..)
               , View (..)
               , pLocList
+              , pageSize
               ) where
 
 import Prelude (class Eq, class Show, (<<<), ($))
@@ -47,6 +48,10 @@ derive instance eqSortOrder :: Eq SortOrder
 derive instance genericSortOrder :: Generic SortOrder _
 instance showSortOrder :: Show SortOrder where
   show = genericShow
+
+-- a long list draws this many cards at first, and this many more each step
+pageSize :: Int
+pageSize = 240
 
 pLocList :: AlbumList -> Boolean -- lists with location info
 pLocList (AlbumList xx) = maybe false xxx xx where
@@ -133,6 +138,7 @@ type AlbumXJ =    { xid :: String
                   , xmembers :: Maybe (Array String) -- the versions the page may take off or let lead; none for an album of one version
                   , xrefs :: Maybe (Array String) -- Discogs entries that describe the album, not owned: "master/…", "release/…"
                   , xquality :: Maybe String -- a file album: its files' quality, once its tracks are in the cache ("FLAC 24/96")
+                  , xname :: Maybe String -- the album's name: its C id, or the key itself for an album of one version
                   }
 -- /api/albumrefq: one Discogs reference with what Discogs says (Nothing: rfError says why)
 type RefJ =       { rfRef :: String
@@ -275,6 +281,7 @@ type State =      { apiUrl :: String
                   , playFiles :: Boolean -- an album with a Tidal version and files: ▶ plays the files (the album page's chooser)
                   , selecting :: Boolean -- a list in select mode: a click on a cover selects it (bulk Keep)
                   , selected :: Set String -- the album ids selected; emptied whenever the list is loaded
+                  , shownMax :: Int -- a long list draws this many cards; more as the page is scrolled down
                   , loading :: Boolean
                   , albumID :: String
                   , now :: DateTime
@@ -337,6 +344,7 @@ data Action = ToggleSortOrder
             | ToggleSelect -- a list: select mode on or off
             | SelectAlbum String -- in select mode: this album in or out of the selection
             | SelectShown -- everything the list shows (what the search box lets through)
+            | ShowMore -- a long list: draw the next cards (scrolled near the end, or the button)
             | SelectNone
             | KeepSelected String -- yes | no | unset: the keep mark for the selection
             | ShowReview -- the review of the inventory's unsure matches

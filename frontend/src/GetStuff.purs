@@ -8,6 +8,7 @@ module GetStuff ( confirmBox
                 , historyForward
                 , initHistory
                 , onPopState
+                , onNearBottom
                 , isClamped
                 , saveView
                 , loadView
@@ -57,6 +58,8 @@ foreign import pushHistory :: Int -> Effect Unit
 foreign import historyBack :: Effect Unit
 foreign import historyForward :: Effect Unit
 foreign import onPopState :: (Int -> Effect Unit) -> Effect Unit
+-- the page scrolled to within a screen or two of its end (a long list draws more cards)
+foreign import onNearBottom :: Effect Unit -> Effect Unit
 
 -- is the element (a CSS selector) cut off by its line clamp?
 foreign import isClamped :: String -> Effect Boolean
