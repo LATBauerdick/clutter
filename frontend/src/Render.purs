@@ -195,7 +195,7 @@ render state =
     HH.div [ cls "album-view av" ]
       [ HH.div [ cls "av-hero" ]
         [ HH.a [ HP.href a.albumURL, cls "av-cover" ]
-            [ HH.img [ HP.src (if a.albumCover == "" then "/icons/no-cover.png" else a.albumCover)
+            [ HH.img [ HP.src (if a.albumCover /= "" then a.albumCover else fromMaybe "/icons/no-cover.png" refCover)
                      , HP.alt "cover image"
                      ]
             ]
@@ -734,6 +734,13 @@ render state =
             else [ HH.button [ cls "av-remove-ask", HE.onClick \_ -> AskDrop true
                              , HP.title "Take this stream album out of clutter; saving it again on Tidal brings it back" ]
                              [ HH.text "Remove from clutter…" ] ]
+
+    -- no cover of its own: the image of its first Discogs reference that has one, as soon as
+    -- the references are there (the server shows it on the list cards from then on; a cover
+    -- of its own, a Jellyfin image found later, always wins)
+    refCover = case state.refsX of
+      Just (Tuple rid rs) | rid == a.albumID -> head (mapMaybe (\r -> r.rfData >>= _.drCover) rs)
+      _ -> Nothing
 
     -- the album at Discogs and the streaming services
     openInView =

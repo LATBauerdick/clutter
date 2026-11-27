@@ -19,6 +19,7 @@ module Env (
   envUpdateMenuParams,
   envRefreshPlays,
   envReloadLog,
+  rebuild,
 )
 where
 
@@ -57,6 +58,7 @@ import Provider (
 
 import Wikidata (attachWiki, readWikiStore)
 import Details (attachLength, factsFor, readDetailStore)
+import Tracks (cachedRefCover)
 import qualified Data.Text as TX
 import Control.Exception (try)
 import qualified AlbumLayer as AL
@@ -380,7 +382,13 @@ rebuild = do
   es <- readIORef (playsR env)
   wl <- readIORef (wikiLinksR env)
   fa <- readIORef (albumFactsR env)
-  let (ly, am, shelf) = derive (standInTags env) alog es wl fa base
+  let (ly, am0, shelf) = derive (standInTags env) alog es wl fa base
+  -- no cover of its own (a file album Jellyfin has no image for): the image of the album's
+  -- first Discogs reference that has one, from the cached entries (album-layer slice 11).
+  -- A cover of its own always wins, so a Jellyfin image found later takes over.
+  refCovers <- liftIO . fmap M.fromList . forM [k | (k, a) <- M.toList am0, TX.null (albumCover a), not (null (lyRefs ly k))] $ \k ->
+    (\c -> (k, c)) <$> (viaNonEmpty head . catMaybes <$> mapM cachedRefCover (lyRefs ly k))
+  let am = M.mapWithKey (\k a -> maybe a (\c -> a{albumCover = c}) (join (M.lookup k refCovers))) am0
   writeIORef (layerR env) ly
   writeIORef (albumsR env) am
   writeIORef (tagsR env) (buildTags (M.elems am))

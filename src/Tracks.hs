@@ -13,7 +13,7 @@
 -- its first artist with one. Tokens come from tok.json in
 -- the working directory, read at fetch time because the Tidal token lives only 4 hours; no
 -- part of a token is ever logged or returned.
-module Tracks (Track (..), Credit (..), AlbumTracks (..), Want (..), DiscogsRef (..), albumTracks, discogsRef, cacheDir, jellyfinItems, fileQuality, cachedFileQuality, readFileQualities, writeFileQualities, fetchFileQuality) where
+module Tracks (Track (..), Credit (..), AlbumTracks (..), Want (..), DiscogsRef (..), albumTracks, discogsRef, cacheDir, jellyfinItems, fileQuality, cachedFileQuality, readFileQualities, writeFileQualities, fetchFileQuality, cachedRefCover) where
 
 import Control.Exception (SomeAsyncException, onException, throwIO, try)
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, eitherDecode, encode, withObject, (.!=), (.:), (.:?))
@@ -199,6 +199,16 @@ cachedFileQuality store j = do
   dir <- cacheDir
   at <- readCache (dir </> (toString (keyText (J j)) <> ".json"))
   pure ((at >>= atQuality) <|> mfilter (not . T.null) (M.lookup j store))
+
+-- the image of a Discogs reference ("master/456", "release/123") as its cached entry has it;
+-- nothing is fetched (the album page fetches references when it opens)
+cachedRefCover :: Text -> IO (Maybe Text)
+cachedRefCover ref = case T.splitOn "/" ref of
+  [k, n] | k == "release" || k == "master", T.all Ch.isDigit n -> do
+    dir <- cacheDir
+    d <- readCache (dir </> toString ("discogs-" <> k <> "-" <> n <> ".json"))
+    pure (d >>= drCover)
+  _ -> pure Nothing
 
 qualityStorePath :: IO FilePath
 qualityStorePath =
@@ -825,6 +835,8 @@ data DiscogsRef = DiscogsRef
   , drFormat :: Text -- "CD, Album", "Vinyl, LP, Stereo"
   , drTracks :: [Track]
   , drCredits :: [Credit]
+  , drCover :: Maybe Text -- the release's main image (its primary one), for an album with no cover of its own
+  , drCoverChecked :: Maybe Bool -- the fetch looked for the image (an entry cached before 2026-11-27 did not: fetched again once)
   }
   deriving (Show, Generic)
 instance ToJSON DiscogsRef
@@ -851,8 +863,8 @@ discogsRef refresh ref =
           let fn = dir </> toString ("discogs-" <> k <> "-" <> n <> ".json")
           cached <- if refresh then pure Nothing else readCache fn
           case cached of
-            Just d -> pure (Right d)
-            Nothing -> do
+            Just d | isJust (drCoverChecked d) -> pure (Right d)
+            _ -> do
               mgr <- newTlsManagerWith tlsManagerSettings{managerResponseTimeout = responseTimeoutMicro 20000000}
               r <- if k == "master" then fetchMaster mgr i else fetchRelease mgr i
               case r of
@@ -907,7 +919,10 @@ discogsRefOf n v = do
     labels <- o .:? "labels" .!= []
     country <- o .:? "country" .!= ""
     formats <- o .:? "formats" .!= []
-    let names = mapMaybe (parseMaybe (withObject "artist" (.: "name"))) (artists :: [Value])
+    images <- o .:? "images" .!= []
+    let imgs = mapMaybe (parseMaybe (withObject "image" $ \im -> (,) <$> im .:? "type" .!= ("" :: Text) <*> im .: "uri")) (images :: [Value])
+        cover = viaNonEmpty head ([u | (t, u) <- imgs, t == "primary"] <> map snd imgs)
+        names = mapMaybe (parseMaybe (withObject "artist" (.: "name"))) (artists :: [Value])
         lab = viaNonEmpty head (mapMaybe (parseMaybe (withObject "label" $ \l -> (,) <$> l .: "name" <*> l .:? "catno" .!= "")) (labels :: [Value]))
         fmt = viaNonEmpty head (mapMaybe (parseMaybe (withObject "format" $ \f -> (:) <$> f .: "name" <*> f .:? "descriptions" .!= [])) (formats :: [Value]))
     pure
@@ -926,6 +941,8 @@ discogsRefOf n v = do
         , drFormat = maybe "" (T.intercalate ", " . filter (not . T.null) . map T.strip) fmt
         , drTracks = ts
         , drCredits = cs
+        , drCover = mfilter (not . T.null) cover
+        , drCoverChecked = Just True
         }
 
 data DEntry = DEntry

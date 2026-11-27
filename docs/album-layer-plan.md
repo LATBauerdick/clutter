@@ -738,3 +738,22 @@ second or two: ⋯ › **Update this album** (only on an album page),
   et Clavecin (cover found, the page shows it), I Love My Computer (files,
   Tidal, Apple stub; 1.7 s), the Uchida CD (Tidal, Discogs — refused in the
   test copy, whose tok.json has no real session: said so).
+
+### Slice 11 — Discogs cover fallback (asked for and built 2026-11-27)
+
+An album with no cover of its own — a file album Jellyfin has no image for —
+shows the image of its first Discogs reference that has one (the release's
+primary image; a master's main release's).
+
+- `Tracks.DiscogsRef` keeps `drCover` (and `drCoverChecked`: an entry cached
+  before today is fetched again once when the page asks for its references).
+- `Env.rebuild` lays the cached images over empty covers, so list cards show
+  them; `/api/albumrefq` rebuilds when a fetch brings an image for such an
+  album. The page shows it as soon as the references arrive.
+- **A cover of its own always wins**: once Jellyfin has an image (after a full
+  update or "Update this album"), it replaces the Discogs one. Only clutter
+  shows the Discogs image; the Node still needs one in the folder or Jellyfin.
+- Tested on 8085 with Les 7 Sonates pour Flûte et Clavecin (master/2756972):
+  no cover → the Calliope LP cover from Discogs on the page and in the server's
+  album → "Update this album" with a stand-in Jellyfin that has an image →
+  Jellyfin's cover. The Discogs image loads without a login (600×600 JPEG).

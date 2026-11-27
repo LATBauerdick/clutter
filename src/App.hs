@@ -38,6 +38,7 @@ import qualified Data.Text.Lazy.Encoding as TLE
 import qualified Data.Vector as V
 import Env (
   envGetTag,
+  rebuild,
   envInit,
   envRefreshPlays,
   envReloadLog,
@@ -57,7 +58,7 @@ import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendRat
 import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedName, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
-import Tracks (AlbumTracks, DiscogsRef, Want (..), albumTracks, cachedFileQuality, discogsRef, fetchFileQuality, readFileQualities, writeFileQualities)
+import Tracks (AlbumTracks, DiscogsRef (..), Want (..), albumTracks, cachedFileQuality, discogsRef, fetchFileQuality, readFileQualities, writeFileQualities)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (withMVar)
 import Control.Exception (finally)
@@ -1316,11 +1317,17 @@ clutterServer sd =
     let shown r = case AL.parseRef r of
           Just (AL.DRelease n) -> not (isRecordOf ly i (D n))
           _ -> True
-    forM (filter shown (lyRefs ly i)) $ \r -> do
+    rs <- forM (filter shown (lyRefs ly i)) $ \r -> do
       res <- liftIO (discogsRef (mrefresh == Just "1") r)
       pure $ case res of
         Right d -> RefJ{rfRef = r, rfUrl = "https://www.discogs.com/" <> r, rfData = Just d, rfError = ""}
         Left err -> RefJ{rfRef = r, rfUrl = "https://www.discogs.com/" <> r, rfData = Nothing, rfError = err}
+    -- an album with no cover of its own whose reference now has an image (just fetched): the
+    -- albums are derived again, so its list cards show it too (Env.rebuild, slice 11)
+    am <- asks albumsR >>= readIORef
+    let noCover = maybe False (TX.null . albumCover) (M.lookup i am)
+    when (noCover && any (isJust . (>>= drCover) . rfData) rs) rebuild
+    pure rs
 
   -- a release that is one of the album's records (a version), not a stand-in read as it
   isRecordOf :: Layer -> AlbumKey -> AlbumKey -> Bool

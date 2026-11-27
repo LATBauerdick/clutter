@@ -207,7 +207,7 @@ renderTop state =
         [ HH.text "Unsure matches"
         , HH.small_ [ HH.text (show (length rv.rvRows) <> " to review") ]
         ] <> case state.notice of
-               Just m -> [ HH.small [ cls "notice" ] [ HH.text m ] ]
+               Just m -> [ HH.small [ cls "notice", HP.title m ] [ HH.text m ] ]
                Nothing -> []
     | inList state =
         let n = length (shownAlbums state)
@@ -215,11 +215,11 @@ renderTop state =
         [ HH.text state.menu.ln
         , HH.small_ [ HH.text (if n == all then show all <> " albums" else show n <> " of " <> show all) ]
         ] <> case state.notice of
-               Just m -> [ HH.small [ cls "notice" ] [ HH.text m ] ]
+               Just m -> [ HH.small [ cls "notice", HP.title m ] [ HH.text m ] ]
                Nothing -> []
     | otherwise = case state.album of
         Just a -> [ HH.text a.albumTitle ] <> case state.notice of
-          Just m -> [ HH.small [ cls "notice" ] [ HH.text m ] ]
+          Just m -> [ HH.small [ cls "notice", HP.title m ] [ HH.text m ] ]
           Nothing -> []
         Nothing -> []
 

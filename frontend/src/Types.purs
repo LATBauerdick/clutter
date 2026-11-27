@@ -152,6 +152,7 @@ type DiscogsRefJ = { drRef :: String
                    , drFormat :: String
                    , drTracks :: Array Track
                    , drCredits :: Array Credit
+                   , drCover :: Maybe String -- the release's main image (an album with no cover of its own shows it)
                    }
 -- an album a file album may be a version of
 type CandV =      { cvKey :: String
