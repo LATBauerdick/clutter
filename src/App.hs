@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 -- {-# LANGUAGE NoImplicitPrelude #-}
@@ -47,6 +48,7 @@ import Env (
   envUpdateAlbum,
   envGetAlbum,
   envRefreshAlbum,
+  envRefreshAlbumE,
   envUpdateMenuParams,
   envUpdateSort,
  )
@@ -57,6 +59,7 @@ import Listened (appendPlay, listenedDir, listenedName, listenedRows, playAlbum,
 import Related (Related (..), noRelated, related)
 import Tracks (AlbumTracks, DiscogsRef, Want (..), albumTracks, cachedFileQuality, discogsRef, fetchFileQuality, readFileQualities, writeFileQualities)
 import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.MVar (withMVar)
 import Control.Exception (finally)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
@@ -74,6 +77,7 @@ import Types (
   Album (..),
   AlbumFacts (..),
   AlbumKey (..),
+  keyText,
   AppM,
   Discogs (..),
   Env (..),
@@ -446,6 +450,16 @@ type API26 =
       :> QueryParam "refresh" Text
       :> Get '[JSON] [RefJ]
 
+-- "Update this album" (docs/album-layer-plan.md › Slice 10): every version of the album asked
+-- for again at its source -- file albums at Jellyfin (entry and files' quality), Tidal albums
+-- at Tidal, records at Discogs; Apple Music not yet (stub) -- and the stores taken in again
+--   /api/albumupdate/:aid
+type API27 =
+  "api"
+    :> "albumupdate"
+    :> Capture "aid" AlbumKey
+    :> Get '[JSON] RowJ
+
 -- one reference of an album, with what Discogs says about it (Nothing: rfError says why)
 data RefJ = RefJ
   { rfRef :: Text -- "release/123", "master/456"
@@ -559,6 +573,7 @@ type ClutterAPI =
     :<|> API24
     :<|> API25
     :<|> API26
+    :<|> API27
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -641,6 +656,7 @@ clutterServer sd =
     :<|> (serveAlbumjoin :<|> serveAlbumsplit :<|> serveAlbumlead :<|> serveAlbumfind)
     :<|> (serveAlbumtag :<|> serveAlbumrate :<|> serveCurated)
     :<|> (serveAlbumref :<|> serveAlbumrefq)
+    :<|> serveAlbumupdate
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -834,7 +850,7 @@ clutterServer sd =
     am <- asks albumsR >>= readIORef
     case (i, M.lookup i am) of
       (T n, Just a) -> do
-        ran <- liftIO . try $ readProcessWithExitCode "python3" ["scripts/update-tidal-albums.py", "--drop", show n] ""
+        ran <- liftIO . try . withStoreLock $ readProcessWithExitCode "python3" ["scripts/update-tidal-albums.py", "--drop", show n] ""
         case ran :: Either SomeException (ExitCode, String, String) of
           Right (ExitSuccess, _, _) -> do
             _ <- envTidalReload
@@ -1321,6 +1337,82 @@ clutterServer sd =
     ts <- liftIO (readCurated used)
     pure [CuratedJ{ctTag = t, ctName = n, ctCount = rows t} | (t, n) <- ts]
 
+  -- "Update this album" (Slice 10): the album's versions asked for again, each at its source;
+  -- the answer says per source what changed, and names the album's row afterwards
+  serveAlbumupdate :: AlbumKey -> AppM RowJ
+  serveAlbumupdate i = do
+    now <- liftIO getZonedTime
+    ly0 <- asks layerR >>= readIORef
+    am0 <- asks albumsR >>= readIORef
+    let dtl = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now
+        vs = ordNub (versionsOfKey ly0 i <> [i])
+        -- a record's or file album's Tidal album and file albums, also where the log does
+        -- not (yet) make them versions
+        extra = case M.lookup i am0 of
+          Just a -> [T n | Just n <- [albumTidal a >>= readMaybe . toString . T.strip]] <> map J (albumFiles a)
+          Nothing -> []
+        keys = ordNub (vs <> extra)
+        js = [j | J j <- keys]
+        ts = [n | T n <- keys]
+        ds = [k | k@(D _) <- keys]
+        as = [k | k@(A _) <- keys]
+        lastLine = viaNonEmpty last . filter (not . TX.null) . TX.lines . toText
+        script args = liftIO . try . withStoreLock $ readProcessWithExitCode "python3" args ""
+        -- what a script said: its lines but the summary, else why it failed
+        said :: Text -> Either SomeException (ExitCode, String, String) -> (Bool, [Text])
+        said what = \case
+          Right (ExitSuccess, out, _) -> (True, drop1End (filter (not . TX.null) (TX.lines (toText out))))
+          Right (ExitFailure _, out, err) -> (False, drop1End (filter (not . TX.null) (TX.lines (toText out))) <> [what <> ": " <> fromMaybe "failed" (lastLine err)])
+          Left _ -> (False, [what <> ": could not be run"])
+        drop1End xs = take (length xs - 1) xs
+    -- file albums: their entries at Jellyfin, then the store taken in again
+    (jOk, jNotes) <-
+      if null js then pure (True, []) else do
+        r <- script ("scripts/update-jellyfin-albums.py" : concatMap (\j -> ["--album", toString j]) js)
+        _ <- envJellyfinReload
+        pure (said "Jellyfin" r)
+    -- their files' quality: the tracks again where they are cached (so the cache and the
+    -- page agree), else Jellyfin's tracks alone into the quality store
+    am1 <- asks albumsR >>= readIORef
+    qNotes <- liftIO $ forM js $ \j -> case M.lookup (J j) am1 of
+      Nothing -> pure Nothing
+      Just a -> do
+        cached <- isJust <$> cachedFileQuality mempty j
+        if cached
+          then albumTracks True Own a <&> either (\_ -> Just ("J" <> j <> ": tracks not fetched")) (const Nothing)
+          else fetchFileQuality j >>= \case
+            Right q -> writeFileQualities (M.singleton j (fromMaybe "" q)) $> Nothing
+            Left _ -> pure (Just ("J" <> j <> ": quality not fetched"))
+    -- Tidal albums: their records at Tidal (those clutter holds), then the store again
+    (tOk, tNotes) <-
+      if null ts then pure (True, []) else do
+        r <- script ("scripts/update-tidal-albums.py" : concatMap (\n -> ["--album", show n]) ts)
+        _ <- envTidalReload
+        pure (said "Tidal" r)
+    -- records: Discogs asked whether the release changed (as when a page opens)
+    dAnswers <- forM ds $ \k -> envRefreshAlbumE k <&> \case
+      Right (Just _) -> (True, keyText k <> ": changed on Discogs, updated")
+      Right Nothing -> (True, keyText k <> ": unchanged")
+      Left why -> (False, keyText k <> ": " <> why)
+    let dNotes = map snd dAnswers
+        dOk = all fst dAnswers
+        qOk = all isNothing qNotes
+    aNotes <- liftIO (updateAppleVersions as)
+    ly <- asks layerR >>= readIORef
+    am2 <- asks albumsR >>= readIORef
+    let -- a version as the Versions block names it: "Files · imspl", "Tidal", "CD"
+        labelOf k = case (k, M.lookup k am2) of
+          (J _, Just a) -> "Files" <> maybe "" (" · " <>) (viaNonEmpty head (mapMaybe (T.stripPrefix "storage.") (albumTags a)))
+          (J _, Nothing) -> "Files"
+          (T _, _) -> if length ts > 1 then "Tidal " <> keyText k else "Tidal"
+          (D _, Just a) -> T.strip (fromMaybe (albumFormat a) (viaNonEmpty head (TX.splitOn "," (albumFormat a))))
+          _ -> keyText k
+        relabel t = fromMaybe t (viaNonEmpty head [labelOf k <> ":" <> rest | k <- keys, Just rest <- [T.stripPrefix (keyText k <> ":") t]])
+        notes = map relabel (jNotes <> catMaybes qNotes <> tNotes <> dNotes) <> aNotes
+        info = "Updated this album" <> (if null notes then "" else ": " <> TX.intercalate "; " notes)
+    liftIO $ hPutStrLn stderr (toString info)
+    pure RowJ{rjTime = dtl, rjInfo = info, rjResult = if jOk && tOk && qOk && dOk then 1 else 0, rjRow = rowOf ly i}
+
   -- any album row whose title and artist words begin with all the words asked for (two
   -- letters at least), not aid's own album; at most 20, by title
   serveAlbumfind :: AlbumKey -> Maybe Text -> AppM [CandV]
@@ -1536,7 +1628,7 @@ clutterServer sd =
       -- --tidal refreshes the token and brings the album store up to date; its output is
       -- dropped unread. Then the store is taken in again.
       Just "tidal" -> do
-        ran <- liftIO . try $ readProcessWithExitCode "./update-json" ["--tidal"] ""
+        ran <- liftIO . try . withStoreLock $ readProcessWithExitCode "./update-json" ["--tidal"] ""
         let failed = case ran :: Either SomeException (ExitCode, String, String) of
               Right (ExitSuccess, _, _) -> Nothing
               Right (ExitFailure c, _, _) -> Just ("update-json --tidal failed (" <> show c <> ")")
@@ -1560,7 +1652,7 @@ clutterServer sd =
   jellyfinUpdate flags = do
     now <- liftIO getZonedTime
     let sj = ReqJ{reqTime = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now, reqInfo = "", reqResult = 1}
-    ran <- liftIO . try $ readProcessWithExitCode "python3" ("scripts/update-jellyfin-albums.py" : flags) ""
+    ran <- liftIO . try . withStoreLock $ readProcessWithExitCode "python3" ("scripts/update-jellyfin-albums.py" : flags) ""
     let lastLine = viaNonEmpty last . filter (not . TX.null) . TX.lines . toText
     case ran :: Either SomeException (ExitCode, String, String) of
       Left _ -> pure sj{reqInfo = "scripts/update-jellyfin-albums.py could not be run", reqResult = 0}
@@ -1807,6 +1899,7 @@ fillFileQuality env = do
         pending j = if M.member j store0 then pure False else isNothing <$> cachedFileQuality mempty j
     todo <- filterM pending shared
     hPutStrLn stderr ("file quality: " <> show (length todo) <> " of " <> show (length shared) <> " file albums with another version to ask Jellyfin for")
+    -- st: this run's answers only (written merged into the store, Tracks.writeFileQualities)
     let step (st, n, failed) (i, j) = do
           r <- fetchFileQuality j
           threadDelay 200000
@@ -1823,9 +1916,27 @@ fillFileQuality env = do
         loop acc@(_, _, failed) (x : xs)
           | failed >= 10 = pure (acc, True)
           | otherwise = step acc x >>= \acc' -> loop acc' xs
-    ((store, done, _), stopped) <- loop (store0, 0 :: Int, 0 :: Int) (zip [1 :: Int ..] todo)
+    ((store, done, _), stopped) <- loop (mempty, 0 :: Int, 0 :: Int) (zip [1 :: Int ..] todo)
     when (done > 0) (writeFileQualities store)
     hPutStrLn stderr ("file quality: " <> show done <> " of " <> show (length todo) <> " asked" <> (if stopped then "; stopped after ten failures in a row (Jellyfin not reachable?)" else ""))
+
+-- One store-writing script at a time (the Jellyfin and Tidal stores each have one writer, the
+-- scripts; a full update and "Update this album" must not write the same store at once).
+{-# NOINLINE storeLock #-}
+storeLock :: MVar ()
+storeLock = unsafePerformIO (newMVar ())
+
+withStoreLock :: IO a -> IO a
+withStoreLock = withMVar storeLock . const
+
+-- "Update this album" for its Apple Music versions: NOT DONE YET (Slice 10). clutter holds no
+-- Apple album -- the 819 Apple versions are links only -- and library access broke with the
+-- expired developer credential (docs/backlog.md › Apple Music). Once an Apple catalogue
+-- store exists, ask the catalogue for each album here (title, artwork, Hi-Res/Lossless,
+-- gone) and take the store in again, as for Tidal. Until then the page is told so.
+updateAppleVersions :: [AlbumKey] -> IO [Text]
+updateAppleVersions as =
+  pure ["Apple Music not updated yet (no Apple store; backlog › Apple Music)" | not (null as)]
 
 {-# NOINLINE fillRunning #-}
 fillRunning :: IORef Bool

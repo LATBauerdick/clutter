@@ -524,6 +524,27 @@ handleAction = case _ of
   UpdateServer -> updateServer "jellyfin" "Updating from the server…"
   UpdateServerFull -> updateServer "jellyfinfull" "Full update from the server: this takes minutes…"
 
+  -- "Update this album" (Slice 10): the backend asks each version's source again and takes
+  -- the stores in; the page is drawn anew (the album's row, which an update may change)
+  -- with its Discogs references fetched again, and the answer says what changed
+  UpdateAlbum aid -> do
+    H.modify_ _ { menuOpen = Nothing, notice = Just "Updating this album…" }
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumupdate/" <> aid)
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjRow :: String } of
+      Right { rjInfo: i, rjRow: row } -> do
+        st <- H.gets identity
+        -- still on that album's page: show it again (another page or a list was opened
+        -- meanwhile: leave it)
+        let onPage = case st.listName of
+              AlbumList Nothing -> true
+              _ -> false
+        when (onPage && map _.albumID st.album == Just aid) do
+          showAlbum row
+          loadRefs true
+        H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Update this album: no answer" }
+
   -- the backend runs update-json --tidal and takes the album store in again (no restart);
   -- then the Tidal list, newest first, and the menu's tags and lists anew
   UpdateTidal -> do

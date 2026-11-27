@@ -31,6 +31,10 @@
 #   --apple 'https://tidal.com/album/283130328=https://music.apple.com/us/album/x/1556465220'
 # The Apple genre comes along; the next regular run keeps the entry.
 #
+# --album TID (repeatable; album-layer slice 10, "Update this album") only asks Tidal for
+# those albums again and rewrites their records: title, cover, quality, and gone (404, or
+# Tidal marks it not streamable) or back. An album the store does not hold is not taken in.
+#
 import collection_log
 import argparse
 import datetime as dt
@@ -327,6 +331,52 @@ def set_apple(store, pairs, dry_run, today):
 
 # ---------------------------------------------------------------- main
 
+def update_albums(albums, ids, dry_run, today, store):
+    """--album: ask Tidal for these held albums again; rewrite record, fetched and gone."""
+    tids = [t[1:] if t[:1] in "Tt" else t for t in ids]
+    notes, changed, ok = [], 0, True
+    for tid in tids:
+        e = albums.get(tid)
+        if not tid.isdigit() or e is None:
+            notes.append(f"T{tid}: not held by clutter (not taken in)")
+            continue
+        if dry_run:
+            notes.append(f"T{tid}: would be asked")
+            continue
+        r = fetch_album(tid)
+        if r is None:
+            notes.append(f"T{tid}: Tidal did not answer")
+            ok = False
+            continue
+        if r.get("_error") == 404:
+            if "gone" not in e:
+                e["gone"] = today
+                changed += 1
+            notes.append(f"T{tid}: gone from Tidal")
+            continue
+        if "_error" in r:
+            notes.append(f"T{tid}: Tidal answered {r['_error']}")
+            ok = False
+            continue
+        old = e.get("album") or {}
+        diff = [k for k in ("title", "cover", "audioQuality", "mediaMetadata", "releaseDate", "numberOfTracks") if old.get(k) != r.get(k)]
+        e["album"], e["fetched"] = r, today
+        if r.get("streamReady") is False or r.get("allowStreaming") is False:
+            e.setdefault("gone", today)
+            notes.append(f"T{tid}: not streamable (gone)")
+        elif e.pop("gone", None):
+            notes.append(f"T{tid}: back on Tidal")
+        else:
+            notes.append(f"T{tid}: " + (", ".join(dict.fromkeys("quality" if k in ("audioQuality", "mediaMetadata") else k for k in diff)) if diff else "unchanged"))
+        changed += 1
+    if changed and not dry_run:
+        write_store(store)
+    for n in notes:
+        print(n)
+    print(f"{len(tids)} albums asked, {changed} rewritten" + (" — dry run" if dry_run else ""))
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="report, write nothing")
@@ -338,6 +388,8 @@ def main():
                     help="only take a removed Tidal album back")
     ap.add_argument("--check-gone", action="store_true",
                     help="also ask Tidal for every album that is on no list")
+    ap.add_argument("--album", action="append", metavar="TID",
+                    help="only ask Tidal for this album again (T<id> or <id>; repeatable) and rewrite its record")
     ap.add_argument("--take", metavar="FILE",
                     help="only take the Tidal albums in FILE (one id per line) into the store, as a played "
                          "non-favourite is (album layer slice 6: what a retired stand-in release stood for)")
@@ -368,6 +420,8 @@ def main():
         if ok and not a.dry_run:
             write_store(store)
         sys.exit(0 if ok else 1)
+    if a.album:
+        sys.exit(0 if update_albums(albums, a.album, a.dry_run, today, store) else 1)
     if a.take:
         # held from now on without a favourite or a play: the entry stays in the store like a
         # played one; "taken" says why. Albums the store has already are left as they are.

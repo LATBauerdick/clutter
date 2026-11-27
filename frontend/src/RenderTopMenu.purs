@@ -167,7 +167,15 @@ renderTop state =
         ]
     , HH.span [ cls "pop-anchor" ]
         [ HH.button [ cls "ic", HE.onClick \_ -> TogglePop "more", HP.title "More" ] [ HH.text "⋯" ]
-        , HH.div [ cls (pop "more" <> " pop-right") ]
+        , HH.div [ cls (pop "more" <> " pop-right") ] $
+            -- on an album page: that album's versions asked for again at their sources
+            (case state.album of
+               Just a | not (inList state) ->
+                 [ HH.button [ cls "menuitem", HE.onClick \_ -> UpdateAlbum a.albumID, HP.disabled state.loading
+                             , HP.title "Ask Jellyfin, Tidal and Discogs again about this album's versions: cover, title, quality, gone (seconds)" ]
+                             [ HH.text "Update this album" ] ]
+               _ -> [])
+            <>
             [ HH.button [ cls "menuitem", HE.onClick \_ -> UpdateDiscogs, HP.disabled state.loading
                         , HP.title "Fetch the newest releases of the Discogs collection" ]
                         [ HH.text "Update from Discogs" ]

@@ -13,6 +13,7 @@ module Env (
   envTidalConnect,
   envTidalReload,
   envJellyfinReload,
+  envRefreshAlbumE,
   envGetTag,
   envUpdateSort,
   envUpdateMenuParams,
@@ -610,7 +611,12 @@ envGetAlbum aid =
 -- notes, title …). Just the album as it is now if it has -- taken in with envUpdateAlbum's
 -- full update --, Nothing if not, or if it is no Discogs release or Discogs cannot be asked.
 envRefreshAlbum :: AlbumKey -> AppM (Maybe Album)
-envRefreshAlbum aid = do
+envRefreshAlbum aid = either (const Nothing) id <$> envRefreshAlbumE aid
+
+-- the same, saying why nothing came back: Left "Discogs did not answer" / "no Discogs
+-- session" / "not a record", Right Nothing for an unchanged release (Slice 10's answer)
+envRefreshAlbumE :: AlbumKey -> AppM (Either Text (Maybe Album))
+envRefreshAlbumE aid = do
   dc <- asks discogsR >>= readIORef
   -- started from the cached files (the default, -c): the rest of the server keeps reading
   -- them, but this one question goes to Discogs with the session in tok.json
@@ -625,10 +631,11 @@ envRefreshAlbum aid = do
         Just fresh | maybe True (\h -> discogsView h /= discogsView fresh) held -> do
           liftIO $ hPutStrLn stderr ("albumrefresh " <> show i <> ": changed on Discogs, updating")
           envPutAlbum fresh
-          M.lookup aid <$> (asks albumsR >>= readIORef)
-        Just _ -> liftIO (hPutStrLn stderr ("albumrefresh " <> show i <> ": unchanged")) $> Nothing
-        Nothing -> liftIO (hPutStrLn stderr ("albumrefresh " <> show i <> ": Discogs did not answer")) $> Nothing
-    _ -> pure Nothing
+          Right . M.lookup aid <$> (asks albumsR >>= readIORef)
+        Just _ -> liftIO (hPutStrLn stderr ("albumrefresh " <> show i <> ": unchanged")) $> Right Nothing
+        Nothing -> liftIO (hPutStrLn stderr ("albumrefresh " <> show i <> ": Discogs did not answer")) $> Left "Discogs did not answer"
+    (D _, Nothing) -> pure (Left "no Discogs session in tok.json")
+    _ -> pure (Left "not a record")
 
 -- the Discogs session in tok.json (read each time: it is never cached here), if the file
 -- reads and names a token and a user

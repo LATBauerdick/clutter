@@ -44,6 +44,8 @@ import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile, re
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeFileName, (</>))
 import qualified Data.Map.Strict as M
+import Control.Concurrent.MVar (withMVar)
+import System.IO.Unsafe (unsafePerformIO)
 import System.IO (hClose, hPutStrLn, openTempFileWithDefaultPermissions)
 import System.Process (readProcessWithExitCode)
 import Jellyfin (jellyfinApi)
@@ -210,10 +212,17 @@ qualityStorePath =
 readFileQualities :: IO (Map Text Text)
 readFileQualities = qualityStorePath >>= fmap (fromMaybe mempty) . readCache
 
+-- new answers merged into the store as it is now (they win), under one lock: the background
+-- fill and "Update this album" both write it, each only what it asked for
 writeFileQualities :: Map Text Text -> IO ()
-writeFileQualities m = do
+writeFileQualities new = withMVar qualityLock . const $ do
   fn <- qualityStorePath
-  writeCache (takeDirectory fn) fn m
+  cur <- readFileQualities
+  writeCache (takeDirectory fn) fn (new `M.union` cur)
+
+{-# NOINLINE qualityLock #-}
+qualityLock :: MVar ()
+qualityLock = unsafePerformIO (newMVar ())
 
 -- one file album's quality from Jellyfin (its tracks, nothing else); Left: it failed
 fetchFileQuality :: Text -> IO (Either Text (Maybe Text))

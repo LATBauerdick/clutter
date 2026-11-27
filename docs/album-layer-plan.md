@@ -705,3 +705,36 @@ Status:
   files, Tidal once the Node lacks the share), From Her To Eternity with its
   files set to 24/96 (→ files from All, Tidal from the Tidal list and without
   the share), Blonde On Blonde (record page, ▶ Tidal on a Hi-Res tie).
+
+### Slice 10 — "Update this album" (asked for and built 2026-11-27)
+
+What a full update does for every album, for one album and its versions, in a
+second or two: ⋯ › **Update this album** (only on an album page),
+`/api/albumupdate/:aid`.
+
+| Version | Asked | What can change |
+|---|---|---|
+| File album | `update-jellyfin-albums.py --album J…` (one Jellyfin request) | title, artist, year, playing time, folder, storage, **cover** |
+| | its tracks again where cached, else Jellyfin's tracks alone into `file-quality.json` | the files' quality |
+| Tidal album (held) | `update-tidal-albums.py --album T…` (one Tidal request each) | title, cover, quality, gone (404 / not streamable) or back |
+| Record | the Discogs check a page open makes (`envRefreshAlbumE`) | the release, if changed |
+| Discogs references | fetched again by the page (`loadRefs true`) | title, tracks, credits |
+| Apple Music | **stub** (`App.updateAppleVersions`): says "not updated yet" | — until an Apple catalogue store exists (`backlog.md` › Apple Music) |
+
+- The keys: the album's versions in the layer, plus a record's or file album's
+  Tidal album and file albums where the log does not make them versions.
+- Each store keeps one writer, its script; `--album` rewrites only those
+  entries (the Jellyfin store's counts, `listed`, `since_full`, stay). An album
+  Jellyfin does not give is left as it is — only a full update decides that it
+  left. An un-held Tidal album is not taken in.
+- The stores are then taken in again (`envJellyfinReload`, `envTidalReload`,
+  both already used by the menu's updates) and the page is drawn anew.
+- `withStoreLock`: one store-writing script at a time — the full update, the
+  Tidal update, "Remove from clutter" and this.
+- The answer names versions as the Versions block does ("Files · imspl: cover
+  found; Tidal: unchanged; CD: unchanged; Apple Music not updated yet").
+- Tested on 8085 with copies of the stores, a stand-in Jellyfin (`/Items?Ids=`,
+  the flute sonatas now with a cover) and real Tidal: Les 7 Sonates pour Flûte
+  et Clavecin (cover found, the page shows it), I Love My Computer (files,
+  Tidal, Apple stub; 1.7 s), the Uchida CD (Tidal, Discogs — refused in the
+  test copy, whose tok.json has no real session: said so).

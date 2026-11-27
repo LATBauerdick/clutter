@@ -343,6 +343,7 @@ data Action = ToggleSortOrder
             | UpdateServerFull -- the same, asking Jellyfin for every album: finds what left or moved; minutes
             | UpdateServer -- take in what Jellyfin has now (new and gone file albums), then show the server list
             | UpdateTidal -- take in new favourites and the Save for later list, then show the Tidal list
+            | UpdateAlbum String -- the album page: its versions asked for again at Jellyfin, Tidal, Discogs (seconds)
             | ToggleAbout -- the review: all of it, or its first lines
             | NotSame String String Boolean -- album, suggestion: not the same album (true), or bring it back (false)
             | JoinAlbum String String -- album, other album: one album now (album layer); then its row is shown

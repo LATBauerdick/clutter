@@ -2,6 +2,12 @@
 """Fill clutter's Jellyfin album store from Jellyfin's API (read-only there).
 
     scripts/update-jellyfin-albums.py [--full] [--url http://host:8096] [--web URL]
+    scripts/update-jellyfin-albums.py --album ID [--album ID ...]
+
+--album (album-layer slice 10, "Update this album"): only those albums are asked
+for (a second) and their entries rewritten -- a new cover, title or playing time. An
+album Jellyfin does not give is left as it is (only a full run decides that one
+left); nothing else in the store changes.
 
 Without --full, and once a full run has been made: only the albums Jellyfin has
 added since the last run (seconds). Albums that left, moved or were retagged
@@ -178,6 +184,77 @@ def append_moves(path: str, found: dict, gone: dict, arrived: dict) -> None:
             }, ensure_ascii=False) + "\n")
 
 
+def entry(a: dict, libraries: list, storage_map: list) -> dict | None:
+    """One album as the store keeps it; None if it is outside every library folder."""
+    path = a.get("Path") or ""
+    lib = max(
+        ((l["name"], loc) for l in libraries for loc in l["locations"] if under(path, loc)),
+        key=lambda x: len(x[1]),
+        default=None,
+    )
+    if lib is None:
+        return None
+    named = max(((p, n) for p, n in storage_map if under(path, p)), key=lambda x: len(x[0]), default=None)
+    artists = [x.get("Name", "") for x in a.get("AlbumArtists") or [] if x.get("Name")]
+    return {
+        "title": a.get("Name", ""),
+        "artist": a.get("AlbumArtist") or ", ".join(artists),
+        "artists": artists,
+        "year": a.get("ProductionYear") or 0,
+        "added": (a.get("DateCreated") or "")[:19],
+        "secs": (a.get("RunTimeTicks") or 0) // 10_000_000,
+        "path": path,
+        "library": lib[0],
+        "storage": slug(named[1] if named else lib[0]),
+        "image": bool((a.get("ImageTags") or {}).get("Primary")),
+        "mbid": (a.get("ProviderIds") or {}).get("MusicBrainzAlbum", ""),
+    }
+
+
+def write_store(path: str, store: dict) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        json.dump(store, f, indent=1, ensure_ascii=False, sort_keys=True)
+    os.replace(path + ".tmp", path)
+
+
+def update_albums(args, old: dict, url: str, key: str, query: dict, libraries: list, storage_map: list) -> None:
+    """--album: ask Jellyfin for these albums only and rewrite their entries; the rest of the
+    store (other albums, the full run's counts) stays as it is."""
+    ids = [i[1:].lower() if i[:1] in "Jj" else i.lower() for i in args.album]
+    ids = [i for i in ids if re.fullmatch(r"[0-9a-f]{32}", i)]
+    if not ids:
+        fail("--album: no Jellyfin album id (32 hex digits, J<id>)")
+    page = api(url, key, "/Items", {**query, "Ids": ",".join(ids)})
+    got = {a.get("Id", "").lower(): a for a in page.get("Items", [])}
+    known = old.get("albums", {})
+    notes, changed = [], 0
+    for i in ids:
+        a = got.get(i)
+        e = entry(a, libraries, storage_map) if a else None
+        if e is None:
+            notes.append(f"J{i}: not given by Jellyfin (left as it is; a full update decides)")
+            continue
+        before = known.get(i)
+        diff = [k for k in ("title", "artist", "year", "secs", "path", "storage", "image") if (before or {}).get(k) != e[k]]
+        if before is None:
+            notes.append(f"J{i}: new")
+        elif diff:
+            notes.append(f"J{i}: " + ", ".join("cover " + ("found" if e["image"] else "gone") if k == "image" else k for k in diff))
+        elif before != e:
+            notes.append(f"J{i}: details (artists, added, MusicBrainz id or library)")
+        else:
+            notes.append(f"J{i}: unchanged")
+        if before != e:
+            known[i] = e
+            changed += 1
+    if changed:
+        write_store(args.store, {**old, "albums": known})
+    for n in notes:
+        print(n)
+    print(f"{len(ids)} albums asked, {changed} changed" + (f" -> {args.store}" if changed else ""))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--url", default="", help="Jellyfin as this script reaches it")
@@ -188,6 +265,7 @@ def main() -> None:
     ap.add_argument("--map", default=os.path.expanduser(os.environ.get("CLUTTER_STORAGE_MAP", "~/Sync/clutter/storage-map.json")))
     ap.add_argument("--log", default=collection_log.log_path(), help="clutter's collection log, for the moved folders")
     ap.add_argument("--no-moves", action="store_true", help="do not look for moved folders")
+    ap.add_argument("--album", action="append", metavar="ID", help="only ask for this album (J<id> or <id>; repeatable) and rewrite its entry")
     args = ap.parse_args()
 
     old = {}
@@ -233,6 +311,9 @@ def main() -> None:
         "EnableUserData": "false",
     }
     known = old.get("albums", {})
+    if args.album:
+        update_albums(args, old, url, key, query, libraries, storage_map)
+        return
     # Jellyfin (10.11) takes about 40 ms per album it lists, whatever is asked for: all
     # 9,000 are six minutes and more. So, unless --full: only the albums added since the
     # last run -- newest first, until a page holds nothing new -- and Jellyfin's album
@@ -284,31 +365,12 @@ def main() -> None:
 
     albums, outside, outside_now = {}, 0, set()
     for a in raw:
-        path = a.get("Path") or ""
-        lib = max(
-            ((l["name"], loc) for l in libraries for loc in l["locations"] if under(path, loc)),
-            key=lambda x: len(x[1]),
-            default=None,
-        )
-        if lib is None:
+        e = entry(a, libraries, storage_map)
+        if e is None:
             outside += 1
             outside_now.add(a["Id"].lower())
             continue
-        named = max(((p, n) for p, n in storage_map if under(path, p)), key=lambda x: len(x[0]), default=None)
-        artists = [x.get("Name", "") for x in a.get("AlbumArtists") or [] if x.get("Name")]
-        albums[a["Id"].lower()] = {
-            "title": a.get("Name", ""),
-            "artist": a.get("AlbumArtist") or ", ".join(artists),
-            "artists": artists,
-            "year": a.get("ProductionYear") or 0,
-            "added": (a.get("DateCreated") or "")[:19],
-            "secs": (a.get("RunTimeTicks") or 0) // 10_000_000,
-            "path": path,
-            "library": lib[0],
-            "storage": slug(named[1] if named else lib[0]),
-            "image": bool((a.get("ImageTags") or {}).get("Primary")),
-            "mbid": (a.get("ProviderIds") or {}).get("MusicBrainzAlbum", ""),
-        }
+        albums[a["Id"].lower()] = e
 
     outside_ids = sorted(outside_now)
     # the albums that came since the last full run: where a moved folder is looked for
@@ -343,10 +405,7 @@ def main() -> None:
         store["since_full"] = since_full
     if stale:
         store["stale"] = stale
-    os.makedirs(os.path.dirname(args.store), exist_ok=True)
-    with open(args.store + ".tmp", "w") as f:
-        json.dump(store, f, indent=1, ensure_ascii=False, sort_keys=True)
-    os.replace(args.store + ".tmp", args.store)
+    write_store(args.store, store)
     # after the store: a move line names albums the store has
     if found:
         append_moves(args.log, found, gone_refs, arrived)
