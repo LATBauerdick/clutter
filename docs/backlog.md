@@ -68,6 +68,26 @@ What is actually next lives in the project hub (`~/Notes/Claude/ws/clutter.md`
 - Open question · After import, leave albums on Tidal's "Save for later" list
   (today) or let clutter take them off (a write to Tidal)?
 
+## Apple Music
+
+- 2026-11-26 · **Revive the Apple Music library** (LATB: "at some point"; he
+  subscribes to Apple Music and may yet move from Tidal to it). The "Apple Music"
+  list is empty because library access in `update-json` and in the provider
+  (`FromAMusic.hs`, `readAMusicAlbums`) was built on a paid developer credential,
+  which has expired; a full developer membership is not actually needed for
+  library access. Today clutter holds no Apple album: the 819 Apple versions in
+  the log are links only (from the old Discogs Location field), every one with a
+  record, a Tidal album or files beside it. Low priority while most of the
+  library is also on Tidal.
+- 2026-11-26 · **Apple catalogue store** like the Tidal one, independent of the
+  library: LATB links an Apple album for most music he plays, just as most Tidal
+  albums came in (favoured to find the id, then un-favoured) — so a linked Apple
+  album should be a held version as a Tidal album is. Public lookup (no
+  credential): title, cover, year, tracks; 819 linked today. Versions lists held
+  versions only (since 2026-11-26), so they show again once held. Playing Apple
+  Music from clutter (the Node) would be separate. LATB: build it after his list
+  of UI issues.
+
 ## Playback
 
 - 2026-11-22 · **More playing controls for the Node**, configurable so that a

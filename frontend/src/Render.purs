@@ -554,7 +554,12 @@ render state =
                         [ HH.text (kind <> (if held && v.cvReleased /= "" then " · " <> S.take 4 v.cvReleased else "")) ] ]
               <> (if held then [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum v.cvKey, cls "av-ver-open", HP.title "Open this version's own page" ] [ HH.text "↗" ] ] else [])
               <> leadCtl v.cvKey held <> splitCtl v.cvKey
-          others = filter (\v -> not (elem v.cvKey shownKeys)) (fromMaybe [] (detail >>= _.xversions))
+          -- a version clutter does not hold (an Apple Music or Qobuz album only linked, not in
+          -- the library) is not listed: nothing to show or play; it stays linked, under
+          -- "Open in" and, with its ×, in the link block. A Tidal album is listed held or not
+          -- (its tracks are fetched and it plays on the Node).
+          others = filter (\v -> not (elem v.cvKey shownKeys) && (v.cvTitle /= "" || S.take 1 v.cvKey == "T"))
+                          (fromMaybe [] (detail >>= _.xversions))
           rows = [ pick "" ownLabel "The album as it was opened" (leadCtl a.albumID true <> splitCtl a.albumID) ] <> tidalRow <> map fileRow files <> map otherRow others
           -- a version that is not its album's lead: the album, with all its versions, one click away
           ofRow = case detail >>= _.xof of

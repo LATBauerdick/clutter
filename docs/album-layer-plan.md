@@ -1,11 +1,12 @@
 # The album layer — plan
 
-Status 2026-11-26: **model agreed with LATB (he read and agreed to everything
-down to "Left for later"); the spec below it — ids, log lines, migration,
-slices — agreed too (OK to all five questions, 2026-11-26). Slice 0 built 2026-11-26
-(`scripts/album-layer-migrate.py`, dry run; report in the vault,
-`~/Notes/Claude/2026-11-26-clutter-album-layer-dry-run.md`); nothing else built.** Follows `backlog.md` › The album layer and
-`jellyfin-plan.md` › the model (album → versions → access).
+Status 2026-11-26: **model and spec agreed with LATB (OK to all five questions);
+slices 0–6 and 8 built, committed and live; the log was migrated on 2026-11-26.**
+Slice 6's last step (removing the stand-in code) waits until LATB deletes the
+Discogs folders Streaming and Files; slice 7 needs its own plan. Status per slice
+at the end of Slices. Dry-run report of the migration:
+`~/Notes/Claude/2026-11-26-clutter-album-layer-dry-run.md`. Follows `backlog.md` ›
+The album layer and `jellyfin-plan.md` › the model (album → versions → access).
 
 ## Principle
 
@@ -171,13 +172,14 @@ read back; `via` says who wrote the line (`clutter`, `migration`,
 | `{"op":"merge","from":"C…","into":"C…"}` | Album `from` is now `into`: its versions, and everything recorded against its id. Chains followed (merge b into c, then a into b: a ends in c); a loop stops where it closes; a later merge from the same id replaces the earlier; only the exact reverse line (b into a after a into b) takes the earlier one off. Unlike `moved` lines, a merge into an id does not undo a merge from it. |
 | `{"op":"lead","album":…,"key":"D123"}` | That version leads; without `key`: back to the rule. Last line for the album counts. |
 | `{"op":"alias","from":"D9340172","to":"T184781700"}` | `from` is a key clutter no longer holds (a stand-in release); everything recorded against it — plays, marks — is read as `to`. Chains followed as for `merge`: only the exact reverse line takes an earlier alias off. |
-
-Where a version key is meant — `key` of `version`, `split` and `lead`, both ends of
-`alias` — a `C` id is not read (it would make an album a version of an album).
 | `{"op":"keep","key":…,"value":…}` | As today; `key` may be a `C` id. Last line for the album counts. |
 | `{"op":"tag","album":…,"tag":"piano","value":true}` | Put a curated tag on the album, or take it off (`false`). Folded in order. |
 | `{"op":"rate","album":…,"stars":4}` | The album's rating, 1–5; 0 takes it off. Last line counts. |
+| `{"op":"ref","album":…,"discogs":"release/123"}` | A Discogs release or master (`"master/456"`) that describes the album without being owned; `"value":false` takes it off. Folded in order, after the references the aliases from a `D` key give (slice 8, see Discogs references). |
 | `moved`, `skip`, `notsame` | Unchanged. |
+
+Where a version key is meant — `key` of `version`, `split` and `lead`, both ends of
+`alias` — a `C` id is not read (it would make an album a version of an album).
 
 How the operations are written:
 
@@ -325,14 +327,14 @@ Discogs collection for it (LATB adds releases only for physical media).
 | 4 | The scripts read the log through `collection_log.album_log()` (`update-lengths.py`, `update-tidal-albums.py`, `jellyfin-inventory.py`, `import-inventory-links.py`, `update-jellyfin-albums.py`'s moved-folder search) | `./update-json` runs clean against the migrated scratch log | Opus |
 | — | LATB runs `--write` on the real log, restarts | | LATB |
 | 3 | Join, split and lead on the album page | "Same album as…" joins any two albums (a file album to anything, a second edition of a stream); × on a version splits it off; "lead" on a version; each writes the lines above; Doggystyle's second copy joined on a scratch log, then split, plays unchanged | Opus |
-
-Slice 4 comes before `--write` (moved there after the review of 2026-11-26): once the
-log has its format line, `collection_log.read()` returns no links, so scripts still on
-it would see none.
 | 5 | Curated tags and rating: `tag` and `rate` lines; `scripts/import-discogs-curation.py` (genre folders, Petra, Darko/Lavorgna → `my.*`; ratings), dry run first; on the album page tags to add and take off, stars; a fixed view per `my.*` tag in the sidebar | Import counts equal the inventory above (1,313 + 48 tags less albums joined, 410 ratings); a tag set on a record's page shows on its Tidal version's page | Opus |
 | 6 | Stand-ins retired | No play and no mark resolves to a release in Streaming or Files; then LATB deletes the two folders at Discogs; `CLUTTER_STANDIN_FOLDERS` and its code go | Opus, LATB |
 | 8 | Discogs references (section above): `ref` lines in both readers, the link box takes Discogs URLs, credits on the album page, old stand-in aliases read as references, a referenced release or master suggested for a new record | On a scratch log: a release URL and a master URL pasted on a file album and on a Tidal album each write one line and show credits (an opera's cast with roles); × takes it off; at a split the reference stays as written (C id: the album; alias: its version); one of the 18 file-only Files albums shows its Discogs data with no new line; both readers agree in `album-layer-check.py` | Opus builds, reviewed before the commit |
 | 7 | Later: record data into clutter (condition, notes, acquisition number, shelf and position), shelves edited in clutter, a view editor | own plan | — |
+
+Slice 4 comes before `--write` (moved there after the review of 2026-11-26): once the
+log has its format line, `collection_log.read()` returns no links, so scripts still on
+it would see none.
 
 Build and test recipe (scratch copy, sandbox, ports, headless Chrome): the
 hub `~/Notes/Claude/ws/clutter.md` › Now, last bullet.
@@ -340,7 +342,7 @@ hub `~/Notes/Claude/ws/clutter.md` › Now, last bullet.
 Status:
 
 - Slice 0 — committed `45e833c` (2026-11-26).
-- Slice 1 — built 2026-11-26. `src/AlbumLayer.hs` (pure: events, membership,
+- Slice 1 — built 2026-11-26, committed `5bed7e0`. `src/AlbumLayer.hs` (pure: events, membership,
   merges, aliases, keep/tag/rate/lead per album, the lead rule, a play's
   version), `Types.AlbumKey` gains `C`, `Collection.readAlbumLog` reads the
   file, `Collection.readCollection` drops link/unlink lines once a format
@@ -363,7 +365,7 @@ Status:
   check now has 59 answers, both orders of merge and alias and the five
   refused lines; both readers OK, and with the old rules put back the Python
   half fails on exactly those cases.
-- Slice 2 — built 2026-11-26, uncommitted; **Fable reviewed it the same day**
+- Slice 2 — built 2026-11-26, committed `cd64d28`; **Fable reviewed it the same day**
   (by reading, nothing run), fixes below, compare rerun clean of anything new.
   Fixed: (1) `albumrefresh` compared Discogs's answer with the album's union
   tags, so every joined record looked changed and was taken in again on
@@ -433,7 +435,7 @@ Status:
   test/album-layer-check.py` OK (Python 59, Haskell 57: the server's old
   reader is gone). Page checked in headless Chrome (Blonde On Blonde from
   four versions, a stand-in row).
-- Slice 3 — built 2026-11-26 (session 888b4579), uncommitted; built before slice 4
+- Slice 3 — built 2026-11-26 (session 888b4579), committed `736c8b2`; built before slice 4
   at LATB's word (slice 3 does not need it; slice 4 is still needed before `--write`).
   Server (`App.hs`, `API24`): `/api/albumjoin/:aid?other=K` joins K's whole album to
   aid's (`joinLines`: a version line, a new id and two, or a merge into aid's;
@@ -490,7 +492,7 @@ Status:
   again if that version rejoins (as the spec reads). Rechecked on a fresh
   migrated copy: 217 Streaming-list pages (199 with members, 13 stand-ins of an
   un-held stream now without × and lead), every refusal, and the page run.
-- Slice 4 — built 2026-11-26 (session 859f28b2), uncommitted. `collection_log.py`
+- Slice 4 — built 2026-11-26 (session 859f28b2), committed `d559098`. `collection_log.py`
   gains `has_format()`, `release_links()` (the old `read()` shape per key —
   `streams` {kind: id}, `files` [jids] — from `album_log()` in the album format, from
   `read()` before it, so the scripts work on both sides of `--write`; a stand-in
@@ -522,7 +524,7 @@ Status:
   log: clean write (no blank line, same lines as before apart from `ts`), torn end
   (newline restored, same lines), second run and partial run refused, the comparison
   and dry runs unchanged. `--write` ran on the real log 2026-11-26 18:17.
-- Slice 5 — built 2026-11-26 (session 859f28b2), uncommitted. LATB decided: tags
+- Slice 5 — built 2026-11-26 (session 859f28b2), committed `bccbfed`. LATB decided: tags
   `my.pop`, `my.piano`, `my.symphonic`, `my.concertos`, `my.chamber`, `my.opera` (all of
   Opera&Vocal), `my.petra`, `my.darkoLavorgna` (read as `my.darkolavorgna`: tags are
   lower case), and `my.vocal` offered but unused; records that disagree on the rating →
@@ -562,7 +564,7 @@ Status:
   it leaves loses it. Not done: tags on the list cards; a tag editor (rename, order, new
   tags only by editing `curated-tags.json`); tagging or rating from a version tab
   returns to the album tab. Imported on the real log 2026-11-26.
-- Slice 6 — started 2026-11-26 (session 859f28b2), uncommitted. `scripts/standin-retire-check.py`
+- Slice 6 — started 2026-11-26 (session 859f28b2), committed `84eb246`. `scripts/standin-retire-check.py`
   (read-only): Discogs without the Streaming and Files folders, as the server would
   read it (a Tidal store entry counts only with album data); `--tidal-out FILE` lists
   the un-held Tidal albums. First run: 269 stand-ins (262 aliased), 151 albums would
@@ -592,7 +594,7 @@ Status:
   rating donation, `candidatesFor`'s exclusion, `attachCollection`'s record test;
   scripts: the migration's stand-in step). LATB 11-26: the two folders stay at
   Discogs for now (no new releases go into them); the stand-in code stays with them.
-- Slice 8 — built 2026-11-26 (session 6bbf0c46), uncommitted, LATB asked for it the same
+- Slice 8 — built 2026-11-26 (session 6bbf0c46), committed `84eb246`, LATB asked for it the same
   day. Readers: `AlbumLayer` (`Ref`, `DRef`, `parseRef`, `refsOf`, `alRefs`: aliases from a
   `D` key first, then `ref` lines folded) and `collection_log` (`parse_ref`, `refs_of`);
   `album-layer-check.py` 73/71 answers OK (refs by key and C id, taken off, alias-given,
@@ -623,7 +625,14 @@ Status:
   Committed `84eb246`. First UI change (LATB, 11-26): one box "Link a stream or Discogs
   release" (on a stream's own page "Link a Discogs release": no streams listed there)
   instead of two; it takes `D<id>` as a Discogs release (refused if that release is a
-  record of the album) besides `T`, `A`, `Q`, `r`, `m` and links; tested on 8085.
+  record of the album) besides `T`, `A`, `Q`, `r`, `m` and links; tested on 8085;
+  committed `d2af312`. Then (LATB, 11-26): ↗ in Versions went to the start page — a
+  link to `#` was followed and read as history entry 0; `GetStuff.initHistory` now
+  stops the browser following `a[href="#"]` (all eight such links). Versions lists
+  only the versions clutter holds (a Tidal album held or not); an Apple Music or
+  Qobuz album that is only linked stays under "Open in" and in the link block. An
+  Apple catalogue store, so linked Apple albums are held like Tidal's: `backlog.md` ›
+  Apple Music, after LATB's list of UI issues.
 
 ### Questions for LATB — answered 2026-11-26: OK to all five
 
