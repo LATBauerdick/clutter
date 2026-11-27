@@ -307,6 +307,11 @@ render state =
     -- (where the player has its folder), or for the album itself its Tidal album where
     -- there is one, else its files
     verIsFile = S.take 1 state.version == "J"
+    -- another record of the album, picked in Versions: its own facts and tracklist; a
+    -- record does not play, so ▶ stays as for the album itself
+    verIsRecord = S.take 1 state.version == "D"
+    verOwn = verIsFile || verIsRecord
+    playVer = if verIsRecord then "" else state.version
     verDetail = case state.verX of
       Just x | x.xid == state.version -> Just x
       _ -> Nothing
@@ -317,11 +322,11 @@ render state =
     -- (Slice 9: Quality.bestVersion, its Tidal album on a tie)
     recordBest = if isDiscogs then maybe "" (bestVersion a) detail else ""
     recordFile = S.take 1 recordBest == "J"
-    useTidal = case state.version of
+    useTidal = case playVer of
       "tidal" -> tidalPlays
       "" -> tidalPlays && not isFile && not recordFile
       _ -> false
-    useFiles = case state.version of
+    useFiles = case playVer of
       "tidal" -> false
       "" -> if recordFile then maybe false (\f -> fromMaybe true f.fvNode) playFile else not useTidal && hasFiles
       _ -> verNode
@@ -388,6 +393,7 @@ render state =
                                     "" | isFile -> "Files" <> maybe "" (" · " <> _) ownStorage
                                        | otherwise -> a.albumFormat
                                     "tidal" -> "Stream · Tidal"
+                                    _ | verIsRecord -> maybe "" _.albumFormat state.verA
                                     _ -> "Files" <> maybe "" (\f -> if f.fvStorage == "" then "" else " · " <> f.fvStorage) playFile) ]
         , case state.version of
             "" -> case facts >>= _.afQuality of
@@ -416,7 +422,7 @@ render state =
                                [ HH.select [ cls "av-mytag-add", HE.onValueChange \v -> if v == "" then ClosePops else TagAlbum a.albumID v true ]
                                    ([ HH.option [ HP.value "", HP.selected true ] [ HH.text "+ tag" ] ]
                                     <> map (\c -> HH.option [ HP.value c.ctTag ] [ HH.text c.ctName ]) tagChoices) ]))
-        , case (if verIsFile then state.verA >>= _.albumAdded else if state.version == "" then a.albumAdded else Nothing) of
+        , case (if verOwn then state.verA >>= _.albumAdded else if state.version == "" then a.albumAdded else Nothing) of
             Just d | d /= "" -> row "Added" [ HH.text (S.take 10 d) ]
             _ -> []
         , locationRow
@@ -567,12 +573,20 @@ render state =
                   "J" -> if v.cvFormat == "" then "Files" else v.cvFormat -- "Files · 1001"
                   _ -> "Version"
                 held = v.cvTitle /= ""
+                -- Discogs gives year 0 where it has none
+                year = S.take 4 v.cvReleased
+                label = kind <> (if held && year /= "" && year /= "0" && year /= "0000" then " · " <> year else "")
+                extra = (if held then [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum v.cvKey, cls "av-ver-open", HP.title "Open this version's own page" ] [ HH.text "↗" ] ] else [])
+                        <> leadCtl v.cvKey held <> splitCtl v.cvKey
             in
-            HH.div [ cls "av-ver" ] $
-              [ HH.span [ cls "av-ver-pick", HP.title (if held then v.cvTitle <> " — " <> v.cvArtist else v.cvKey <> ": not in clutter's library") ]
-                        [ HH.text (kind <> (if held && v.cvReleased /= "" then " · " <> S.take 4 v.cvReleased else "")) ] ]
-              <> (if held then [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum v.cvKey, cls "av-ver-open", HP.title "Open this version's own page" ] [ HH.text "↗" ] ] else [])
-              <> leadCtl v.cvKey held <> splitCtl v.cvKey
+            -- another record of the album that clutter holds is picked like the other
+            -- versions (its facts and tracklist); the rest are named only
+            if held && S.take 1 v.cvKey == "D"
+              then pick v.cvKey label (v.cvTitle <> " — " <> v.cvArtist <> ": its facts and tracklist") extra
+              else HH.div [ cls "av-ver" ] $
+                     [ HH.span [ cls "av-ver-pick", HP.title (if held then v.cvTitle <> " — " <> v.cvArtist else v.cvKey <> ": not in clutter's library") ]
+                               [ HH.text label ] ]
+                     <> extra
           -- a version clutter does not hold (an Apple Music or Qobuz album only linked, not in
           -- the library) is not listed: nothing to show or play; it stays linked, under
           -- "Open in" and, with its ×, in the link block. A Tidal album is listed held or not
@@ -774,7 +788,7 @@ render state =
 
     -- tracks, credits and review from /api/albumtq, once they are there and belong to this album
     tj = case state.albumT of
-      Just t | t.tjId == (if verIsFile then state.version else a.albumID) -> Just t
+      Just t | t.tjId == (if verOwn then state.version else a.albumID) -> Just t
       _ -> Nothing
     tracks = tj >>= _.tjTracks
 

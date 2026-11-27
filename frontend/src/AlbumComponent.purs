@@ -204,8 +204,9 @@ handleAction = case _ of
   ShowVersion v -> do
     H.modify_ _ { version = v, verX = Nothing, verA = Nothing, albumT = Nothing, nodeMsg = Nothing }
     _ <- H.fork (loadTracks false)
-    -- a file album: its own record and details, for the facts and for ▶
-    when (S.take 1 v == "J") do
+    -- a file album, or another record of the album: its own record and details, for the
+    -- facts (and for a file album's ▶)
+    when (S.take 1 v == "J" || S.take 1 v == "D") do
       api <- H.gets _.apiUrl
       ra <- H.liftAff $ getUrl (api <> "albumq/" <> v)
       case (decodeJson =<< parseJson ra) :: Either JsonDecodeError AlbumJ of
@@ -758,9 +759,9 @@ handleAction = case _ of
           H.modify_ _ { tracksLoading = true }
           api <- H.gets _.apiUrl
           v <- H.gets _.version
-          -- a file-album version has its own tracks; the Tidal version of a release is asked
-          -- for through the release
-          let fileV = S.take 1 v == "J"
+          -- a file-album version, or another record of the album, has its own tracks; the
+          -- Tidal version of a release is asked for through the release
+          let fileV = S.take 1 v == "J" || S.take 1 v == "D"
               key = if fileV then v else a.albumID
               qs = (if refresh then [ "refresh=1" ] else []) <> (if v /= "" && not fileV then [ "source=" <> v ] else [])
           r <- H.liftAff $ getUrl (api <> "albumtq/" <> key <> (if qs == [] then "" else "?" <> joinWith "&" qs))
