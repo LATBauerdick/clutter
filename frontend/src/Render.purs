@@ -210,7 +210,7 @@ render state =
       , chipsView
       , HH.div [ cls "av-body" ]
         [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> refDataView <> [ playsView ])
-        , HH.div [ cls "av-side" ] [ versionsView, factsView, readMoreView, openInView, streamView, refsView, sameAsView, keepView, removeView ]
+        , HH.div [ cls "av-side" ] [ versionsView, factsView, readMoreView, openInView, streamView, sameAsView, keepView, removeView ]
         ]
       , HH.div_ stripsView
       ]
@@ -567,14 +567,16 @@ render state =
       if length rows < 2 && null ofRow then HH.text "" else
         HH.div [ cls "av-files av-versions" ] ([ HH.h3_ [ HH.text "Versions" ] ] <> ofRow <> (if length rows < 2 then [] else rows))
 
-    -- a Discogs release: give it its Tidal / Apple Music album by hand -- paste T<id>, A<id>
-    -- or a share link -- where it has none yet; streams linked this way can be taken off
-    -- (×). Kept in clutter's log, not written to Discogs.
+    -- one box for what the album is linked to by hand (kept in clutter's log, nothing is
+    -- written to Discogs): a release or a file album gets its Tidal / Apple Music / Qobuz
+    -- album (T<id>, A<id>, Q<id> or a share link), and any album a Discogs release or master
+    -- that describes it without being owned (D<id>, a discogs.com address;
+    -- docs/album-layer-plan.md › Discogs references). Each can be taken off (×).
     streamView =
       let linked = fromMaybe [] (detail >>= _.xstreams)
-          lacks f = case f a of
-            Just v | v /= "" -> false
-            _ -> true
+          refs = fromMaybe [] (detail >>= _.xrefs)
+          -- a stream can be linked only to a release or a file album (which may stand for itself)
+          streams = isDiscogs || S.take 1 a.albumID == "J"
           label s = (case S.take 1 s of
                        "T" -> "Tidal "
                        "A" -> "Apple Music "
@@ -585,21 +587,27 @@ render state =
               [ HH.text (label s)
               , HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> UnlinkStream a.albumID s
                           , HP.title "Not this album's stream: take it off" ] [ HH.text "×" ] ]
+          refLabel ref = (if S.take 7 ref == "master/" then "Discogs master " <> S.drop 7 ref else "Discogs release " <> S.drop 8 ref)
+          oneRef ref =
+            HH.p [ cls "av-file" ]
+              [ HH.a [ HP.href ("https://www.discogs.com/" <> ref), HP.target "_blank", HP.title "Open on discogs.com" ] [ HH.text (refLabel ref) ]
+              , HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> DropRef a.albumID ref
+                          , HP.title "Does not describe this album: take it off" ] [ HH.text "×" ] ]
           box =
             HH.div [ cls "av-streambox" ]
-              [ HH.input [ HP.value state.streamRef, HP.placeholder "T<id>, A<id>, Q<id> or a share link", HE.onValueInput SetStreamRef
-                         , HP.title (if lacks _.albumTidal && lacks _.albumAMusic then "Give this release its Tidal, Apple Music or Qobuz album"
-                                     else "Add a stream, or put another edition in place of the one it has") ]
+              [ HH.input [ HP.value state.streamRef
+                         , HP.placeholder (if streams then "T<id>, A<id>, Q<id>, D<id> or a link" else "D<id> or a discogs.com link")
+                         , HE.onValueInput SetStreamRef
+                         , HP.title ((if streams then "A Tidal, Apple Music or Qobuz album (another edition takes the place of the one it has), or " else "")
+                                     <> "a Discogs release or master that describes this album: credits, label, year. Nothing is added to the Discogs collection.") ]
               , HH.button [ cls "pill", HP.type_ HP.ButtonButton, HE.onClick \_ -> LinkStream a.albumID, HP.disabled (S.trim state.streamRef == "") ]
                           [ HH.text "Link" ]
               ]
-          -- always there: a stream can also take the place of the one the release has
-          wanting = true
       in
-      -- a release, or a file album (which may stand for itself)
-      if not (isDiscogs || S.take 1 a.albumID == "J") || detail == Nothing || (null linked && not wanting) then HH.text "" else
+      if detail == Nothing then HH.text "" else
         HH.div [ cls "av-files" ] $
-          [ HH.h3_ [ HH.text "Link a stream" ] ] <> map one linked <> (if wanting then [ box ] else [])
+          [ HH.h3_ [ HH.text (if streams then "Link a stream or Discogs release" else "Link a Discogs release") ] ]
+          <> (if streams then map one linked else []) <> map oneRef refs <> [ box ]
 
     -- on a file album's page: the albums it may be a version of (same or similar title);
     -- a click links the files to that album and shows it; the name opens it first
@@ -808,28 +816,6 @@ render state =
       _ -> []
 
     isOther c = S.take 5 c.crRole == "Other"
-
-    -- Discogs references (docs/album-layer-plan.md › Discogs references): a release or master
-    -- that describes the album without being owned -- a library CD's, an opera's for its
-    -- cast. Listed with × and a box for a discogs.com address; not written to Discogs.
-    refsView =
-      let refs = fromMaybe [] (detail >>= _.xrefs)
-          label ref = (if S.take 7 ref == "master/" then "Master " <> S.drop 7 ref else "Release " <> S.drop 8 ref)
-          one ref =
-            HH.p [ cls "av-file" ]
-              [ HH.a [ HP.href ("https://www.discogs.com/" <> ref), HP.target "_blank", HP.title "Open on discogs.com" ] [ HH.text (label ref) ]
-              , HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> DropRef a.albumID ref
-                          , HP.title "Does not describe this album: take it off" ] [ HH.text "×" ] ]
-          box =
-            HH.div [ cls "av-streambox" ]
-              [ HH.input [ HP.value state.refBox, HP.placeholder "discogs.com release or master address", HE.onValueInput SetRefBox
-                         , HP.title "A Discogs release or master that describes this album (credits, label, year); nothing is added to the Discogs collection" ]
-              , HH.button [ cls "pill", HP.type_ HP.ButtonButton, HE.onClick \_ -> AddRef a.albumID state.refBox, HP.disabled (S.trim state.refBox == "") ]
-                          [ HH.text "Add" ]
-              ]
-      in
-      if detail == Nothing then HH.text "" else
-        HH.div [ cls "av-files" ] $ [ HH.h3_ [ HH.text "Discogs" ] ] <> map one refs <> [ box ]
 
     -- what the references say: one fold per reference, credits open (an opera's cast), the
     -- tracklist only when asked for

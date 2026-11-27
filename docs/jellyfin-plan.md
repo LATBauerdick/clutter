@@ -105,6 +105,16 @@ read again (several Discogs calls) — before anything was drawn.
 - Not done (later, if wanted): Discogs list memberships are no longer re-read
   on a page open — ⋯ › Update does it; filling the tracks cache ahead of time
   for file albums.
+- **Fixed 2026-11-26 (session 6bbf0c46):** the live server starts without arguments,
+  which means `-c` (Discogs from `cache/`), and there `envRefreshAlbum` had no Discogs
+  session, so the check after drawing never asked Discogs. It now takes the session
+  from `tok.json` for that one request (`Env.discogsFromTok`, `Provider.readAlbumFrom`);
+  everything else keeps reading the cache. A changed release is taken in with
+  `envPutAlbum`, which re-reads the lists from the cache in `-c` mode (a new shelf
+  position still needs `./update-json`). Tested on 8085 in `-c` mode with the real
+  token: six records "unchanged" at ~0.3 s; a copy of the cache with one title made
+  stale: "changed on Discogs, updating" (3.7 s, after drawing), title right, versions
+  and shelf place kept, the next open "unchanged".
 
 ## Slice 17 — tracks for file albums (built 2026-11-26)
 

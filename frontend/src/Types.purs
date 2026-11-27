@@ -247,7 +247,6 @@ type State =      { apiUrl :: String
                   , search :: String
                   , tagFilter :: String
                   , streamRef :: String -- the album page's "link a stream" box: T<id>, A<id> or a share link
-                  , refBox :: String -- the album page's Discogs box: a release or master address
                   , refsX :: Maybe (Tuple String (Array RefJ)) -- album id, what its Discogs references say (/api/albumrefq)
                   , findQ :: String -- the album page's "Same album as…" search box
                   , found :: Array CandV -- what that search found (/api/albumfind)
@@ -320,7 +319,6 @@ data Action = ToggleSortOrder
             | UpdateDiscogs
             | SetStreamRef String
             | LinkStream String -- release id: link the stream named in the box
-            | SetRefBox String
             | AddRef String String -- album id, a Discogs release or master (address or release/…): it describes the album
             | DropRef String String -- album id, reference ("release/…"): take it off
             | RefreshRefs -- fetch what the album's references say again

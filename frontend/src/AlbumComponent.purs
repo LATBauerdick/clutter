@@ -4,7 +4,8 @@ module AlbumComponent (
 
 import Prelude
 import Data.Newtype (unwrap)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
+import Data.Int (fromString)
 import Data.Tuple (Tuple(..), fst, snd)
 import Data.Either (Either(..))
 import Data.Map as M
@@ -339,7 +340,6 @@ handleAction = case _ of
     updateAlbumList
 
   SetStreamRef s -> H.modify_ _ { streamRef = s }
-  SetRefBox s -> H.modify_ _ { refBox = s }
   -- a Discogs release or master describes the album (not owned): the backend appends a ref
   -- line to the collection log and answers with the album's row
   AddRef aid ref -> do
@@ -348,7 +348,7 @@ handleAction = case _ of
     case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjResult :: Int, rjRow :: String } of
       Right { rjInfo: i, rjResult: 1, rjRow: row } -> do
         showAlbum row
-        H.modify_ _ { notice = Just i, refBox = "", streamRef = "" }
+        H.modify_ _ { notice = Just i, streamRef = "" }
       Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
       Left _ -> H.modify_ _ { notice = Just "Discogs: no answer" }
   DropRef aid ref -> do
@@ -370,7 +370,9 @@ handleAction = case _ of
   LinkStream aid -> do
    ref0 <- H.gets _.streamRef
    let low = toLower (trim ref0)
-   if contains (Pattern "discogs") low || S.take 8 low == "release/" || S.take 7 low == "master/"
+       -- D<id> (r<id>) a release, m<id> a master; "release/…", "master/…"; a discogs.com address
+       short = (S.take 1 low == "d" || S.take 1 low == "r" || S.take 1 low == "m") && isJust (fromString (S.drop 1 low))
+   if contains (Pattern "discogs") low || S.take 8 low == "release/" || S.take 7 low == "master/" || short
      then handleAction (AddRef aid ref0) else do
     api <- H.gets _.apiUrl
     ref <- H.gets _.streamRef
@@ -632,7 +634,7 @@ handleAction = case _ of
 
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
     showAlbum aid = do
-      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, version = "", verX = Nothing, verA = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing, findQ = "", found = [], refBox = "", streamRef = "" }
+      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, version = "", verX = Nothing, verA = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing, findQ = "", found = [], streamRef = "" }
       now <- H.liftAff getNow
       H.liftAff $ Console.logShow now
       api <- H.gets _.apiUrl

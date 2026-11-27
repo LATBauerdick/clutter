@@ -7,6 +7,7 @@ module Provider (
   -- AppM
   readDiscogsListAids,
   readAlbum,
+  readAlbumFrom,
   readAlbums,
   readFolders,
   -- readLists,
@@ -124,8 +125,11 @@ readDiscogsLists :: Discogs -> IO (Map Text (Int, Vector AlbumKey))
 readDiscogsLists = fmap (M.map (second (V.map D))) . FD.readDiscogsLists
 
 readAlbum :: Int -> AppM (Maybe Album)
-readAlbum aid = do
-  p <- envGetDiscogs
+readAlbum aid = envGetDiscogs >>= \p -> readAlbumFrom p aid
+
+-- the same from a given Discogs session (the page-open check in cache mode: Env.envRefreshAlbum)
+readAlbumFrom :: Discogs -> Int -> AppM (Maybe Album)
+readAlbumFrom p aid = do
   lns <- asks listNamesR >>= readIORef
   -- let getFolderName :: Int -> Maybe Text
   --     getFolderName fid = fmap fst . find (\(_, li) -> li == fid) $ M.toList lns

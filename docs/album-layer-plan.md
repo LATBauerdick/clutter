@@ -620,6 +620,10 @@ Status:
   Left as noted: any alias from a `D` key gives a reference (only stand-in aliases
   exist); references fetched one after another, errors not cached; the check script
   never counts Apple albums held (The Lincoln Trio's is not held: verified).
+  Committed `84eb246`. First UI change (LATB, 11-26): one box "Link a stream or Discogs
+  release" (on a stream's own page "Link a Discogs release": no streams listed there)
+  instead of two; it takes `D<id>` as a Discogs release (refused if that release is a
+  record of the album) besides `T`, `A`, `Q`, `r`, `m` and links; tested on 8085.
 
 ### Questions for LATB — answered 2026-11-26: OK to all five
 

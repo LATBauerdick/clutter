@@ -545,11 +545,12 @@ appendRef fn now n d v a =
 
 -- a Discogs release or master from what the page's box was given: a discogs.com URL
 -- ("https://www.discogs.com/release/123-Artist-Title", "/de/master/456", "/sell/release/123"),
--- or "release/123", "master/456", "r123", "m456"
+-- or "release/123", "master/456", "D123" (a release, as clutter names a record), "r123", "m456"
 parseDiscogsRef :: Text -> Maybe AL.DRef
 parseDiscogsRef raw
   | Just d <- AL.parseRef low = Just d
   | Just n <- T.stripPrefix "r" low >>= whole = Just (AL.DRelease n)
+  | Just n <- T.stripPrefix "d" low >>= whole = Just (AL.DRelease n)
   | Just n <- T.stripPrefix "m" low >>= whole = Just (AL.DMaster n)
   | "discogs.com" `T.isInfixOf` low = viaNonEmpty head (mapMaybe pair (zip segs (drop 1 segs)))
   | otherwise = Nothing

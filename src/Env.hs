@@ -37,6 +37,7 @@ import Provider (
   -- extractListenedDates,
   readAMusicAlbums,
   readAlbum,
+  readAlbumFrom,
   readAlbums,
   readDiscogsAlbums,
   readDiscogsFolders,
@@ -56,6 +57,7 @@ import Provider (
 import Wikidata (attachWiki, readWikiStore)
 import Details (attachLength, factsFor, readDetailStore)
 import qualified Data.Text as TX
+import Control.Exception (try)
 import qualified AlbumLayer as AL
 import Collection (attachAlbumPlays, attachAlbums, attachCollection, attachCurated, buildLayer, collectionFile, followMove, readAlbumLog, readMoves, shelfIndexTags, spreadAlbumTags, standInFolderTags)
 import Jellyfin (JellyfinStore (..), jellyfinAlbums, readJellyfinStore)
@@ -610,11 +612,16 @@ envGetAlbum aid =
 envRefreshAlbum :: AlbumKey -> AppM (Maybe Album)
 envRefreshAlbum aid = do
   dc <- asks discogsR >>= readIORef
+  -- started from the cached files (the default, -c): the rest of the server keeps reading
+  -- them, but this one question goes to Discogs with the session in tok.json
+  live <- case dc of
+    DiscogsSession _ _ -> pure (Just dc)
+    _ -> liftIO discogsFromTok
   -- the release as Discogs gave it last (baseR): albumsR carries the album's union tags
   held <- M.lookup aid <$> (asks baseR >>= readIORef)
-  case (aid, dc) of
-    (D i, DiscogsSession _ _) ->
-      readAlbum i >>= \case
+  case (aid, live) of
+    (D i, Just s) ->
+      readAlbumFrom s i >>= \case
         Just fresh | maybe True (\h -> discogsView h /= discogsView fresh) held -> do
           liftIO $ hPutStrLn stderr ("albumrefresh " <> show i <> ": changed on Discogs, updating")
           envPutAlbum fresh
@@ -622,6 +629,19 @@ envRefreshAlbum aid = do
         Just _ -> liftIO (hPutStrLn stderr ("albumrefresh " <> show i <> ": unchanged")) $> Nothing
         Nothing -> liftIO (hPutStrLn stderr ("albumrefresh " <> show i <> ": Discogs did not answer")) $> Nothing
     _ -> pure Nothing
+
+-- the Discogs session in tok.json (read each time: it is never cached here), if the file
+-- reads and names a token and a user
+discogsFromTok :: IO (Maybe Discogs)
+discogsFromTok = do
+  r <- try (readFileLBS "tok.json")
+  pure $ case r :: Either SomeException LByteString of
+    Right bs
+      | Just ts <- decode bs :: Maybe TokJ
+      , not (TX.null (tok ts))
+      , not (TX.null (usr ts)) ->
+          Just (DiscogsSession (tok ts) (usr ts))
+    _ -> Nothing
 
 -- what a Discogs release brings with it, without what clutter attaches (plays, links,
 -- collection, lengths, …: tags with those prefixes, and the other fields)
