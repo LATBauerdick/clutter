@@ -50,7 +50,7 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendSkip, appendSplit, appendVersion, collectionFile, followMove, newAlbumId, notSame, parseStreamRef, readMoves, reviewedFiles, sameKind, standInFolderTags)
+import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendRate, appendSkip, appendSplit, appendTag, appendVersion, collectionFile, readCurated, followMove, newAlbumId, notSame, parseStreamRef, readMoves, reviewedFiles, sameKind, standInFolderTags)
 import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedName, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
@@ -391,6 +391,36 @@ type API24 =
       :> QueryParam "q" Text
       :> Get '[JSON] [CandV]
 
+-- curated tags and rating (docs/album-layer-plan.md › Slices, 5):
+--   /api/albumtag/:aid?tag=my.piano&value=true|false   put a curated tag on aid's album, or take it off
+--   /api/albumrate/:aid?stars=0..5                      the album's rating; 0 takes it off
+--   /api/curated                                        the curated tags clutter offers, with
+--                                                       their names and how many rows have each
+type API25 =
+  "api"
+    :> "albumtag"
+    :> Capture "aid" AlbumKey
+    :> QueryParam "tag" Text
+    :> QueryParam "value" Bool
+    :> Get '[JSON] RowJ
+    :<|> "api"
+      :> "albumrate"
+      :> Capture "aid" AlbumKey
+      :> QueryParam "stars" Int
+      :> Get '[JSON] RowJ
+    :<|> "api"
+      :> "curated"
+      :> Get '[JSON] [CuratedJ]
+
+-- a curated tag: "my.piano", its name "Piano", and how many album rows have it
+data CuratedJ = CuratedJ
+  { ctTag :: Text
+  , ctName :: Text
+  , ctCount :: Int
+  }
+  deriving (Show, Generic)
+instance ToJSON CuratedJ
+
 -- the answer to a change of the album layer: as ReqJ, and the key of the album's row
 -- afterwards (the page to show)
 data RowJ = RowJ
@@ -492,6 +522,7 @@ type ClutterAPI =
     :<|> API22
     :<|> API23
     :<|> API24
+    :<|> API25
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -572,6 +603,7 @@ clutterServer sd =
     :<|> serveAlbumskeep
     :<|> serveNodeplayfiles
     :<|> (serveAlbumjoin :<|> serveAlbumsplit :<|> serveAlbumlead :<|> serveAlbumfind)
+    :<|> (serveAlbumtag :<|> serveAlbumrate :<|> serveCurated)
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -1128,6 +1160,60 @@ clutterServer sd =
               (\fn -> appendLead fn now nm Nothing a)
               "The lead follows the rule again (record, Tidal, files, Apple Music, Qobuz)"
               i
+
+  -- a curated tag (my.*) on aid's album, or taken off; written against the album's C id
+  -- if it has one, else its key, and shown on every version
+  serveAlbumtag :: AlbumKey -> Maybe Text -> Maybe Bool -> AppM RowJ
+  serveAlbumtag i mt mv = do
+    now <- liftIO getZonedTime
+    am <- asks albumsR >>= readIORef
+    ly <- asks layerR >>= readIORef
+    let t = TX.toLower (TX.strip (fromMaybe "" mt))
+        okTag = "my." `TX.isPrefixOf` t && TX.length t > 3 && TX.all (\c -> Ch.isAsciiLower c || Ch.isDigit c || c `elem` ("._-" :: String)) t
+        v = fromMaybe True mv
+    case M.lookup i am of
+      _ | not (lyFormat ly) -> rowAnswer False notAlbumFormat i
+      Nothing -> rowAnswer False "Not in clutter" i
+      Just a
+        | not okTag -> rowAnswer False "A curated tag is my. and letters or digits (my.piano)" i
+        | v == (t `elem` albumTags a) -> rowAnswer False (if v then "The album has " <> t <> " already" else "The album does not have " <> t) i
+        | otherwise ->
+            layerWrite
+              (\fn -> appendTag fn now (nameOf ly i) t v a)
+              ((if v then "Tagged " else "Took off ") <> t)
+              i
+
+  -- the album's rating, 1–5, 0 takes it off. Refused until the log has clutter's ratings
+  -- (scripts/import-discogs-curation.py --write): the first rate line makes every rating
+  -- clutter's, so a lone one would hide all the ratings from Discogs.
+  serveAlbumrate :: AlbumKey -> Maybe Int -> AppM RowJ
+  serveAlbumrate i ms = do
+    now <- liftIO getZonedTime
+    am <- asks albumsR >>= readIORef
+    ly <- asks layerR >>= readIORef
+    case (M.lookup i am, ms) of
+      _ | not (lyFormat ly) -> rowAnswer False notAlbumFormat i
+      _ | not (lyRated ly) -> rowAnswer False "Ratings are still Discogs's: run scripts/import-discogs-curation.py --write first" i
+      (Nothing, _) -> rowAnswer False "Not in clutter" i
+      (Just a, Just s)
+        | s < 0 || s > 5 -> rowAnswer False "stars: 0 to 5" i
+        | otherwise ->
+            layerWrite
+              (\fn -> appendRate fn now (nameOf ly i) s a)
+              (if s == 0 then "Rating taken off" else "Rated " <> show s <> "★")
+              i
+      (Just _, Nothing) -> rowAnswer False "stars: 0 to 5" i
+
+  -- the curated tags clutter offers (curated-tags.json, then those in use it does not
+  -- name), with how many album rows have each
+  serveCurated :: AppM [CuratedJ]
+  serveCurated = do
+    tix <- asks tagsR >>= readIORef
+    ly <- asks layerR >>= readIORef
+    let used = [t | t <- M.keys tix, "my." `TX.isPrefixOf` t]
+        rows t = length (ordNub (map (nameOf ly) (M.findWithDefault [] t tix)))
+    ts <- liftIO (readCurated used)
+    pure [CuratedJ{ctTag = t, ctName = n, ctCount = rows t} | (t, n) <- ts]
 
   -- any album row whose title and artist words begin with all the words asked for (two
   -- letters at least), not aid's own album; at most 20, by title

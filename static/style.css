@@ -747,6 +747,16 @@ a:active {
 .av-v { color: #55555a; min-width: 0; }
 .av-v a:link, .av-v a:visited, .av-links a:link, .av-links a:visited { color: #5b5bd6; text-decoration: none; }
 .av-stars { color: #c79a00; letter-spacing: .05em; }
+/* the album's rating: five stars, a click sets it (album layer, slice 5) */
+.av-star { border: 0; background: none; padding: 0 1px; font-size: 16px; line-height: 1; color: #c9c9cf; cursor: pointer; }
+.av-star-on { color: #c79a00; }
+.av-star:hover { color: #e0b100; }
+/* the curated tags: a chip with its ×, and the picker */
+.av-mytag { display: inline-flex; margin-right: 2px; }
+.av-mytag .av-tag { margin-right: 0; }
+.av-mytag .av-unlink { margin-right: 4px; border-left: 1px solid #fff; }
+.av-mytag-add { font-family: inherit; font-size: 12px; color: #55555a; border: 1px solid #d8dae2; border-radius: 4px; background: #fff; padding: 0 2px; }
+.nav-count { color: #9a9aa2; font-size: 11px; }
 .av-tag {
   border: 0;
   background: #eceef4;

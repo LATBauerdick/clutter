@@ -160,7 +160,7 @@ def expected() -> list:
     by |= {n: s for n in ["D21", "Cqqqqqq", "Crrrrrr", "Cssssss"]}
     by |= {"D39": "T32|T32|-|-|-|T32|T32", "T31": "T32|T32|-|-|-|T32|T32",
            "D49": "T42|T42|-|-|-|T42|T42", "T41": "T42|T42|-|-|-|T42|T42", "Ctttttt": "Ctttttt|-|-|-|-|-|-"}
-    out = [f"{n}|{by[n]}" for n in NAMES] + ["format|True"]
+    out = [f"{n}|{by[n]}" for n in NAMES] + ["format|True", "rated|True"]
     out += [f"play {','.join(p)}|{r}" for p, r in zip(PLAYS, ["T901", J3, "T500", "-", JY, "-"])]
     out += [f"line {i}|{r}" for i, r in enumerate(["not read"] * 5 + ["read"] * 3)]
     return out + ["old log.jsonl|files 0|streams 0", "old log-noformat.jsonl|files 1|streams 2"]
@@ -175,6 +175,7 @@ def python_answers(d: str) -> list:
                              ",".join(sorted(al.tags_of(n))) or "-", f(al.rating_of(n)),
                              f(al.lead_of(n, ADDED.get)), f(al.lead_of(n))]))
     out.append(f"format|{al.format}")
+    out.append(f"rated|{al.rated}")
     holds = set(HOLDS)
     out += [f"play {','.join(p)}|{f(al.play_version(holds.__contains__, p))}" for p in PLAYS]
     out += [f"line {i}|{'read' if cl._event(e) else 'not read'}" for i, e in enumerate(LINES)]
@@ -213,6 +214,7 @@ albumLayerCheck = do
       , csv (map T.unpack (S.toList (AL.tagsOf al n))), f (show <$> AL.ratingOf al n)
       , f (ks <$> AL.leadOf added al n), f (ks <$> AL.leadOf (const (Nothing :: Maybe String)) al n) ]) names
   out ("format|" ++ show (AL.alFormat al))
+  out ("rated|" ++ show (AL.alRated al))
   let holds = (`elem` mapMaybe parseKey (T.words "HOLDS"))
   mapM_ (\w -> out ("play " ++ T.unpack w ++ "|" ++ f (ks <$> AL.playVersion holds al (mapMaybe parseKey (T.splitOn "," w))))) (T.words "PLAYS")
   mapM_ (\(i, l) -> out ("line " ++ show i ++ "|" ++ either (const "not read") (maybe "not read" (const "read")) (A.eitherDecode l >>= AT.parseEither AL.logEvent)))

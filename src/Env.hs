@@ -57,7 +57,7 @@ import Wikidata (attachWiki, readWikiStore)
 import Details (attachLength, factsFor, readDetailStore)
 import qualified Data.Text as TX
 import qualified AlbumLayer as AL
-import Collection (attachAlbumPlays, attachAlbums, attachCollection, buildLayer, collectionFile, followMove, readAlbumLog, readMoves, shelfIndexTags, spreadAlbumTags, standInFolderTags)
+import Collection (attachAlbumPlays, attachAlbums, attachCollection, attachCurated, buildLayer, collectionFile, followMove, readAlbumLog, readMoves, shelfIndexTags, spreadAlbumTags, standInFolderTags)
 import Jellyfin (JellyfinStore (..), jellyfinAlbums, readJellyfinStore)
 import Listened (listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
@@ -357,6 +357,7 @@ derive sit alog es wl fa base =
   let ly = buildLayer alog base
       am =
         attachCollection sit ly base
+          . attachCurated alog ly
           . spreadAlbumTags ly
           . attachLength fa
           . wl

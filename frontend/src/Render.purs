@@ -345,7 +345,7 @@ render state =
     genres = mapMaybe (S.stripPrefix (Pattern "genre.")) a.albumTags
     -- the other tags, without those the facts already show (provider, rating, plays)
     -- and without the Discogs styles once those are chips
-    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal.", "length.", "collection.", "keep." ])
+    otherTags = filter (\t -> not (any (\p -> S.take (S.length p) t == p) [ "genre.", "provider.", "rated.", "played.", "tidal.", "length.", "collection.", "keep.", "my." ])
                               && not (elem t (map S.toLower styles)) && not (elem t genres)) a.albumTags
     chipsView =
       HH.div [ cls "av-chips" ] $
@@ -394,9 +394,21 @@ render state =
         , if state.version /= "" then [] else case facts >>= _.afLabel of
             Just l -> row "Label" [ HH.text l ]
             Nothing -> []
-        , if a.albumRating > 0
-            then row "Rating" [ HH.span [ cls "av-stars" ] [ HH.text (stars a.albumRating) ] ]
-            else []
+        -- the album's rating (its rated.* tags: clutter's own once seeded from Discogs);
+        -- a click on a star sets it, on the star that is set takes it off
+        , row "Rating" (map (\i -> HH.button [ cls (if i <= rating then "av-star av-star-on" else "av-star")
+                                             , HE.onClick \_ -> RateAlbum a.albumID (if i == rating then 0 else i)
+                                             , HP.title (if i == rating then "Take the rating off" else "Rate " <> show i <> "★") ]
+                                             [ HH.text (if i <= rating then "★" else "☆") ]) (range 1 5))
+        -- the curated tags (my.*): × takes one off; the picker puts one on
+        , row "My tags" (map (\t -> HH.span [ cls "av-mytag" ]
+                                      [ HH.button [ cls "av-tag", HE.onClick \_ -> ShowCurated t, HP.title ("All albums tagged " <> curatedName t) ] [ HH.text (curatedName t) ]
+                                      , HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> TagAlbum a.albumID t false, HP.title ("Take " <> curatedName t <> " off") ] [ HH.text "×" ] ])
+                             myTags
+                         <> (if null tagChoices then [] else
+                               [ HH.select [ cls "av-mytag-add", HE.onValueChange \v -> if v == "" then ClosePops else TagAlbum a.albumID v true ]
+                                   ([ HH.option [ HP.value "", HP.selected true ] [ HH.text "+ tag" ] ]
+                                    <> map (\c -> HH.option [ HP.value c.ctTag ] [ HH.text c.ctName ]) tagChoices) ]))
         , case (if verIsFile then state.verA >>= _.albumAdded else if state.version == "" then a.albumAdded else Nothing) of
             Just d | d /= "" -> row "Added" [ HH.text (S.take 10 d) ]
             _ -> []
@@ -407,7 +419,11 @@ render state =
             row "Tags" (map (\t -> HH.button [ cls "av-tag", HE.onClick \_ -> ShowFocus t, HP.title ("All albums: #" <> t) ]
                                              [ HH.text t ]) otherTags)
         ]
-    stars n = S.joinWith "" (replicate (min 5 n) "★" <> replicate (5 - min 5 n) "☆")
+    -- the rating from the rated.* tags ("rated.****": 4), 0 if none
+    rating = fromMaybe 0 (maximum (mapMaybe (\t -> S.stripPrefix (Pattern "rated.*") t <#> \r -> 1 + S.length r) a.albumTags))
+    myTags = filter (\t -> S.take 3 t == "my.") a.albumTags
+    curatedName t = maybe (S.drop 3 t) _.ctName (find (\c -> c.ctTag == t) state.curated)
+    tagChoices = filter (\c -> not (elem c.ctTag myTags)) state.curated
     playsText
       | np == 0 = if early then "before the log began" else "not played yet"
       | otherwise = show np <> " · last " <> S.take 10 (fromMaybe "" (head a.albumListenedDates))

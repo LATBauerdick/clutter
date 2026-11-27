@@ -177,6 +177,7 @@ data Layer = Layer
   , lyIds :: Set AlbumKey -- every C id the log has used (a new one must be none of them)
   , lyPlay :: PlayEvent -> Maybe AlbumKey -- the album a play counts for, if clutter holds its version
   , lyLeadSet :: Set AlbumKey -- the albums (by name) whose lead a lead line names, not the rule
+  , lyRated :: Bool -- the log has a rate line: ratings are clutter's, seeded from Discogs
   }
 
 -- the key of a held album's row: its lead version's

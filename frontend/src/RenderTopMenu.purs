@@ -48,6 +48,7 @@ renderSide state =
   HH.div [ cls (if state.sideOpen then "side side-open" else "side") ] $
     [ HH.div [ cls "brand" ] [ HH.i_ [], HH.text "clutter" ] ]
     <> group "Library" library
+    <> myTagsGroup
     <> group "Discogs Lists" lists
     <> fold "Genre folders" genreFolders
     <> listenedFold
@@ -86,6 +87,16 @@ renderSide state =
               , HE.onClick \_ -> ShowList (AlbumList (Just n)) ]
               [ HH.text n ]
   group title ns = if null ns then [] else [ HH.h4_ [ HH.text title ] ] <> map item ns
+  -- the curated tags as views (album layer, slice 5): All, focused on the tag; a tag no
+  -- album has yet (my.vocal) is listed with 0
+  myTagsGroup =
+    if null state.curated then [] else
+      [ HH.h4_ [ HH.text "My tags" ] ]
+      <> map (\c -> HH.button [ cls (if inList state && state.menu.ln == "All" && state.menu.ffs == [ Tuple c.ctTag true ] then "nav-item nav-on" else "nav-item")
+                              , HE.onClick \_ -> ShowCurated c.ctTag
+                              , HP.title (show c.ctCount <> " albums tagged " <> c.ctName) ]
+                              [ HH.text c.ctName, HH.small [ cls "nav-count" ] [ HH.text (" " <> show c.ctCount) ] ])
+             state.curated
   -- the play log, folded: a click on "Listened" shows this year's plays (the newest year in
   -- the log) and opens the fold; a click while a Listened list is on show closes or opens it,
   -- and closed it is blue, since the list on show is one of its own. Inside, every year and

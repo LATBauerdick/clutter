@@ -57,6 +57,11 @@ module Collection (
   attachAlbums,
   attachAlbumPlays,
   spreadAlbumTags,
+  attachCurated,
+  ratedTags,
+  readCurated,
+  appendTag,
+  appendRate,
   attachCollection,
   shelfIndexTags,
   standInFolderTags,
@@ -206,6 +211,7 @@ buildLayer al am =
     , lyRow = rows
     , lyVersions = versions
     , lyKeep = AL.alKeep al
+    , lyRated = AL.alRated al
     , lyLeadSet = S.fromList [n | (n, k) <- M.toList (AL.alLead al), k `elem` M.findWithDefault [] n heldOrdered]
     , lyStandIns = M.fromListWith (flip (<>)) [(n, [k]) | (k, n) <- M.toList aliased]
     , lyIds = S.fromList (M.keys (AL.albumsWithIds al)) <> S.fromList (map C (M.keys (AL.alMerges al) <> M.elems (AL.alMerges al)))
@@ -344,6 +350,57 @@ attachAlbumPlays ly es am = M.mapWithKey attach am
           , albumTags = filter (not . ("played." `T.isPrefixOf`)) (albumTags a) <> playedTags (length ds) (M.findWithDefault 0 n early)
           }
 
+-- The curated tags (my.*) and clutter's own rating, from the collection log, on every
+-- version of an album (and on its stand-ins). The rating replaces the rated.* tags from
+-- Discogs once the log has a rate line (seeded by scripts/import-discogs-curation.py),
+-- and albumRating with it (the list cards' stars); before that the Discogs ones stay
+-- (spreadAlbumTags). Run after spreadAlbumTags.
+attachCurated :: AL.AlbumLog -> Layer -> Map AlbumKey Album -> Map AlbumKey Album
+attachCurated alog ly = M.mapWithKey putCurated
+ where
+  putCurated k a =
+    let n = nameOf ly k
+        mine = S.toList (AL.tagsOf alog n)
+        stars = fromMaybe 0 (AL.ratingOf alog n)
+        rated = if AL.alRated alog then ratedTags stars else []
+        keep t = not ("my." `T.isPrefixOf` t) && not (AL.alRated alog && "rated." `T.isPrefixOf` t)
+     in a
+          { albumTags = filter keep (albumTags a) <> mine <> rated
+          , albumRating = if AL.alRated alog then stars else albumRating a
+          }
+
+-- the rated.* tags of a rating (0: none), as FromDiscogs gives them for a Discogs rating
+ratedTags :: Int -> [Text]
+ratedTags = \case
+  0 -> ["rated.not"]
+  1 -> ["rated.", "rated.*", "rated.dislike"]
+  2 -> ["rated.", "rated.**", "rated.dislike"]
+  3 -> ["rated.", "rated.***"]
+  4 -> ["rated.", "rated.****", "rated.like"]
+  _ -> ["rated.", "rated.*****", "rated.like"]
+
+-- The curated tags clutter offers (~/Sync/clutter/curated-tags.json, $CLUTTER_CURATED_TAGS:
+-- [{"tag":"my.piano","name":"Piano"}, …], in the sidebar's order), then any my.* tag in use
+-- that the file does not name (its name: the tag without "my."). A missing or broken file
+-- is an empty list.
+readCurated :: [Text] -> IO [(Text, Text)]
+readCurated inUse = do
+  fn <-
+    lookupEnv "CLUTTER_CURATED_TAGS" >>= \case
+      Just f | not (null f) -> pure f
+      _ -> (\h -> h </> "Sync" </> "clutter" </> "curated-tags.json") . fromMaybe "." <$> lookupEnv "HOME"
+  ok <- doesFileExist fn
+  listed <-
+    if not ok
+      then pure []
+      else do
+        bs <- readFileBS fn
+        pure . either (const []) id $
+          eitherDecodeStrict bs >>= parseEither (mapM (withObject "curated" (\o -> (,) <$> (T.toLower <$> o .: "tag") <*> o .: "name")))
+  let known = S.fromList (map fst listed)
+      extra = [(t, T.drop 3 t) | t <- ordNub (sort inUse), "my." `T.isPrefixOf` t, not (S.member t known)]
+  pure (listed <> extra)
+
 -- The album-level tags that come from one version: length.* (the lead's) and rated.* (from
 -- Discogs until clutter has its own rating: the first record of the album that is rated,
 -- lead first), the same on every version of an album. Run after Details.attachLength.
@@ -363,8 +420,8 @@ spreadAlbumTags ly am = foldl' spread am albums
           lengthTags = filter (pre "length.") (tagsOf l)
           -- the first version (lead first), then stand-in, that is rated
           rated = filter (pre "rated.") <$> map tagsOf (hs <> sis)
-          ratedTags = fromMaybe (fromMaybe [] (viaNonEmpty head (filter (not . null) rated))) (find (\ts -> not (null ts) && "rated.not" `notElem` ts) rated)
-          setTags a = a{albumTags = filter (\t -> not (pre "length." t || pre "rated." t)) (albumTags a) <> lengthTags <> ratedTags}
+          ratedFirst = fromMaybe (fromMaybe [] (viaNonEmpty head (filter (not . null) rated))) (find (\ts -> not (null ts) && "rated.not" `notElem` ts) rated)
+          setTags a = a{albumTags = filter (\t -> not (pre "length." t || pre "rated." t)) (albumTags a) <> lengthTags <> ratedFirst}
        in foldl' (flip (M.adjust setTags)) m (hs <> sis)
     _ -> m
 
@@ -396,7 +453,9 @@ attachCollection standInTags ly base am = M.mapWithKey setTags am
 shelfIndexTags :: Layer -> Map AlbumKey Album -> Map AlbumKey Album -> Map AlbumKey [Text]
 shelfIndexTags ly base am =
   M.fromList
-    [ (l, ordNub (albumTags b <> filter (\t -> albumLevel t || borrowed t) (albumTags a)))
+    -- the record's own tags without its album-level ones (its Discogs rated.*, its own
+    -- played.*): those are the album's, from a
+    [ (l, ordNub (filter (not . albumLevel) (albumTags b) <> filter (\t -> albumLevel t || borrowed t) (albumTags a)))
     | vs <- M.elems (lyVersions ly)
     , l@(D _) : _ : _ <- [filter (`M.member` am) vs]
     , rowOf ly l == l
@@ -458,6 +517,18 @@ appendLead :: FilePath -> ZonedTime -> AlbumKey -> Maybe AlbumKey -> Album -> IO
 appendLead fn now n mk a =
   appendLine fn . object $
     ["ts" .= stamp now, "op" .= ("lead" :: Text), "album" .= n] <> maybe [] (\k -> ["key" .= k]) mk <> ["via" .= ("clutter" :: Text)] <> named a
+
+-- a curated tag on the album, or taken off (value false)
+appendTag :: FilePath -> ZonedTime -> AlbumKey -> Text -> Bool -> Album -> IO ()
+appendTag fn now n t v a =
+  appendLine fn . object $
+    ["ts" .= stamp now, "op" .= ("tag" :: Text), "album" .= n, "tag" .= t, "value" .= v, "via" .= ("clutter" :: Text)] <> named a
+
+-- the album's rating, 1–5; 0 takes it off
+appendRate :: FilePath -> ZonedTime -> AlbumKey -> Int -> Album -> IO ()
+appendRate fn now n s a =
+  appendLine fn . object $
+    ["ts" .= stamp now, "op" .= ("rate" :: Text), "album" .= n, "stars" .= s, "via" .= ("clutter" :: Text)] <> named a
 
 -- a version is its own album again
 appendSplit ::FilePath -> ZonedTime -> AlbumKey -> Album -> IO ()

@@ -144,6 +144,7 @@ data AlbumLog = AlbumLog
   , alTags :: Map AlbumKey (Set Text) -- by album
   , alRate :: Map AlbumKey Int -- by album
   , alLead :: Map AlbumKey AlbumKey -- by album: the version a lead line names
+  , alRated :: Bool -- a rate line in the log: ratings are clutter's (seeded from Discogs), not Discogs's
   }
 
 -- the key a version is known by now: moves and aliases followed (a loop stops)
@@ -223,7 +224,7 @@ foldLog es =
       mv = \case J j -> J (followChain moves j); k -> k
       aliases = foldLinks [(mv a, mv b) | Alias a b <- es]
       merges = foldLinks [(a, b) | Merge a b <- es]
-      base = AlbumLog True moves aliases merges M.empty M.empty M.empty M.empty M.empty M.empty
+      base = AlbumLog True moves aliases merges M.empty M.empty M.empty M.empty M.empty M.empty False
       member =
         foldl'
           ( \m (n, e) -> case e of
@@ -236,7 +237,7 @@ foldLog es =
       table =
         M.map (sortOn snd) $
           M.fromListWith (<>) [(C (followChain merges c), [(k, n)]) | (k, (c, n)) <- M.toList member]
-      al0 = base{alFormat = Format `elem` es, alMember = member, alAlbums = table}
+      al0 = base{alFormat = Format `elem` es, alMember = member, alAlbums = table, alRated = any (\case Rate _ _ -> True; _ -> False) es}
       r = resolveName al0
       step al = \case
         KeepMark n v -> al{alKeep = M.alter (const v) (r n) (alKeep al)}

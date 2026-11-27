@@ -81,6 +81,7 @@ initialState = do -- should eventually be saved in preferences
         , streamRef: ""
         , findQ: ""
         , found: []
+        , curated: []
         , views: []
         , pos: 0
         , album: Nothing

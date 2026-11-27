@@ -6,6 +6,7 @@ module Types  ( Album
               , AlbumXJ
               , FileV
               , CandV
+              , Curated
               , ReviewRow
               , ReviewJ
               , Track
@@ -136,6 +137,11 @@ type CandV =      { cvKey :: String
                   , cvReleased :: String
                   , cvHas :: Maybe String -- the release's present album of that service, "" if none
                   }
+-- /api/curated: a curated tag ("my.piano"), its name ("Piano"), and how many album rows have it
+type Curated =    { ctTag :: String
+                  , ctName :: String
+                  , ctCount :: Int
+                  }
 -- /api/reviewq: a file album the inventory could not link for sure, with the albums it may
 -- be a version of (the inventory's choice first)
 type ReviewRow =  { rrKey :: String
@@ -220,6 +226,7 @@ type State =      { apiUrl :: String
                   , streamRef :: String -- the album page's "link a stream" box: T<id>, A<id> or a share link
                   , findQ :: String -- the album page's "Same album as…" search box
                   , found :: Array CandV -- what that search found (/api/albumfind)
+                  , curated :: Array Curated -- the curated tags clutter offers (/api/curated): the sidebar's views, the album page's picker
                   , views :: Array View
                   , pos :: Int
                   , album :: Maybe Album
@@ -311,6 +318,10 @@ data Action = ToggleSortOrder
             | JoinAlbum String String -- album, other album: one album now (album layer); then its row is shown
             | SplitVersion String String -- album, version: take that version off, an album of its own again
             | LeadVersion String String -- album, version: that version leads the album; "": back to the rule
+            | TagAlbum String String Boolean -- album, curated tag: put it on (true) or take it off (false)
+            | RateAlbum String Int -- album, stars 1–5; 0 takes the rating off
+            | ShowCurated String -- the view of a curated tag: All, focused on that tag
+            | LoadCurated -- fetch the curated tags and their counts again
             | SetFindQ String
             | FindAlbums String -- album: search any album for "Same album as…"
             | ShowVersion String -- the album page shows this version: "" the album, "tidal", "J…" (see version)

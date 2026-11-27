@@ -214,6 +214,7 @@ def _event(e: dict):
 class AlbumLog:
     def __init__(self, events: list):
         self.format = any(e[0] == "format" for e in events)
+        self.rated = any(e[0] == "rate" for e in events)  # ratings are clutter's, not Discogs's
         self.moves = _chain((e[1], e[2]) for e in events if e[0] == "moved")
         self.aliases = _links((self._mv(e[1]), self._mv(e[2])) for e in events if e[0] == "alias")
         self.merges = _links((e[1], e[2]) for e in events if e[0] == "merge")
@@ -399,3 +400,29 @@ def release_of_tidal(path: str | None = None, keep=lambda rid: True) -> dict:
             if v[0] == "T" and v[1:].isdigit():
                 out.setdefault(int(v[1:]), int(rs[0][1:]))
     return out
+
+
+def append_lines(path: str, lines: list) -> None:
+    """append the lines (dicts) to the log as one O_APPEND write, after a newline if the
+    log ends without one, and read them back; raises RuntimeError if the log does not end
+    with them afterwards (another writer: stop clutter first)"""
+    torn = False
+    with open(path, "rb") as f:
+        f.seek(0, 2)
+        if f.tell() > 0:
+            f.seek(-1, 2)
+            torn = f.read(1) != b"\n"
+    data = (("\n" if torn else "") + "".join(json.dumps(l, ensure_ascii=False) + "\n" for l in lines)).encode()
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND)
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    with open(path, "rb") as f:
+        f.seek(0, 2)
+        f.seek(max(0, f.tell() - len(data)))
+        if f.read() != data:
+            raise RuntimeError(f"{path} does not end with the lines just written (another writer?)")

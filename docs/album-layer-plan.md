@@ -479,7 +479,47 @@ Status:
   (unless `--force`). Docstring: stop clutter first. Rechecked on copies of the live
   log: clean write (no blank line, same lines as before apart from `ts`), torn end
   (newline restored, same lines), second run and partial run refused, the comparison
-  and dry runs unchanged.
+  and dry runs unchanged. `--write` ran on the real log 2026-11-26 18:17.
+- Slice 5 — built 2026-11-26 (session 859f28b2), uncommitted. LATB decided: tags
+  `my.pop`, `my.piano`, `my.symphonic`, `my.concertos`, `my.chamber`, `my.opera` (all of
+  Opera&Vocal), `my.petra`, `my.darkoLavorgna` (read as `my.darkolavorgna`: tags are
+  lower case), and `my.vocal` offered but unused; records that disagree on the rating →
+  the higher. `scripts/import-discogs-curation.py` (dry run default; `--write` copies
+  the log to `collection.jsonl.before-curation`, appends with
+  `collection_log.append_lines()` — one `O_APPEND` write, read back — and writes
+  `~/Sync/clutter/curated-tags.json` (`$CLUTTER_CURATED_TAGS`: the tags clutter offers,
+  with names, in the sidebar's order) if missing; refuses a second run and a log without
+  the format line). Server: `AlbumLog.alRated` / `Layer.lyRated` (a rate line in the
+  log); `Collection.attachCurated` after `spreadAlbumTags` puts the album's `my.*` tags
+  and, once `lyRated`, its rating (`ratedTags`, the Discogs mapping) on every version
+  and stand-in; until then the Discogs ratings stay. `/api/albumtag/:aid?tag&value`,
+  `/api/albumrate/:aid?stars` (refused before the import: a lone rate line would hide
+  every Discogs rating), `/api/curated` (the file's tags, then any `my.*` in use, with
+  row counts). Page: Rating row with five clickable stars (the set star again: off), My
+  tags row with chips (name → the view, × → off) and a "+ tag" picker; sidebar group
+  "My tags": one view per tag (All, focus `#my.…`) with counts.
+  Check, copies of the live log, server on 8085: without rate lines every rating and
+  tag count equals the live server's, rating refused; after the import (1,732 lines:
+  1,340 tags on 1,303 albums, 392 ratings; a second run refused) the `my.*` counts
+  equal the report (Pop 502, Piano 231, Symphonic 225, Concertos 66, Chamber 99, Opera
+  169, Petra 35, Darko/Lavorgna 13, Vocal 0), 5★ 149 → 150 (Blonde On Blonde, the
+  higher rating); `rated.not` now covers every unrated album, streams and files too
+  (11,907 rows, was 1,552 Discogs releases). A tag set on Blonde On Blonde's record
+  shows on its Tidal version and back; rate 3 / 0 / 5 on either; a bad tag refused.
+  Headless Chrome: stars, picker, ×, sidebar view (231 rows, `#my.piano` chip, count
+  refreshed after tagging). Reviewed the same day by a fresh Opus reviewer; fixed: a
+  record's shelf row kept its own Discogs `rated.*` beside the album's (`shelfIndexTags`
+  now takes album-level tags only from the album: 32 shelf lists, no row under two
+  ratings, also after re-rating); the list cards' stars (`albumRating`) follow clutter's
+  rating once the log has one; the import writes `my.darkolavorgna` in lower case, takes
+  the log's stat before its first read, and writes `curated-tags.json` beside the log
+  (a test run on a copy no longer creates the live file); sidebar counts reload after a
+  join or split; `album-layer-check.py` checks the rated flag in both readers (Python
+  60, Haskell 58 OK). Left as the spec reads (for LATB): a tag or rating written while
+  an album had one version follows that version when it is split off later — the album
+  it leaves loses it. Not done: tags on the list cards; a tag editor (rename, order, new
+  tags only by editing `curated-tags.json`); tagging or rating from a version tab
+  returns to the album tab.
 
 ### Questions for LATB — answered 2026-11-26: OK to all five
 

@@ -126,6 +126,7 @@ handleAction = case _ of
         pushView
         showAlbum row
         H.modify_ _ { notice = Just i, findQ = "", found = [] }
+        handleAction LoadCurated -- the sidebar's counts: two albums are one now
       Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
       Left _ -> H.modify_ _ { notice = Just "Join: no answer" }
   SplitVersion aid v -> do
@@ -138,6 +139,7 @@ handleAction = case _ of
         Right { rjInfo: i, rjResult: 1, rjRow: row } -> do
           showAlbum row
           H.modify_ _ { notice = Just i }
+          handleAction LoadCurated -- the sidebar's counts: one album is two now
         Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
         Left _ -> H.modify_ _ { notice = Just "Take off: no answer" }
   LeadVersion aid v -> do
@@ -149,6 +151,38 @@ handleAction = case _ of
         H.modify_ _ { notice = Just i }
       Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
       Left _ -> H.modify_ _ { notice = Just "Lead: no answer" }
+  -- curated tags and rating (album layer, slice 5): the album is shown again with them, and
+  -- the sidebar's counts are fetched again
+  TagAlbum aid t v -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumtag/" <> aid <> "?tag=" <> _encodeURIComponent t <> "&value=" <> (if v then "true" else "false"))
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjResult :: Int, rjRow :: String } of
+      Right { rjInfo: i, rjResult: 1 } -> do
+        showAlbum aid
+        H.modify_ _ { notice = Just i }
+        handleAction LoadCurated
+      Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Tag: no answer" }
+  RateAlbum aid s -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumrate/" <> aid <> "?stars=" <> show s)
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjResult :: Int, rjRow :: String } of
+      Right { rjInfo: i, rjResult: 1 } -> do
+        showAlbum aid
+        H.modify_ _ { notice = Just i }
+      Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Rate: no answer" }
+  ShowCurated t -> do
+    pushView
+    adjustSort "All"
+    H.modify_ _ { listName = AlbumList (Just "All"), loading = true, menu { ln = "All", ffs = [ Tuple t true ] } }
+    updateAlbumList
+  LoadCurated -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "curated")
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError (Array { ctTag :: String, ctName :: String, ctCount :: Int }) of
+      Right cs -> H.modify_ _ { curated = cs }
+      Left _ -> H.liftAff $ Console.log ("curated: " <> r)
   SetFindQ s -> H.modify_ _ { findQ = s }
   FindAlbums aid -> do
     api <- H.gets _.apiUrl
@@ -282,6 +316,7 @@ handleAction = case _ of
     case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
       Right { reqInfo: n, reqResult: 1 } -> H.modify_ _ { nodeName = n }
       _ -> H.liftAff $ Console.log ("nodeinfo: " <> r) -- keep "Node"
+    handleAction LoadCurated
   NodeCtl cmd -> do
     api <- H.gets _.apiUrl
     r <- H.liftAff $ getUrl (api <> "nodectl/" <> cmd)
