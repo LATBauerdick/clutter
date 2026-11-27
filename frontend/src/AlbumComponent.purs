@@ -371,10 +371,13 @@ handleAction = case _ of
   LinkStream aid -> do
    ref0 <- H.gets _.streamRef
    let low = toLower (trim ref0)
-       -- D<id> (r<id>) a release, m<id> a master; "release/…", "master/…"; a discogs.com address
-       short = (S.take 1 low == "d" || S.take 1 low == "r" || S.take 1 low == "m") && isJust (fromString (S.drop 1 low))
+       -- D<id> (r<id>) a release, m<id> a master; "release/…", "master/…"; a discogs.com
+       -- address; the code Discogs shows on a page, "[r123]" / "[m456]", also as "D[r123]"
+       bare = replaceAll (Pattern "[") (Replacement "") (replaceAll (Pattern "]") (Replacement "") (replaceAll (Pattern " ") (Replacement "") low))
+       code = if S.take 2 bare == "dr" || S.take 2 bare == "dm" then S.drop 1 bare else bare
+       short = (S.take 1 code == "d" || S.take 1 code == "r" || S.take 1 code == "m") && isJust (fromString (S.drop 1 code))
    if contains (Pattern "discogs") low || S.take 8 low == "release/" || S.take 7 low == "master/" || short
-     then handleAction (AddRef aid ref0) else do
+     then handleAction (AddRef aid (if short then code else ref0)) else do
     api <- H.gets _.apiUrl
     ref <- H.gets _.streamRef
     let enc = replaceAll (Pattern " ") (Replacement "%20")

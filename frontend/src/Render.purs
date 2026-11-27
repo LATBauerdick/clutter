@@ -633,7 +633,7 @@ render state =
           box =
             HH.div [ cls "av-streambox" ]
               [ HH.input [ HP.value state.streamRef
-                         , HP.placeholder (if streams then "T<id>, A<id>, Q<id>, D<id> or a link" else "D<id> or a discogs.com link")
+                         , HP.placeholder (if streams then "T<id>, A<id>, Q<id>, [r<id>] or a link" else "[r<id>], D<id> or a discogs.com link")
                          , HE.onValueInput SetStreamRef
                          , HP.title ((if streams then "A Tidal, Apple Music or Qobuz album (another edition takes the place of the one it has), or " else "")
                                      <> "a Discogs release or master that describes this album: credits, label, year. Nothing is added to the Discogs collection.") ]
@@ -754,6 +754,9 @@ render state =
                          else ext "vinyl-icon.png" ("https://www.discogs.com/search/?q=" <> qry <> "&type=all") "find on Discogs")
         <> (case a.albumTidal of
               Just t | t /= "" -> app "tidal-icon.png" ("tidal://album/" <> t) "Tidal app" <> ext "tidal-icon.png" ("https://listen.tidal.com/album/" <> t) "Tidal web"
+              -- no Tidal album yet: Tidal's own search, in a new tab; its album address goes
+              -- into the link box below
+              _ | not isTidalAlbum -> ext "tidal-icon.png" ("https://listen.tidal.com/search?q=" <> enc (artistNames <> " " <> a.albumTitle)) "find on Tidal"
               _ -> [])
         <> (case a.albumAMusic of
               Just am | am /= "" -> apple am

@@ -545,18 +545,25 @@ appendRef fn now n d v a =
 
 -- a Discogs release or master from what the page's box was given: a discogs.com URL
 -- ("https://www.discogs.com/release/123-Artist-Title", "/de/master/456", "/sell/release/123"),
--- or "release/123", "master/456", "D123" (a release, as clutter names a record), "r123", "m456"
+-- or "release/123", "master/456", "D123" (a release, as clutter names a record), "r123", "m456",
+-- and the code Discogs shows on a release's or master's page, "[r123]" / "[m456]", also as
+-- "D[r123]"
 parseDiscogsRef :: Text -> Maybe AL.DRef
 parseDiscogsRef raw
   | Just d <- AL.parseRef low = Just d
-  | Just n <- T.stripPrefix "r" low >>= whole = Just (AL.DRelease n)
-  | Just n <- T.stripPrefix "d" low >>= whole = Just (AL.DRelease n)
-  | Just n <- T.stripPrefix "m" low >>= whole = Just (AL.DMaster n)
+  | Just n <- T.stripPrefix "r" code >>= whole = Just (AL.DRelease n)
+  | Just n <- T.stripPrefix "d" code >>= whole = Just (AL.DRelease n)
+  | Just n <- T.stripPrefix "m" code >>= whole = Just (AL.DMaster n)
   | "discogs.com" `T.isInfixOf` low = viaNonEmpty head (mapMaybe pair (zip segs (drop 1 segs)))
   | otherwise = Nothing
  where
   t = T.strip raw
   low = T.toLower t
+  -- "[r123]", "D[r123]", "d r123" -> "r123"
+  bare = T.filter (\c -> c /= '[' && c /= ']' && c /= ' ') low
+  code = case T.uncons bare of
+    Just ('d', rest) | Just (c, _) <- T.uncons rest, c == 'r' || c == 'm' -> rest
+    _ -> bare
   path = T.takeWhile (\c -> c /= '?' && c /= '#') low
   -- (old addresses: /master/view/456)
   segs = filter (\x -> not (T.null x) && x /= "view") (T.splitOn "/" path)
