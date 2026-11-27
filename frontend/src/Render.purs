@@ -121,7 +121,7 @@ render state =
               <> (if length as <= state.shownMax then [] else
                     [ HH.div [ HP.class_ $ HH.ClassName "list-more" ]
                         [ HH.button [ HP.class_ $ HH.ClassName "av-btn", HE.onClick \_ -> ShowMore ]
-                            [ HH.text ("Show more · " <> show state.shownMax <> " of " <> show (length as) <> " drawn") ] ] ])
+                            [ HH.text ("Show more · " <> show state.shownMax <> " of " <> show (length as) <> " shown") ] ] ])
             )
     where as = shownAlbums state -- what the search box lets through
           idxs = if pLocList state.listName
@@ -439,11 +439,11 @@ render state =
         , if otherTags == [] then [] else
             row "Tags" (map (\t -> HH.button [ cls "av-tag", HE.onClick \_ -> ShowFocus t, HP.title ("All albums: #" <> t) ]
                                              [ HH.text t ]) otherTags)
-        -- the ids, to type into "Open an album by id": the album's (C…, where it has
+        -- the ids, to type into the top bar's loupe: the album's (C…, where it has
         -- versions) and the version shown
         , let shown = if state.version == "" then a.albumID else if state.version == "tidal" then "T" <> tidalId else state.version
               name = fromMaybe a.albumID (detail >>= _.xname)
-          in row "Id" [ HH.span [ cls "av-ids", HP.title "Type one into Open an album by id (menu)" ]
+          in row "Id" [ HH.span [ cls "av-ids", HP.title "Type one into the search (loupe) to open it" ]
                           [ HH.text (if name == shown then shown else name <> " · " <> shown) ] ]
         ]
     -- the rating from the rated.* tags ("rated.****": 4), 0 if none

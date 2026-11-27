@@ -51,7 +51,7 @@ instance showSortOrder :: Show SortOrder where
 
 -- a long list draws this many cards at first, and this many more each step
 pageSize :: Int
-pageSize = 240
+pageSize = 2000
 
 pLocList :: AlbumList -> Boolean -- lists with location info
 pLocList (AlbumList xx) = maybe false xxx xx where

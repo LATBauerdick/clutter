@@ -529,9 +529,11 @@ handleAction = case _ of
   SelectAlbum aid -> H.modify_ \st -> st { selected = if Set.member aid st.selected then Set.delete aid st.selected else Set.insert aid st.selected }
   SelectShown -> H.modify_ \st -> st { selected = Set.fromFoldable (map _.albumID (shownAlbums st)) }
   SelectNone -> H.modify_ _ { selected = (Set.empty :: Set.Set String) }
-  -- only on a list (not an album page), and only while the list has more than it draws
-  ShowMore -> H.modify_ \st ->
-    if not (isJust st.album) && st.shownMax < A.length st.albumList then st { shownMax = st.shownMax + pageSize } else st
+  -- only on a list (not an album page), and only while the list has more than it draws;
+  -- the view is told by listName, as in render: `album` stays set after going back to a list
+  ShowMore -> H.modify_ \st -> case st.listName of
+    AlbumList Nothing -> st
+    _ -> if st.shownMax < A.length st.albumList then st { shownMax = st.shownMax + pageSize } else st
   KeepSelected value -> do
     sel <- H.gets _.selected
     ok <- if Set.isEmpty sel then pure false else H.liftEffect (confirmBox (let n = show (Set.size sel) <> (if Set.size sel == 1 then " album" else " albums")

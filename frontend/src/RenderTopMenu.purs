@@ -207,11 +207,6 @@ renderTop state =
             , HH.button [ cls "menuitem", HE.onClick \_ -> UpdateServerFull, HP.disabled state.loading
                         , HP.title "Ask Jellyfin for every album: also finds those that left, moved or were retagged. Takes minutes." ]
                         [ HH.text "Full update from the server…" ]
-            , HH.form [ cls "lookup", HE.onSubmit \ev -> MakeRequest ev ]
-                [ HH.label_ [ HH.text "Open an album by id" ]
-                , HH.input [ HP.value state.albumID, HP.placeholder "D6715388, T283130328, C3d99nt", HP.title "A record (D…), a Tidal album (T…, taken into clutter if it does not hold it yet), a file album (J…) or an album (C…: opens its lead)", HE.onValueInput SetAlbumID ]
-                , HH.button [ HP.type_ HP.ButtonSubmit, HP.disabled state.loading ] [ HH.text "Open" ]
-                ]
             ]
         ]
     ]
