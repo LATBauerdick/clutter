@@ -529,6 +529,7 @@ render state =
                   "T" -> "Tidal"
                   "A" -> "Apple Music"
                   "Q" -> "Qobuz"
+                  "J" -> if v.cvFormat == "" then "Files" else v.cvFormat -- "Files · 1001"
                   _ -> "Version"
                 held = v.cvTitle /= ""
             in

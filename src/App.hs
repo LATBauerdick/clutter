@@ -715,7 +715,12 @@ clutterServer sd =
     -- the suggestions marked "not the same album" (×) for this one
     excl <- liftIO $ M.findWithDefault [] i <$> (collectionFile >>= notSame)
     sit <- liftIO standInFolderTags
-    let candV b = CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = ""}
+    -- a file album is named by its storage location ("Files · 1001"), not "Jellyfin": the
+    -- page says which copy a version or the album's lead is
+    let fmtOf b
+          | isFileKey (albumID b) = "Files" <> maybe "" (" · " <>) (viaNonEmpty head (mapMaybe (T.stripPrefix "storage.") (albumTags b)))
+          | otherwise = albumFormat b
+        candV b = CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = fmtOf b, cvReleased = albumReleased b, cvHas = ""}
         others = filter (/= i) (versionsOfKey ly i)
         -- a version clutter does not hold (a stream that is no favourite): its key alone
         versionV k = maybe CandV{cvKey = k, cvTitle = "", cvArtist = "", cvFormat = "", cvReleased = "", cvHas = ""} candV (M.lookup k am)
