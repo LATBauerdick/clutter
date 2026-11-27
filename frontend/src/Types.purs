@@ -86,6 +86,7 @@ type Album =      { albumID :: String
                   , albumArtists :: Maybe (Array ArtistRef)
                   , albumShelf :: Maybe (Tuple String Int)
                   , albumPlayedAt :: Maybe String -- set in the Listened views: the time of this play
+                  , albumVersions :: Maybe (Array String) -- set from the list's lversions: the album's versions ("Vinyl", "Tidal", "Files · imspl"); none or [] for an album of one
                   }
 type ArtistRef =  { arName :: String -- without the Discogs "(n)" suffix
                   , arKey :: String
@@ -227,12 +228,14 @@ type AlbumJ =     { aid :: String
 
 type AlbumsJ =    { listName :: String
                   , lalbums :: Array (Tuple Album (Maybe (Tuple String Int)))
+                  , lversions :: Maybe (Array (Array String)) -- row by row (an older backend: none)
                   }
 
 -- /api/listenedq: AlbumsJ, one row per play, plus the time of each play
 type ListenedJ =  { listName :: String
                   , lalbums :: Array (Tuple Album (Maybe (Tuple String Int)))
                   , lplayed :: Array String
+                  , lversions :: Maybe (Array (Array String))
                   }
 
 newtype AlbumList = AlbumList (Maybe  String)

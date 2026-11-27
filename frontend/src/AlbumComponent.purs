@@ -10,7 +10,7 @@ import Data.Tuple (Tuple(..), fst, snd)
 import Data.Either (Either(..))
 import Data.Map as M
 import Data.String (contains, stripPrefix, length, joinWith, toLower, trim)
-import Data.String (take, drop) as S
+import Data.String (take, drop, split) as S
 import Data.String.Pattern (Pattern(..), Replacement(..))
 import Data.String.Common (replaceAll)
 import Effect.Class.Console as Console
@@ -24,10 +24,10 @@ import Web.Event.Event as Event
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
 import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, RefJ, CandV, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
-import Data.Array (filter) as A
+import Data.Array (filter, mapMaybe, mapWithIndex) as A
 import Data.Set as Set
 import RenderTopMenu (shownAlbums)
-import GetStuff (confirmBox, getUrl, postStrings, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, isClamped)
+import GetStuff (confirmBox, getUrl, postStrings, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, isClamped, saveView, loadView)
 import Render (render)
 import Quality (bestVersion)
 
@@ -313,6 +313,19 @@ handleAction = case _ of
     _ <- H.subscribe emitter
     H.liftEffect initHistory
     H.liftEffect $ onPopState (\j -> HS.notify listener (GoTo j))
+    -- the last view shown in this browser (an album, or a list with its focus and sort);
+    -- none: the start list (Collection) stays
+    saved <- H.liftEffect loadView
+    case S.split (Pattern "\t") saved of
+      [ "album", aid ] | aid /= "" -> showAlbum aid
+      [ "list", ln, sn, so, fs ] | ln /= "" -> do
+        let ffs = A.mapMaybe (\f -> case S.take 1 f of
+                                "1" -> Just (Tuple (S.drop 1 f) true)
+                                "0" -> Just (Tuple (S.drop 1 f) false)
+                                _ -> Nothing) (S.split (Pattern "\n") fs)
+        H.modify_ _ { listName = AlbumList (Just ln), loading = true, menu { ln = ln, ffs = ffs, sortName = sn, sso = if so == "Desc" then Desc else Asc } }
+        updateAlbumList
+      _ -> pure unit
     api <- H.gets _.apiUrl
     r <- H.liftAff $ getUrl (api <> "nodeinfo")
     case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
@@ -678,6 +691,7 @@ handleAction = case _ of
                         Right { aid: _, album: a } -> Just a
                         Left _ -> Nothing
       H.modify_ _ { album = am, now = now, loading = false, result = Just r }
+      when (isJust am) (H.liftEffect (saveView ("album\t" <> aid)))
       loadDetail (autoFrom from) am
 
     -- the album page's details, once the album itself is there; an older backend
@@ -761,6 +775,10 @@ handleAction = case _ of
             Right _, _ -> pure unit -- another album was opened meanwhile
             Left _, _ -> H.modify_ _ { tracksLoading = false }
 
+    -- each row's versions, from the answer's lversions (row by row)
+    withVersions :: Maybe (Array (Array String)) -> Array Album -> Array Album
+    withVersions mvs = A.mapWithIndex (\i a -> a { albumVersions = mvs >>= \vs -> index vs i })
+
     updateAlbumList :: forall output' m'. MonadAff m' => H.HalogenM State Action () output' m' Unit
     updateAlbumList = do
       H.modify_ _ { loading = true }
@@ -783,8 +801,8 @@ handleAction = case _ of
           r <- H.liftAff $ getUrl url
           let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError ListenedJ
           pure case lje of
-            Right { lalbums: ls', lplayed: ps } ->
-              zipWith (\a p -> (fst a) { albumShelf = snd a, albumPlayedAt = Just p }) ls' ps
+            Right { lalbums: ls', lplayed: ps, lversions: vs } ->
+              withVersions vs (zipWith (\a p -> (fst a) { albumShelf = snd a, albumPlayedAt = Just p }) ls' ps)
             Left _ -> []
         Nothing -> do
           let url = api <> "albumsq/"
@@ -795,9 +813,12 @@ handleAction = case _ of
           r <- H.liftAff $ getUrl url
           let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
           pure case lje of
-            Right { lalbums: ls' } -> map (\a -> (fst a) { albumShelf = (snd a) } ) ls'
+            Right { lalbums: ls', lversions: vs } -> withVersions vs (map (\a -> (fst a) { albumShelf = (snd a) } ) ls')
             Left _ -> []
       H.modify_ _ { loading = false, albumList = ls, selected = (Set.empty :: Set.Set String) }
+      -- remembered for a refresh or restart (not the review, not the album page's list)
+      when (ln /= "") $ H.liftEffect $ saveView $ joinWith "\t"
+        [ "list", ln, sn, show so, joinWith "\n" (map (\(Tuple t b) -> (if b then "1" else "0") <> t) ffs) ]
 
     -- "Listened" -> all years, "Listened 2026" -> 2026
     listenedYear :: String -> Maybe String

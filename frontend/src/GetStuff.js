@@ -15,6 +15,15 @@ export const initHistory = () => {
   });
 };
 export const pushHistory = (i) => () => { history.pushState({ i: i }, ""); };
+
+// the last view shown, kept in this browser (a convenience: a refresh or a restart of clutter
+// opens it again); storage may be off or empty (a private window), then the start page
+export const saveView = (v) => () => {
+  try { localStorage.setItem("clutter.view", v); } catch (e) {}
+};
+export const loadView = () => {
+  try { return localStorage.getItem("clutter.view") || ""; } catch (e) { return ""; }
+};
 export const historyBack = () => { history.back(); };
 export const historyForward = () => { history.forward(); };
 export const onPopState = (cb) => () => {

@@ -517,6 +517,7 @@ data AlbumsJ = AlbumsJ
   { listName :: Text
   , -- , lalbums :: [Album]
     lalbums :: [(Album, Maybe (Text, Int))]
+  , lversions :: [[Text]] -- row by row: the album's versions as the Versions block names them ("Vinyl", "Tidal", "Files · imspl"); [] for an album of one
   }
   deriving (Eq, Show, Generic)
 instance ToJSON AlbumsJ
@@ -526,10 +527,11 @@ data ListenedJ = ListenedJ
   { ljName :: Text
   , ljAlbums :: [(Album, Maybe (Text, Int))]
   , ljPlayed :: [Text]
+  , ljVersions :: [[Text]]
   }
   deriving (Eq, Show, Generic)
 instance ToJSON ListenedJ where
-  toJSON l = object ["listName" .= ljName l, "lalbums" .= ljAlbums l, "lplayed" .= ljPlayed l]
+  toJSON l = object ["listName" .= ljName l, "lalbums" .= ljAlbums l, "lplayed" .= ljPlayed l, "lversions" .= ljVersions l]
 
 data ParamsJ = ParamsJ
   { timeStamp :: Text
@@ -749,6 +751,7 @@ clutterServer sd =
         { ljName = if y == "all" then "Listened" else "Listened " <> y
         , ljAlbums = [(a, albumID a `M.lookup` locs envr) | (_, a) <- ordered]
         , ljPlayed = peTs . fst <$> ordered
+        , ljVersions = [versionLabels ly (albums envr) (albumID a) | (_, a) <- ordered]
         }
 
   serveAlbumsq ::
@@ -774,7 +777,8 @@ clutterServer sd =
             $ aids
     liftIO . putTextLn $ "-------serveAlbumsq: first 3 elements from [(album, locs)] of list " <> ln
     liftIO . print . take 3 $ la
-    let asj = AlbumsJ{listName = ln, lalbums = la}
+    ly <- asks layerR >>= readIORef
+    let asj = AlbumsJ{listName = ln, lalbums = la, lversions = [versionLabels ly (albums envr) (albumID a) | (a, _) <- la]}
     pure asj
 
   -- the album as clutter holds it, at once (slice 18): Discogs is asked afterwards, by
@@ -1926,6 +1930,28 @@ fillFileQuality env = do
     ((store, done, _), stopped) <- loop (mempty, 0 :: Int, 0 :: Int) (zip [1 :: Int ..] todo)
     when (done > 0) (writeFileQualities store)
     hPutStrLn stderr ("file quality: " <> show done <> " of " <> show (length todo) <> " asked" <> (if stopped then "; stopped after ten failures in a row (Jellyfin not reachable?)" else ""))
+
+-- The versions of the album a row belongs to, named as the Versions block names them: a
+-- record by its format ("Vinyl", "CD"), "Tidal", "Files · <storage>", "Apple Music",
+-- "Qobuz"; the record first, then Tidal, files, Apple, Qobuz. Only what the block lists:
+-- not the stand-in releases, not an Apple or Qobuz album clutter only links. [] for an album
+-- of one version (the card shows no badge).
+versionLabels :: Layer -> Map AlbumKey Album -> AlbumKey -> [Text]
+versionLabels ly am k =
+  let standIns = concat (M.elems (lyStandIns ly))
+      vs = [v | v <- versionsOfKey ly k, v `notElem` standIns, M.member v am || isT v]
+      isT = \case T _ -> True; _ -> False
+      rank = \case D _ -> 0 :: Int; T _ -> 1; J _ -> 2; A _ -> 3; Q _ -> 4; _ -> 5
+      label v = case (v, M.lookup v am) of
+        (D _, Just a) -> TX.strip (fromMaybe (albumFormat a) (viaNonEmpty head (TX.splitOn "," (albumFormat a))))
+        (D _, Nothing) -> "Record"
+        (T _, _) -> "Tidal"
+        (J _, Just a) -> "Files" <> maybe "" (" · " <>) (viaNonEmpty head (mapMaybe (TX.stripPrefix "storage.") (albumTags a)))
+        (J _, Nothing) -> "Files"
+        (A _, _) -> "Apple Music"
+        (Q _, _) -> "Qobuz"
+        _ -> keyText v
+  in if length vs < 2 then [] else map label (sortOn rank vs)
 
 -- One store-writing script at a time (the Jellyfin and Tidal stores each have one writer, the
 -- scripts; a full update and "Update this album" must not write the same store at once).

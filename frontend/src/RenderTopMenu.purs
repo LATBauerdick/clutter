@@ -16,7 +16,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
 
-import Data.Array (length, filter, null, elem, nub, mapMaybe, head, last, reverse, sort)
+import Data.Array (length, filter, null, elem, nub, mapMaybe, head, last, reverse, sort, any)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Map as M
 import Data.Set as Set
@@ -41,19 +41,18 @@ inList state = case state.listName of
   AlbumList Nothing -> false
   _ -> true
 
--- the sidebar: collection lists, my tags, the play log, and the locations
--- folded by kind (Shelf, Cube, the rest). A drawer on a narrow screen.
+-- the sidebar: collection lists, then folds: my tags, the play log, the server, the records
+-- (cubes and shelves) and the other locations. A drawer on a narrow screen. The genre
+-- folders are gone (2026-11-27): the curated tags replaced them.
 renderSide :: forall m. State -> H.ComponentHTML Action () m
 renderSide state =
   HH.div [ cls (if state.sideOpen then "side side-open" else "side") ] $
     [ HH.div [ cls "brand" ] [ HH.i_ [], HH.text "clutter" ] ]
     <> group "Library" library
-    <> myTagsGroup
-    <> fold "Genre folders" genreFolders
+    <> myTagsFold
     <> listenedFold
     <> serverFold
-    <> fold "Cubes" cubes
-    <> fold "Shelves" shelves
+    <> fold "Records" (cubes <> shelves)
     <> fold "Boxes and more" otherLocs
   where
   names = state.menu.params.mlistNames
@@ -75,27 +74,30 @@ renderSide state =
   server = filter isServer names
   rest = filter (\n -> not (isListened n) && not (isServer n)) names
   library = filter (\n -> builtIn n || (isFolder n && isMedium n)) rest
-  genreFolders = filter (\n -> isFolder n && not (isMedium n) && not (builtIn n)) rest
   firstWord n = fromMaybe "" (head (S.split (Pattern " ") n))
   shelves = filter (\n -> firstWord n == "Shelf") locs
   cubes = filter (\n -> firstWord n == "Cube") locs
   otherLocs = filter (\n -> not (elem (firstWord n) [ "Shelf", "Cube" ])) locs
   current = if inList state then state.menu.ln else ""
+  -- (a tag view is All with a focus: the tag lights up, not All)
   item n =
-    HH.button [ cls (if n == current then "nav-item nav-on" else "nav-item")
+    HH.button [ cls (if n == current && not (any onTag state.curated) then "nav-item nav-on" else "nav-item")
               , HE.onClick \_ -> ShowList (AlbumList (Just n)) ]
               [ HH.text n ]
   group title ns = if null ns then [] else [ HH.h4_ [ HH.text title ] ] <> map item ns
   -- the curated tags as views (album layer, slice 5): All, focused on the tag; a tag no
-  -- album has yet (my.vocal) is listed with 0
-  myTagsGroup =
+  -- album has yet (my.vocal) is listed with 0. Folded, open while one of them is on show.
+  onTag c = inList state && state.menu.ln == "All" && state.menu.ffs == [ Tuple c.ctTag true ]
+  myTagsFold =
     if null state.curated then [] else
-      [ HH.h4_ [ HH.text "My tags" ] ]
-      <> map (\c -> HH.button [ cls (if inList state && state.menu.ln == "All" && state.menu.ffs == [ Tuple c.ctTag true ] then "nav-item nav-on" else "nav-item")
-                              , HE.onClick \_ -> ShowCurated c.ctTag
-                              , HP.title (show c.ctCount <> " albums tagged " <> c.ctName) ]
-                              [ HH.text c.ctName, HH.small [ cls "nav-count" ] [ HH.text (" " <> show c.ctCount) ] ])
-             state.curated
+      [ HH.details (if any onTag state.curated then [ HP.attr (HH.AttrName "open") "" ] else [])
+          ([ HH.summary_ [ HH.text "My tags" ] ]
+           <> map (\c -> HH.button [ cls (if onTag c then "nav-item nav-on" else "nav-item")
+                                   , HE.onClick \_ -> ShowCurated c.ctTag
+                                   , HP.title (show c.ctCount <> " albums tagged " <> c.ctName) ]
+                                   [ HH.text c.ctName, HH.small [ cls "nav-count" ] [ HH.text (" " <> show c.ctCount) ] ])
+                  state.curated)
+      ]
   -- the play log, folded: a click on "Listened" shows this year's plays (the newest year in
   -- the log) and opens the fold; a click while a Listened list is on show closes or opens it,
   -- and closed it is blue, since the list on show is one of its own. Inside, every year and
@@ -201,6 +203,7 @@ renderTop state =
   nodeTip = case state.nodeMsg of
     Just m -> " — last: " <> m
     Nothing -> ""
+  counted k = show k <> " " <> rowsNoun state k
   title
     | state.loading = [ HH.text (fromMaybe "Loading…" state.notice) ]
     | Just rv <- state.review =
@@ -213,7 +216,7 @@ renderTop state =
         let n = length (shownAlbums state)
             all = length state.albumList in
         [ HH.text state.menu.ln
-        , HH.small_ [ HH.text (if n == all then show all <> " albums" else show n <> " of " <> show all) ]
+        , HH.small_ [ HH.text (if n == all then counted all else show n <> " of " <> counted all) ]
         ] <> case state.notice of
                Just m -> [ HH.small [ cls "notice", HP.title m ] [ HH.text m ] ]
                Nothing -> []
@@ -222,6 +225,24 @@ renderTop state =
           Just m -> [ HH.small [ cls "notice", HP.title m ] [ HH.text m ] ]
           Nothing -> []
         Nothing -> []
+
+-- what a list's rows are: albums (one per album, whatever its versions) or one kind of
+-- version -- stream albums, file albums, records -- or plays
+rowsNoun :: State -> Int -> String
+rowsNoun state k =
+  let ln = state.menu.ln
+      one = k == 1
+      tags = state.menu.params.msts
+      -- a Discogs collection folder named after a medium (CD, Vinyl, Streaming…): its records
+      isMedium = elem ("format." <> S.toLower ln) tags && elem ("folder." <> S.toLower ln) tags
+      firstWord = fromMaybe "" (head (S.split (Pattern " ") ln))
+  in if ln == "Tidal" then (if one then "Tidal album" else "Tidal albums")
+     else if ln == "Apple Music" then (if one then "Apple Music album" else "Apple Music albums")
+     else if ln == "Server" || S.take 7 ln == "Server " then (if one then "file album" else "file albums")
+     else if S.take 8 ln == "Listened" then (if one then "play" else "plays")
+     else if ln == "Discogs" || isMedium || elem ln state.menu.params.mlocNames || elem firstWord [ "Shelf", "Cube" ]
+       then (if one then "record" else "records")
+     else (if one then "album" else "albums")
 
 -- the list toolbar: the focus as chips, the tag picker, a saved focus, sort and order
 renderTools :: forall m. State -> H.ComponentHTML Action () m

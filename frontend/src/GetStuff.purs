@@ -9,6 +9,8 @@ module GetStuff ( confirmBox
                 , initHistory
                 , onPopState
                 , isClamped
+                , saveView
+                , loadView
                 ) where
 
 import Prelude
@@ -58,6 +60,10 @@ foreign import onPopState :: (Int -> Effect Unit) -> Effect Unit
 
 -- is the element (a CSS selector) cut off by its line clamp?
 foreign import isClamped :: String -> Effect Boolean
+
+-- the last view shown, in this browser's storage ("" if none or storage is off)
+foreign import saveView :: String -> Effect Unit
+foreign import loadView :: Effect String
 
 -- the browser's "are you sure?" dialog: true for OK
 foreign import confirmBox :: String -> Effect Boolean

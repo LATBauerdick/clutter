@@ -982,6 +982,7 @@ render state =
   renderBadges :: forall m. Int -> Album -> Array (H.ComponentHTML Action () m)
   renderBadges idx a =
     [ rbIndex idx
+    , rbVersions a
     , rbFormat a
     , rbTidal a
     , rbAMusic a
@@ -990,6 +991,14 @@ render state =
     , rbPlays a
     , rbLocation a
     ]
+
+  -- an album with more than one version: how many, which on hover ("Vinyl, Tidal, Files · imspl")
+  rbVersions :: forall m. Album -> H.ComponentHTML Action () m
+  rbVersions a = case a.albumVersions of
+    Just vs | length vs > 1 ->
+      HH.div [ HP.class_ (HH.ClassName "vers"), HP.title (show (length vs) <> " versions: " <> S.joinWith ", " vs) ]
+             [ HH.text ("×" <> show (length vs)) ]
+    _ -> HH.div_ []
 
   rbIndex :: forall m. Int -> H.ComponentHTML Action () m
   rbIndex idx =

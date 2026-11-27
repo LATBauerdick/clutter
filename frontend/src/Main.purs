@@ -46,7 +46,8 @@ initialState = do -- should eventually be saved in preferences
                     Right { params: ps } -> ps
                     Left _ -> defaultMenuParams
 
-  let ln = "Discogs"
+  -- the start list, unless the browser remembers the last view (AlbumComponent, LoadNodeName)
+  let ln = "Collection"
   r <- getUrl (apiBaseUrl <> "albumsq/" <> ln)
   let lje = (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumsJ
   let lss = case lje of
