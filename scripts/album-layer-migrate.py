@@ -10,6 +10,12 @@ report plus the lines --write would append. Writes nothing.
                                                    # collection.jsonl.before-album-layer,
                                                    # then append (not before slice 2)
 
+--write: stop clutter first (on every machine that runs it); refresh cache/draw*.json and
+the Jellyfin store, since links to keys clutter does not hold would be lost (refused
+unless --force). It refuses a log that changed while it ran, one already migrated, and
+one with migration lines but no format line (a partial run: restore from the copy). The
+lines go in as one append and are read back.
+
 Steps (plan › Migration):
 1. the log as the server reads it: stream links (one of a kind per holder, last line
    counts) and file links, every file album under the id it has now (moved lines);
@@ -255,6 +261,12 @@ def play_keys():
 # ---------------------------------------------------------------- main
 
 
+def log_stat(path: str) -> tuple:
+    """size and modification time, to see whether the log changed while the script ran"""
+    st = os.stat(path)
+    return (st.st_size, st.st_mtime_ns)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--log", default=collection_log.log_path(), help="the collection log (CLUTTER_COLLECTION)")
@@ -263,6 +275,7 @@ def main() -> None:
     ap.add_argument("--write", action="store_true", help="append the lines to the log (after a copy)")
     ap.add_argument("--dry-run", action="store_true", help="the default: write nothing")
     ap.add_argument("--now", help="timestamp for the lines (default: now); fixed for a reproducible run")
+    ap.add_argument("--force", action="store_true", help="write even if links name keys clutter does not hold")
     args = ap.parse_args()
     if args.write and args.dry_run:
         sys.exit("--write and --dry-run")
@@ -271,8 +284,13 @@ def main() -> None:
     tidal = read_tidal()
     jelly = read_jellyfin()
     held = set(disc) | set(tidal) | set(jelly)
-    if any(e.get("op") == "format" for e in collection_log._lines(args.log)):
+    stat0 = log_stat(args.log)
+    log_lines = collection_log._lines(args.log)
+    if any(e.get("op") == "format" for e in log_lines):
         sys.exit(f"{args.log} already has a format line: migrated before")
+    if any(e.get("via") == "migration" for e in log_lines):
+        sys.exit(f"{args.log} has migration lines but no format line: a partial run;"
+                 f" restore the log from {args.log}.before-album-layer first")
     edges, first, lognames, marks, cids, _ = read_log(args.log)
 
     def name(k):
@@ -489,18 +507,38 @@ def main() -> None:
             for l in lines:
                 f.write(json.dumps(l, ensure_ascii=False) + "\n")
     if args.write:
+        if unheld and not args.force:
+            sys.exit(f"{len(unheld)} keys the links name are not held (stale cache/draw*.json or Jellyfin store?);"
+                     " their links would be lost: refresh first, or --force")
         backup = args.log + ".before-album-layer"
         if os.path.exists(backup):
-            sys.exit(f"{backup} exists: not overwriting it")
+            sys.exit(f"{backup} exists: not overwriting it (an earlier run? if the log has migration"
+                     " lines but no format line, restore the log from this copy first)")
+        if log_stat(args.log) != stat0:
+            sys.exit(f"{args.log} changed while this ran: stop clutter (on every machine) and run again")
         shutil.copy2(args.log, backup)
         with open(args.log, "rb") as f:
             f.seek(0, 2)
-            torn = f.tell() > 0 and (f.seek(-1, 2) or f.read(1) != b"\n")
-        with open(args.log, "a") as f:
-            if torn:
-                f.write("\n")
-            for l in lines:
-                f.write(json.dumps(l, ensure_ascii=False) + "\n")
+            torn = False
+            if f.tell() > 0:
+                f.seek(-1, 2)
+                torn = f.read(1) != b"\n"
+        data = (("\n" if torn else "") + "".join(json.dumps(l, ensure_ascii=False) + "\n" for l in lines)).encode()
+        # one append, not a buffered writer's 8 KB pieces a server line could land between
+        fd = os.open(args.log, os.O_WRONLY | os.O_APPEND)
+        try:
+            view = memoryview(data)
+            while view:
+                view = view[os.write(fd, view):]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        with open(args.log, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - len(data)))
+            if f.read() != data:
+                sys.exit(f"{args.log} does not end with the lines just written (another writer?):"
+                         f" stop clutter, restore the log from {backup}, delete the copy, run again")
         print(f"\nappended {len(lines)} lines to {args.log} (copy: {backup})", file=sys.stderr)
 
 

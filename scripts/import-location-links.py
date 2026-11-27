@@ -62,6 +62,10 @@ def main() -> None:
     ap.add_argument("--log", default=collection_log.log_path())
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    if collection_log.has_format(args.log):
+        # a one-off import, done 2026-11-25; link lines are not read in the album format
+        print(f"import-location-links: {args.log} is in the album format; link lines would not be read", file=sys.stderr)
+        sys.exit(1)
 
     files_known = set()
     try:

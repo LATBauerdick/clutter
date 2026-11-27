@@ -105,10 +105,8 @@ def library_of(path: str, libraries: list) -> str:
 
 
 # release key -> its file albums, from clutter's collection log (until 2026-11-25: J ids in
-# the Discogs Location field)
-FILES_OF: dict = {}
-for _jid, _key in collection_log.read()["files"].items():
-    FILES_OF.setdefault(_key, []).append(_jid)
+# the Discogs Location field); in the album format, the file albums of the release's album
+FILES_OF: dict = collection_log.release_links()["files"]
 
 
 def load_discogs(cache: str) -> tuple[list, dict]:

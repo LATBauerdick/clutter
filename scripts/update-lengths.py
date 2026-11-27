@@ -60,7 +60,7 @@ def tidal_of(release):
     from the Location field in Discogs), if any"""
     global _TIDAL_OF
     if _TIDAL_OF is None:
-        _TIDAL_OF = collection_log.tidal_of_release(collection_log.read())
+        _TIDAL_OF = collection_log.tidal_of_release(collection_log.release_links())
     return _TIDAL_OF.get(release.get("id"))
 
 

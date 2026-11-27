@@ -195,7 +195,7 @@ def read_collection():
 def linked_tidal(coll):
     """Tidal id -> Discogs release id, from clutter's collection log (until 2026-11-25:
     from the Location field in Discogs); only releases still in the collection"""
-    return {t: rid for rid, t in collection_log.tidal_of_release(collection_log.read()).items() if rid in coll}
+    return collection_log.release_of_tidal(keep=lambda rid: rid in coll)
 
 
 def played_tidal():

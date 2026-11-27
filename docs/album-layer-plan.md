@@ -448,6 +448,38 @@ Status:
   again if that version rejoins (as the spec reads). Rechecked on a fresh
   migrated copy: 217 Streaming-list pages (199 with members, 13 stand-ins of an
   un-held stream now without × and lead), every refusal, and the page run.
+- Slice 4 — built 2026-11-26 (session 859f28b2), uncommitted. `collection_log.py`
+  gains `has_format()`, `release_links()` (the old `read()` shape per key —
+  `streams` {kind: id}, `files` [jids] — from `album_log()` in the album format, from
+  `read()` before it, so the scripts work on both sides of `--write`; a stand-in
+  aliased away gets its album's versions) and `release_of_tidal()` (Tidal → release
+  for every Tidal version, so an album with two Tidal editions keeps both);
+  `file_refs()` also reads `album`, `from`, `to`. On it: `jellyfin-inventory.py`
+  (FILES_OF), `update-lengths.py`, `update-tidal-albums.py`; `update-jellyfin-albums.py`
+  through `file_refs()`. `import-inventory-links.py` and `import-location-links.py`
+  write link lines and now refuse a log with a format line. Check, live log against
+  a migrated copy, stores copied, all dry: `update-tidal-albums` and
+  `update-wikidata` print the same; `update-lengths` 105 releases with a Tidal
+  length instead of 101 (joins); Tidal → release 860 = 860, none lost, 38 to another
+  release of the same album; release → Tidal 897 → 916, 10 now name the other
+  Tidal edition of their joined album (fine for lengths: the server takes the
+  lead's); file albums per release 445 → 471 releases, no old link missing;
+  `jellyfin-inventory --offline` same counts and candidates, 35 rows name the other
+  record of a joined album; `file_refs` 1,139 = 1,139. `album-layer-check.py`
+  Python 59 OK (no Haskell changed). Not run: the network half of `./update-json`
+  (Discogs and Tidal fetches, unchanged), and the scripts' writes.
+  Reviewed the same day by a fresh Opus reviewer, with slice 0's `--write` path (never
+  reviewed before). Slice 4: no bug; `release_of_tidal` takes `keep` (a release left
+  the collection no longer hides its album's other release); `_lines` keeps only JSON
+  objects. `--write`: the torn-end check never read the last byte (every run added a
+  blank line) — fixed; the lines go in as one `O_APPEND` write and are read back
+  (Python's buffered writer cut them into 8 KB pieces a server line could land
+  between); refused: a log with migration lines but no format line (a partial run),
+  a log that changed while the script ran, links to keys clutter does not hold
+  (unless `--force`). Docstring: stop clutter first. Rechecked on copies of the live
+  log: clean write (no blank line, same lines as before apart from `ts`), torn end
+  (newline restored, same lines), second run and partial run refused, the comparison
+  and dry runs unchanged.
 
 ### Questions for LATB — answered 2026-11-26: OK to all five
 

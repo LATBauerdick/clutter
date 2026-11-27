@@ -40,6 +40,11 @@ def main() -> None:
     ap.add_argument("--log", default=os.path.expanduser(os.environ.get("CLUTTER_COLLECTION", "~/Sync/clutter/collection.jsonl")))
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    if collection_log.has_format(args.log):
+        # link lines are not read in the album format: the review (Unsure matches) and
+        # "Same album as…" on the album page write version lines instead
+        print(f"import-inventory-links: {args.log} is in the album format; link lines would not be read", file=sys.stderr)
+        sys.exit(1)
 
     try:
         with open(args.candidates, newline="") as f:

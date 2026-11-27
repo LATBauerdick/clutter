@@ -25,9 +25,11 @@ def _lines(path: str | None) -> list:
     out = []
     for line in lines:
         try:
-            out.append(json.loads(line))
+            e = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if isinstance(e, dict):
+            out.append(e)
     return out
 
 
@@ -58,11 +60,12 @@ def follow(mv: dict, jid: str) -> str:
 
 def file_refs(path: str | None = None) -> set:
     """every file album (Jellyfin id, as it is now) that the log names: links, unlinks,
-    skips, keep marks, streams of a file album"""
+    skips, keep marks, streams of a file album; in the album format versions, splits,
+    aliases, leads, tags and ratings by key"""
     mv = moves(path)
     refs = set()
     for e in _lines(path):
-        for f in ("key", "version"):
+        for f in ("key", "version", "album", "from", "to"):
             j = _jid(e.get(f))
             if j:
                 refs.add(follow(mv, j))
@@ -327,3 +330,72 @@ class AlbumLog:
 def album_log(path: str | None = None) -> AlbumLog:
     """the album layer as the whole log leaves it"""
     return AlbumLog([ev for e in _lines(path) if isinstance(e, dict) and (ev := _event(e))])
+
+
+# ---------------------------------------------------------------- for the scripts
+
+
+def has_format(path: str | None = None) -> bool:
+    """the log is in the album format (album-layer-migrate.py --write ran)"""
+    return any(e.get("op") == "format" for e in _lines(path))
+
+
+def release_links(path: str | None = None) -> dict:
+    """what each key has through its album, in the shape the scripts use:
+        {"streams": {"D123": {"T": "5201052", "A": "…", "Q": "…"}},
+         "files": {"D123": ["<jellyfin id>", …]}}
+    In the album format (album_log()): the other versions of the key's album — the first
+    of each stream service by when it joined, every file album; a release aliased away (a
+    Streaming or Files stand-in) gets those of the album it now belongs to, including the
+    key it was aliased to. Before it: read(), the links of the old log. Keys other than D
+    (a Tidal album with file albums) are there too; scripts that want releases take D."""
+    if not has_format(path):
+        old = read(path)
+        by_holder: dict = {}
+        for jid, holder in old["files"].items():
+            by_holder.setdefault(holder, []).append(jid)
+        return {"streams": old["streams"], "files": by_holder}
+    al = album_log(path)
+    holders = {k for vs in al.albums.values() for k, _ in vs} | set(al.aliases)
+    streams: dict = {}
+    files: dict = {}
+    for h in sorted(holders):
+        st: dict = {}
+        js: list = []
+        for v in al.versions(al.album_of(h)):
+            if v == h:
+                continue
+            if v[0] in "TAQ":
+                st.setdefault(v[0], v[1:])
+            elif v[0] == "J":
+                js.append(v[1:])
+        if st:
+            streams[h] = st
+        if js:
+            files[h] = js
+    return {"streams": streams, "files": files}
+
+
+def release_of_tidal(path: str | None = None, keep=lambda rid: True) -> dict:
+    """Tidal album id (int) -> Discogs release id (int): every Tidal album that is a version
+    of an album with a release (the first release by when it joined that keep() accepts —
+    e.g. still in the collection; a stand-in's alias counts), so an album with two Tidal
+    editions keeps both. Before the album format: the old links, reversed."""
+    if not has_format(path):
+        out0: dict = {}
+        for r, t in tidal_of_release(read(path)).items():
+            if keep(r):
+                out0.setdefault(t, r)
+        return out0
+    al = album_log(path)
+    out: dict = {}
+    pairs = [(a, [k for k, _ in vs]) for a, vs in al.albums.items()]
+    pairs += [(al.album_of(d), [d]) for d in al.aliases if d[0] == "D"]
+    for a, ds in pairs:
+        rs = [k for k in ds if k[0] == "D" and keep(int(k[1:]))]
+        if not rs:
+            continue
+        for v in al.versions(a):
+            if v[0] == "T" and v[1:].isdigit():
+                out.setdefault(int(v[1:]), int(rs[0][1:]))
+    return out
