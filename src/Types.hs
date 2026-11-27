@@ -178,6 +178,8 @@ data Layer = Layer
   , lyPlay :: PlayEvent -> Maybe AlbumKey -- the album a play counts for, if clutter holds its version
   , lyLeadSet :: Set AlbumKey -- the albums (by name) whose lead a lead line names, not the rule
   , lyRated :: Bool -- the log has a rate line: ratings are clutter's, seeded from Discogs
+  , lyRefs :: AlbumKey -> [Text] -- the Discogs references of the album a key belongs to ("master/…", "release/…")
+  , lyRefIndex :: Map Text [AlbumKey] -- a Discogs reference -> the albums (by name) it describes
   }
 
 -- the key of a held album's row: its lead version's

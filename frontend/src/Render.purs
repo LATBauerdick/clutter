@@ -209,8 +209,8 @@ render state =
         ]
       , chipsView
       , HH.div [ cls "av-body" ]
-        [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> [ playsView ])
-        , HH.div [ cls "av-side" ] [ versionsView, factsView, readMoreView, openInView, streamView, sameAsView, keepView, removeView ]
+        [ HH.div [ cls "av-main" ] (aboutView <> tracksView <> creditsView <> refDataView <> [ playsView ])
+        , HH.div [ cls "av-side" ] [ versionsView, factsView, readMoreView, openInView, streamView, refsView, sameAsView, keepView, removeView ]
         ]
       , HH.div_ stripsView
       ]
@@ -808,6 +808,67 @@ render state =
       _ -> []
 
     isOther c = S.take 5 c.crRole == "Other"
+
+    -- Discogs references (docs/album-layer-plan.md › Discogs references): a release or master
+    -- that describes the album without being owned -- a library CD's, an opera's for its
+    -- cast. Listed with × and a box for a discogs.com address; not written to Discogs.
+    refsView =
+      let refs = fromMaybe [] (detail >>= _.xrefs)
+          label ref = (if S.take 7 ref == "master/" then "Master " <> S.drop 7 ref else "Release " <> S.drop 8 ref)
+          one ref =
+            HH.p [ cls "av-file" ]
+              [ HH.a [ HP.href ("https://www.discogs.com/" <> ref), HP.target "_blank", HP.title "Open on discogs.com" ] [ HH.text (label ref) ]
+              , HH.button [ cls "av-tag av-unlink", HE.onClick \_ -> DropRef a.albumID ref
+                          , HP.title "Does not describe this album: take it off" ] [ HH.text "×" ] ]
+          box =
+            HH.div [ cls "av-streambox" ]
+              [ HH.input [ HP.value state.refBox, HP.placeholder "discogs.com release or master address", HE.onValueInput SetRefBox
+                         , HP.title "A Discogs release or master that describes this album (credits, label, year); nothing is added to the Discogs collection" ]
+              , HH.button [ cls "pill", HP.type_ HP.ButtonButton, HE.onClick \_ -> AddRef a.albumID state.refBox, HP.disabled (S.trim state.refBox == "") ]
+                          [ HH.text "Add" ]
+              ]
+      in
+      if detail == Nothing then HH.text "" else
+        HH.div [ cls "av-files" ] $ [ HH.h3_ [ HH.text "Discogs" ] ] <> map one refs <> [ box ]
+
+    -- what the references say: one fold per reference, credits open (an opera's cast), the
+    -- tracklist only when asked for
+    refData = case state.refsX of
+      Just (Tuple k rs) | k == a.albumID -> rs
+      _ -> []
+    refDataView =
+      if null refData then [] else
+        [ HH.div [ cls "av-refs" ] $
+            [ HH.h3_ [ HH.text "From Discogs "
+                     , HH.button [ cls "av-tag", HE.onClick \_ -> RefreshRefs, HP.title "Fetch from Discogs again" ] [ HH.text "↻" ] ] ]
+            <> map refOne refData
+        ]
+    refOne rf = case rf.rfData of
+      Nothing -> HH.p [ cls "av-note" ] [ HH.a [ HP.href rf.rfUrl, HP.target "_blank" ] [ HH.text rf.rfRef ], HH.text (": " <> rf.rfError) ]
+      Just d ->
+        let isMaster = S.take 7 d.drRef == "master/"
+            yr = maybe "" show d.drYear
+            line = S.joinWith " · " (filter (_ /= "")
+                     [ S.trim (d.drLabel <> " " <> d.drCatno), d.drFormat, d.drCountry
+                     , (if isMaster then maybe "" (\m -> "first " <> show m) d.drMasterYear else "")
+                     , (if isMaster && d.drMasterYear == d.drYear then "" else yr) ])
+        in
+        HH.div [ cls "av-ref" ] $
+          [ HH.p_ [ HH.a [ HP.href d.drUrl, HP.target "_blank", HP.title "Open on discogs.com" ]
+                        [ HH.text ((if isMaster then "Master · " else "Release · ") <> d.drArtist <> " — " <> d.drTitle) ] ]
+          , HH.p [ cls "av-note" ] [ HH.text (line <> (if isMaster then " (main release " <> show d.drRelease <> ")" else "")) ]
+          ]
+          <> (if null d.drCredits then [] else
+                [ HH.details [ cls "av-credits", HP.attr (HH.AttrName "open") "" ]
+                    [ HH.summary_ [ HH.text ("Credits (" <> show (length d.drCredits) <> ")") ]
+                    , HH.div [ cls "av-facts" ] (concat (map (\c -> row c.crRole [ HH.text (S.joinWith ", " c.crNames) ])
+                                                            (filter (not <<< isOther) d.drCredits <> filter isOther d.drCredits)))
+                    ] ])
+          <> (if null d.drTracks then [] else
+                [ HH.details [ cls "av-credits" ]
+                    [ HH.summary_ [ HH.text ("Tracklist (" <> show (length d.drTracks) <> ")") ]
+                    , HH.div [ cls "av-tracks" ] (trackRows d.drTracks)
+                    ] ])
 
     -- the album strips: other versions, more by the artists, similar albums; all from the library
     stripsView = case _.xrelated <$> detail of

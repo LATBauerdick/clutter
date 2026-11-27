@@ -4,7 +4,7 @@
 (scripts/collection_log.py) read the same scratch log and must both give the answers
 worked out by hand below.
 
-Covers: last line wins (membership, keep, rate, lead), merge chain, merge back, split
+Covers (slice 8 added Discogs references): last line wins (membership, keep, rate, lead), merge chain, merge back, split
 (what was recorded against the key follows it), alias chain (a version line naming a
 stand-in), a move, a move + alias loop that must end, names by C id and by version key,
 tags folded in order (case folded), lines that cannot be read are skipped, the lead rule
@@ -64,6 +64,8 @@ LOG = [
     {"op": "version", "album": "Cjjjjjj", "key": "T802"},
     {"op": "keep", "key": "T801", "value": "no"},
     {"op": "lead", "album": "Cjjjjjj", "key": "T801"},
+    {"op": "ref", "album": "T801", "discogs": "master/801"},
+    {"op": "ref", "album": "Cjjjjjj", "discogs": "release/8000"},
     {"op": "split", "key": "T801"},
     {"op": "rate", "album": "T801", "stars": 5},
     {"op": "rate", "album": "T801", "stars": 0},
@@ -109,6 +111,15 @@ LOG = [
     {"op": "lead", "album": "D100", "key": "Caaaaaa"},
     {"op": "alias", "from": "T600", "to": "Cvvvvvv"},
     {"op": "alias", "from": "Cwwwwww", "to": "T5"},
+    # Discogs references: by version key and C id, taken off; a stand-in alias from a D key
+    # gives one (D900, D901 to Ckkkkkk; D39, D49 to T32, T42), which a ref line can take off
+    {"op": "ref", "album": "D100", "discogs": "master/111"},
+    {"op": "ref", "album": "Caaaaaa", "discogs": "release/222"},
+    {"op": "ref", "album": "T500", "discogs": "master/111", "value": False},
+    {"op": "ref", "album": "Cbbbbbb", "discogs": "release/200"},
+    {"op": "ref", "album": "Ckkkkkk", "discogs": "release/900", "value": False},
+    {"op": "ref", "album": "T5", "discogs": "artist/5"},
+    {"op": "ref", "album": "T5", "discogs": "release/5", "value": "yes"},
     # lines left to other readers, and lines that cannot be read
     {"op": "skip", "version": J2},
     {"op": "notsame", "version": J2, "key": "D100"},
@@ -138,7 +149,12 @@ LINES = [
     {"op": "version", "album": "Ctttttt", "key": "T5"},
     {"op": "lead", "album": "Ctttttt", "key": "T5"},
     {"op": "alias", "from": "D5", "to": "T5"},
+    {"op": "ref", "album": "T5", "discogs": "master/5"},
+    {"op": "ref", "album": "T5", "discogs": "release/0"},
+    {"op": "ref", "album": "T5", "discogs": "release/12a"},
+    {"op": "ref", "album": "T5", "discogs": "release/5", "value": None},
 ]
+REFNAMES = ["D100", "Caaaaaa", "T801", "T800", "D900", "Ckkkkkk", "D39", "T41", "T5", "T600"]
 
 
 def expected() -> list:
@@ -162,7 +178,11 @@ def expected() -> list:
            "D49": "T42|T42|-|-|-|T42|T42", "T41": "T42|T42|-|-|-|T42|T42", "Ctttttt": "Ctttttt|-|-|-|-|-|-"}
     out = [f"{n}|{by[n]}" for n in NAMES] + ["format|True", "rated|True"]
     out += [f"play {','.join(p)}|{r}" for p, r in zip(PLAYS, ["T901", J3, "T500", "-", JY, "-"])]
-    out += [f"line {i}|{r}" for i, r in enumerate(["not read"] * 5 + ["read"] * 3)]
+    out += [f"line {i}|{r}" for i, r in enumerate(["not read"] * 5 + ["read"] * 4 + ["not read"] * 3)]
+    refs = {"D100": "release/200,release/222", "Caaaaaa": "release/200,release/222", "T801": "master/801",
+            "T800": "release/8000", "D900": "release/901", "Ckkkkkk": "release/901", "D39": "release/39",
+            "T41": "release/49", "T5": "-", "T600": "-"}
+    out += [f"refs {n}|{refs[n]}" for n in REFNAMES]
     return out + ["old log.jsonl|files 0|streams 0", "old log-noformat.jsonl|files 1|streams 2"]
 
 
@@ -179,6 +199,7 @@ def python_answers(d: str) -> list:
     holds = set(HOLDS)
     out += [f"play {','.join(p)}|{f(al.play_version(holds.__contains__, p))}" for p in PLAYS]
     out += [f"line {i}|{'read' if cl._event(e) else 'not read'}" for i, e in enumerate(LINES)]
+    out += [f"refs {n}|{','.join(al.refs_of(n)) or '-'}" for n in REFNAMES]
     for p in ("log.jsonl", "log-noformat.jsonl"):
         r = cl.read(os.path.join(d, p))
         out.append(f"old {p}|files {len(r['files'])}|streams {sum(len(v) for v in r['streams'].values())}")
@@ -219,13 +240,14 @@ albumLayerCheck = do
   mapM_ (\w -> out ("play " ++ T.unpack w ++ "|" ++ f (ks <$> AL.playVersion holds al (mapMaybe parseKey (T.splitOn "," w))))) (T.words "PLAYS")
   mapM_ (\(i, l) -> out ("line " ++ show i ++ "|" ++ either (const "not read") (maybe "not read" (const "read")) (A.eitherDecode l >>= AT.parseEither AL.logEvent)))
     (zip [0 :: Int ..] LINES)
+  mapM_ (\n -> out ("refs " ++ ks n ++ "|" ++ csv (map (T.unpack . AL.refText) (AL.refsOf al n)))) (mapMaybe parseKey (T.words "REFNAMES"))
 :}
 albumLayerCheck
 '''
 
 
 def haskell_answers(d: str) -> list:
-    script = (GHCI.replace("DIR", d).replace("NAMES", " ".join(NAMES)).replace("HOLDS", " ".join(HOLDS))
+    script = (GHCI.replace("DIR", d).replace("REFNAMES", " ".join(REFNAMES)).replace("NAMES", " ".join(NAMES)).replace("HOLDS", " ".join(HOLDS))
               .replace("PLAYS", " ".join(",".join(p) for p in PLAYS))
               .replace("LINES", "[" + ", ".join("LB.pack " + json.dumps(json.dumps(e)) for e in LINES) + "]")
               .replace("ADDED", "[" + ", ".join(f'("{k}", "{v}" :: String)' for k, v in ADDED.items()) + "]"))

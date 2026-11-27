@@ -79,6 +79,8 @@ initialState = do -- should eventually be saved in preferences
         , search: ""
         , tagFilter: ""
         , streamRef: ""
+        , refBox: ""
+        , refsX: Nothing
         , findQ: ""
         , found: []
         , curated: []

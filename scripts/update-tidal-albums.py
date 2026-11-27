@@ -338,6 +338,9 @@ def main():
                     help="only take a removed Tidal album back")
     ap.add_argument("--check-gone", action="store_true",
                     help="also ask Tidal for every album that is on no list")
+    ap.add_argument("--take", metavar="FILE",
+                    help="only take the Tidal albums in FILE (one id per line) into the store, as a played "
+                         "non-favourite is (album layer slice 6: what a retired stand-in release stood for)")
     a = ap.parse_args()
     today = dt.date.today().isoformat()
     log = []
@@ -365,6 +368,33 @@ def main():
         if ok and not a.dry_run:
             write_store(store)
         sys.exit(0 if ok else 1)
+    if a.take:
+        # held from now on without a favourite or a play: the entry stays in the store like a
+        # played one; "taken" says why. Albums the store has already are left as they are.
+        tids = [w for w in open(a.take).read().split() if w.lstrip("T").isdigit()]
+        new = [t.lstrip("T") for t in tids if t.lstrip("T") not in albums]
+        fetched = failed = 0
+        for tid in new:
+            if a.dry_run:
+                continue
+            r = fetch_album(tid)
+            if r is None:
+                failed += 1  # no answer: not taken; run again
+                continue
+            e = albums.setdefault(tid, {"favorite": None})
+            e["taken"] = today
+            e["fetched"] = today
+            if "_error" in r:
+                e["missing"] = r["_error"]
+                failed += 1
+            else:
+                e["album"] = r
+                fetched += 1
+        print(f"update-tidal-albums: take {len(tids)} albums: {len(tids) - len(new)} in the store already, "
+              f"{fetched} fetched, {failed} not (gone from Tidal or no answer)" + (" — dry run" if a.dry_run else ""))
+        if not a.dry_run:
+            write_store(store)
+        sys.exit(0)
     before = len(albums)
 
     coll = read_collection()

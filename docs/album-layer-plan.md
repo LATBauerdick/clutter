@@ -273,6 +273,47 @@ append, counted by `op`.
 - **A new record** whose master is that of a record already in an album: the
   same — first suggestion under "Same album as…", one click.
 
+### Discogs references — proposed 2026-11-26, LATB asked for the write-up
+
+A Discogs release or master that **describes** an album without being owned: a
+library CD ripped to files, a Tidal opera whose cast LATB wants from Discogs, the
+releases in the old Files folder. Not a version (no access) and not a record
+(nothing owned); nothing is written to Discogs, and no release is added to the
+Discogs collection for it (LATB adds releases only for physical media).
+
+- **Log line:** `{"op":"ref","album":…,"discogs":"release/123"}` or
+  `"master/456"`; `"value":false` takes it off. An album may have several
+  (a master and the release of the recording); folded in order, like `tag`.
+  `album` is a `C` id or a version key, read through the membership as for
+  `tag`. The page writes it against the album's `C` id where it has one (as for
+  tags), so at a split it stays with the album; a reference an alias gives
+  follows the version the alias names.
+- **Writing it:** the album page's link box takes a Discogs URL
+  (`discogs.com/release/…`, `/master/…`, with or without the slug) beside the
+  stream links; `parseStreamRef` today knows Tidal, Apple and Qobuz only. The
+  reference shows in the Versions block's area as "Discogs release … / master …"
+  with an × to take it off (confirmation as for unlinks) and an Open-in link.
+- **What the page shows:** for a release, its credits (`extraartists`, the
+  tracks' own credits: the cast and roles of an opera), label, catalogue number,
+  year, country; for a master, the same from its main release, with the master's
+  year. Fetched when the page opens, after drawing, cached per album with the
+  other details and refreshed by the refresh button (as Wikipedia and Tidal's
+  review). Where the album has a record, the record's own release comes first and
+  a reference adds only what differs. The tracklist from a reference is shown
+  only when asked (as Tidal's for records today).
+- **Old stand-ins:** an `alias` from a `D` key in Streaming or Files is read as a
+  reference to that release as well (269 stand-ins, 51 of them in Files, all
+  aliased since slice 6). The 18 albums in Files that have only file versions then show their
+  Discogs data at once, without a new line. When LATB deletes the two folders the
+  aliases stay in the log, so this keeps working.
+- **Buying the record later:** a new record whose release or master is
+  referenced by an album is the first suggestion under "Same album as…" (one
+  click), as for a same-master record today. (An old stand-in's release joins by
+  its alias already.)
+- **Not in it:** search on Discogs from clutter (paste the URL found on the web);
+  writing credits into clutter's own data; Discogs data in the lists or focuses
+  (no `discogs.*` tags from references in the first version).
+
 ### Slices, each with its check
 
 | # | What | Done when | Model |
@@ -290,6 +331,7 @@ log has its format line, `collection_log.read()` returns no links, so scripts st
 it would see none.
 | 5 | Curated tags and rating: `tag` and `rate` lines; `scripts/import-discogs-curation.py` (genre folders, Petra, Darko/Lavorgna → `my.*`; ratings), dry run first; on the album page tags to add and take off, stars; a fixed view per `my.*` tag in the sidebar | Import counts equal the inventory above (1,313 + 48 tags less albums joined, 410 ratings); a tag set on a record's page shows on its Tidal version's page | Opus |
 | 6 | Stand-ins retired | No play and no mark resolves to a release in Streaming or Files; then LATB deletes the two folders at Discogs; `CLUTTER_STANDIN_FOLDERS` and its code go | Opus, LATB |
+| 8 | Discogs references (section above): `ref` lines in both readers, the link box takes Discogs URLs, credits on the album page, old stand-in aliases read as references, a referenced release or master suggested for a new record | On a scratch log: a release URL and a master URL pasted on a file album and on a Tidal album each write one line and show credits (an opera's cast with roles); × takes it off; at a split the reference stays as written (C id: the album; alias: its version); one of the 18 file-only Files albums shows its Discogs data with no new line; both readers agree in `album-layer-check.py` | Opus builds, reviewed before the commit |
 | 7 | Later: record data into clutter (condition, notes, acquisition number, shelf and position), shelves edited in clutter, a view editor | own plan | — |
 
 Build and test recipe (scratch copy, sandbox, ports, headless Chrome): the
@@ -519,7 +561,65 @@ Status:
   an album had one version follows that version when it is split off later — the album
   it leaves loses it. Not done: tags on the list cards; a tag editor (rename, order, new
   tags only by editing `curated-tags.json`); tagging or rating from a version tab
-  returns to the album tab.
+  returns to the album tab. Imported on the real log 2026-11-26.
+- Slice 6 — started 2026-11-26 (session 859f28b2), uncommitted. `scripts/standin-retire-check.py`
+  (read-only): Discogs without the Streaming and Files folders, as the server would
+  read it (a Tidal store entry counts only with album data); `--tidal-out FILE` lists
+  the un-held Tidal albums. First run: 269 stand-ins (262 aliased), 151 albums would
+  vanish — 144 for an un-held Tidal album (143 distinct), 1 Apple, 7 Files stand-ins
+  never aliased — with 3 plays, 9 tagged, 23 rated. LATB decided (all as recommended):
+  take the Tidal ones into the store; alias the 7 to their file albums (all found in
+  Jellyfin); let the Apple one (The Lincoln Trio) go. `update-tidal-albums.py --take
+  FILE` (fetch into the store like a played non-favourite, `taken` date; already-held
+  ids left alone): 124 of 143 fetched (store copied first to
+  `tidal-albums.json.before-take`), 19 answer 404 (gone from Tidal). Searched with the
+  user token (`api.tidalhifi.com/v1/search/albums`): 11 clear matches under a new id
+  (taken: 4 fetched, 7 held already), LATB OK to alias old → new; 3 uncertain and 5 not
+  found — LATB looks them up in Tidal. Prepared, not written: 18 alias lines (11 T → T,
+  7 D → J) in `cache/standin-retire/alias-lines.jsonl`, for when clutter is stopped.
+  Simulated on a copy of the log with them: 269/269 aliased, 0 plays lost, 9 albums
+  would vanish (LATB's 8 plus the Apple one; 1 rated: Nikolayeva 4★). LATB's links
+  (session 6bbf0c46): Istomin/Rose/Stern → T34219983 (Isaac Stern Collection, Trio
+  Recordings Vol. 1), Böhm Macbeth → T20701447, Nikolayeva Goldberg → T366233911
+  (Remastered 2024); taken (store copied first), 3 alias lines added → 21. The other 5
+  and the Apple one go (LATB). Simulated: 0 plays lost, 6 albums would vanish, none
+  marked, tagged or rated — that is the accepted "nothing lost". 21 alias lines written
+  to the real log with clutter stopped (copy `collection.jsonl.before-standin-retire`);
+  check on the real log: the same 6, 0 plays lost; Python album-layer check OK; the three
+  new ids join the old albums (Nikolayeva keeps 4★). Still to do:
+  LATB deletes the two folders at Discogs, then the stand-in code goes (server:
+  `standInFolderTags`, `CLUTTER_STANDIN_FOLDERS`, `lyStandIns`, stand-in rows and
+  rating donation, `candidatesFor`'s exclusion, `attachCollection`'s record test;
+  scripts: the migration's stand-in step). LATB 11-26: the two folders stay at
+  Discogs for now (no new releases go into them); the stand-in code stays with them.
+- Slice 8 — built 2026-11-26 (session 6bbf0c46), uncommitted, LATB asked for it the same
+  day. Readers: `AlbumLayer` (`Ref`, `DRef`, `parseRef`, `refsOf`, `alRefs`: aliases from a
+  `D` key first, then `ref` lines folded) and `collection_log` (`parse_ref`, `refs_of`);
+  `album-layer-check.py` 73/71 answers OK (refs by key and C id, taken off, alias-given,
+  split, unreadable lines). Server: `Collection.appendRef`, `parseDiscogsRef` (discogs.com
+  URLs incl. `/de/…`, query and slug; `release/…`, `r…`, `m…`), `Layer.lyRefs`,
+  `lyRefIndex`; `/api/albumref/:aid?ref=…&value=…` (refuses: not Discogs, already there,
+  not there, a release that is a record of the album), `/api/albumrefq/:aid[?refresh=1]`
+  (`Tracks.discogsRef`, cached `album-details/discogs-release-N.json` /
+  `discogs-master-N.json`; a master shows its main release with the master's year),
+  `AlbumXJ.xrefs`; `candidatesFor` puts an album whose reference names a record's release
+  or master first. Page: side block "Discogs" (each reference ↗ and ×, Add box), main
+  "From Discogs" (label, catalogue number, format, country, year; credits open, tracklist
+  folded); a Discogs address in the stream box goes to the same place. On the live log
+  269 references come from the stand-in aliases (268 albums). Tested on 8085 with a copy
+  of the live log: Macbeth (T20701447) shows the Orfeo release's cast, a master URL added
+  and taken off (confirm), refusals, Eric Burdon's file album shows its release with no new
+  line, a reference on another album suggested on Blonde On Blonde's record page (release
+  and master), split keeps a C-id reference with the album; headless Chrome
+  (`s8shot.mjs`). Discogs answers a bad token with 401: a release needs no token.
+  Reviewed the same day (fresh Opus reviewer, slices 6 and 8 together): nothing serious;
+  fixed: `"value":null` read alike in both readers (not read; Haskell `.:!`), the Discogs
+  and stream boxes emptied when another album opens, the stream box routes a Discogs
+  address case-insensitively (also `release/…`, `master/…`), `Release/123` and
+  `/master/view/456` parsed, `refresh` only for `1`; check 74/72 OK, rechecked on 8085.
+  Left as noted: any alias from a `D` key gives a reference (only stand-in aliases
+  exist); references fetched one after another, errors not cached; the check script
+  never counts Apple albums held (The Lincoln Trio's is not held: verified).
 
 ### Questions for LATB — answered 2026-11-26: OK to all five
 

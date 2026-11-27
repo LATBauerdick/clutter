@@ -8,7 +8,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple(..), fst, snd)
 import Data.Either (Either(..))
 import Data.Map as M
-import Data.String (contains, stripPrefix, length, joinWith)
+import Data.String (contains, stripPrefix, length, joinWith, toLower, trim)
 import Data.String (take, drop) as S
 import Data.String.Pattern (Pattern(..), Replacement(..))
 import Data.String.Common (replaceAll)
@@ -22,7 +22,7 @@ import Web.Event.Event as Event
 
 import Data.Argonaut.Decode (JsonDecodeError, decodeJson, parseJson)
 
-import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, CandV, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
+import Types  (Album, AlbumJ, AlbumXJ, AlbumTJ, RefJ, CandV, AlbumsJ, ListenedJ, ReviewJ, State, ParamsJ, AlbumList(..), Action(..), SortOrder(..), View(..))
 import Data.Array (filter) as A
 import Data.Set as Set
 import RenderTopMenu (shownAlbums)
@@ -339,9 +339,39 @@ handleAction = case _ of
     updateAlbumList
 
   SetStreamRef s -> H.modify_ _ { streamRef = s }
+  SetRefBox s -> H.modify_ _ { refBox = s }
+  -- a Discogs release or master describes the album (not owned): the backend appends a ref
+  -- line to the collection log and answers with the album's row
+  AddRef aid ref -> do
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "albumref/" <> aid <> "?ref=" <> _encodeURIComponent ref)
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjResult :: Int, rjRow :: String } of
+      Right { rjInfo: i, rjResult: 1, rjRow: row } -> do
+        showAlbum row
+        H.modify_ _ { notice = Just i, refBox = "", streamRef = "" }
+      Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Discogs: no answer" }
+  DropRef aid ref -> do
+    t <- titleOf aid
+    ok <- H.liftEffect (confirmBox ("Take Discogs " <> ref <> " off " <> t <> "?\n\nIt no longer describes this album in clutter; Discogs itself is not changed."))
+    when ok do
+      api <- H.gets _.apiUrl
+      r <- H.liftAff $ getUrl (api <> "albumref/" <> aid <> "?ref=" <> ref <> "&value=false")
+      case (decodeJson =<< parseJson r) :: Either JsonDecodeError { rjInfo :: String, rjResult :: Int, rjRow :: String } of
+        Right { rjInfo: i, rjResult: 1, rjRow: row } -> do
+          showAlbum row
+          H.modify_ _ { notice = Just i }
+        Right { rjInfo: i } -> H.modify_ _ { notice = Just i }
+        Left _ -> H.modify_ _ { notice = Just "Discogs: no answer" }
+  RefreshRefs -> loadRefs true
   -- give the release the Tidal / Apple Music album named in the box (T<id>, A<id> or a
-  -- share link; the backend parses it and appends the link to the collection log)
+  -- share link; the backend parses it and appends the link to the collection log); a
+  -- Discogs address there is a reference (AddRef)
   LinkStream aid -> do
+   ref0 <- H.gets _.streamRef
+   let low = toLower (trim ref0)
+   if contains (Pattern "discogs") low || S.take 8 low == "release/" || S.take 7 low == "master/"
+     then handleAction (AddRef aid ref0) else do
     api <- H.gets _.apiUrl
     ref <- H.gets _.streamRef
     let enc = replaceAll (Pattern " ") (Replacement "%20")
@@ -602,7 +632,7 @@ handleAction = case _ of
 
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
     showAlbum aid = do
-      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, version = "", verX = Nothing, verA = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing, findQ = "", found = [] }
+      H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, version = "", verX = Nothing, verA = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing, findQ = "", found = [], refBox = "", streamRef = "" }
       now <- H.liftAff getNow
       H.liftAff $ Console.logShow now
       api <- H.gets _.apiUrl
@@ -628,9 +658,26 @@ handleAction = case _ of
         r <- H.liftAff $ getUrl (api <> "albumxq/" <> a.albumID)
         cur <- H.gets _.album
         case (decodeJson =<< parseJson r) :: Either JsonDecodeError AlbumXJ, cur of
-          Right x, Just c | x.xid == c.albumID -> H.modify_ _ { albumX = Just x }
+          Right x, Just c | x.xid == c.albumID -> do
+            H.modify_ _ { albumX = Just x }
+            _ <- H.fork (loadRefs false)
+            pure unit
           _, _ -> pure unit
         when (S.take 1 a.albumID == "D") (refreshFromDiscogs a.albumID)
+
+    -- what the album's Discogs references say (docs/album-layer-plan.md › Discogs
+    -- references): asked for once the details name them; refresh: fetched from Discogs again
+    loadRefs :: forall output' m'. MonadAff m' => Boolean -> H.HalogenM State Action () output' m' Unit
+    loadRefs refresh = do
+      st <- H.get
+      case st.album, st.albumX of
+        Just a, Just x | x.xid == a.albumID ->
+          if fromMaybe [] x.xrefs == [] then H.modify_ _ { refsX = Just (Tuple a.albumID []) } else do
+            r <- H.liftAff $ getUrl (st.apiUrl <> "albumrefq/" <> a.albumID <> (if refresh then "?refresh=1" else ""))
+            case (decodeJson =<< parseJson r) :: Either JsonDecodeError (Array RefJ) of
+              Right rs -> H.modify_ \s -> if map _.albumID s.album == Just a.albumID then s { refsX = Just (Tuple a.albumID rs) } else s
+              Left _ -> pure unit
+        _, _ -> pure unit
 
     -- has Discogs changed the release since clutter read it? Then show it as it is now
     refreshFromDiscogs :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit

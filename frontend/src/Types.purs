@@ -4,6 +4,8 @@ module Types  ( Album
               , AlbumRef
               , Related
               , AlbumXJ
+              , RefJ
+              , DiscogsRefJ
               , FileV
               , CandV
               , Curated
@@ -128,7 +130,28 @@ type AlbumXJ =    { xid :: String
                   , xlead :: Maybe String -- the album's lead version (its row)
                   , xleadSet :: Maybe Boolean -- a lead line chose it, not the rule
                   , xmembers :: Maybe (Array String) -- the versions the page may take off or let lead; none for an album of one version
+                  , xrefs :: Maybe (Array String) -- Discogs entries that describe the album, not owned: "master/…", "release/…"
                   }
+-- /api/albumrefq: one Discogs reference with what Discogs says (Nothing: rfError says why)
+type RefJ =       { rfRef :: String
+                  , rfUrl :: String
+                  , rfData :: Maybe DiscogsRefJ
+                  , rfError :: String
+                  }
+type DiscogsRefJ = { drRef :: String
+                   , drUrl :: String
+                   , drRelease :: Int -- the release the data is from (a master: its main release)
+                   , drTitle :: String
+                   , drArtist :: String
+                   , drYear :: Maybe Int
+                   , drMasterYear :: Maybe Int
+                   , drLabel :: String
+                   , drCatno :: String
+                   , drCountry :: String
+                   , drFormat :: String
+                   , drTracks :: Array Track
+                   , drCredits :: Array Credit
+                   }
 -- an album a file album may be a version of
 type CandV =      { cvKey :: String
                   , cvTitle :: String
@@ -224,6 +247,8 @@ type State =      { apiUrl :: String
                   , search :: String
                   , tagFilter :: String
                   , streamRef :: String -- the album page's "link a stream" box: T<id>, A<id> or a share link
+                  , refBox :: String -- the album page's Discogs box: a release or master address
+                  , refsX :: Maybe (Tuple String (Array RefJ)) -- album id, what its Discogs references say (/api/albumrefq)
                   , findQ :: String -- the album page's "Same album as…" search box
                   , found :: Array CandV -- what that search found (/api/albumfind)
                   , curated :: Array Curated -- the curated tags clutter offers (/api/curated): the sidebar's views, the album page's picker
@@ -295,6 +320,10 @@ data Action = ToggleSortOrder
             | UpdateDiscogs
             | SetStreamRef String
             | LinkStream String -- release id: link the stream named in the box
+            | SetRefBox String
+            | AddRef String String -- album id, a Discogs release or master (address or release/…): it describes the album
+            | DropRef String String -- album id, reference ("release/…"): take it off
+            | RefreshRefs -- fetch what the album's references say again
             | LinkStreamTo String String -- release id, stream key (T…, A…): from the stream album's page
             | UnlinkStream String String -- release id, stream key (T…, A…)
             | LinkFile String String -- album id (D…, T…), file album id (J…): the files are a version of that album

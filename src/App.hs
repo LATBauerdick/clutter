@@ -50,11 +50,12 @@ import Env (
   envUpdateMenuParams,
   envUpdateSort,
  )
-import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendRate, appendSkip, appendSplit, appendTag, appendVersion, collectionFile, readCurated, followMove, newAlbumId, notSame, parseStreamRef, readMoves, reviewedFiles, sameKind, standInFolderTags)
+import qualified AlbumLayer as AL
+import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendRate, appendRef, parseDiscogsRef, appendSkip, appendSplit, appendTag, appendVersion, collectionFile, readCurated, followMove, newAlbumId, notSame, parseStreamRef, readMoves, reviewedFiles, sameKind, standInFolderTags)
 import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedName, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
-import Tracks (AlbumTracks, Want (..), albumTracks)
+import Tracks (AlbumTracks, DiscogsRef, Want (..), albumTracks, discogsRef)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
@@ -233,6 +234,7 @@ data AlbumXJ = AlbumXJ
   , xlead :: AlbumKey -- the album's lead version (its row)
   , xleadSet :: Bool -- a lead line chose it, not the rule
   , xmembers :: [AlbumKey] -- the versions the page may take off or let lead (membersOf): none for an album of one version
+  , xrefs :: [Text] -- the Discogs entries that describe the album ("master/…", "release/…"), not owned
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
@@ -421,6 +423,34 @@ data CuratedJ = CuratedJ
   deriving (Show, Generic)
 instance ToJSON CuratedJ
 
+-- Discogs references (docs/album-layer-plan.md › Discogs references): a release or master
+-- that describes an album without being owned, written to the collection log
+--   /api/albumref/:aid?ref=<discogs.com address, release/123, master/456>&value=true|false
+--   /api/albumrefq/:aid[?refresh=1]   what each of the album's references says (credits,
+--                                     label, year), fetched from Discogs and cached per entry
+type API26 =
+  "api"
+    :> "albumref"
+    :> Capture "aid" AlbumKey
+    :> QueryParam "ref" Text
+    :> QueryParam "value" Bool
+    :> Get '[JSON] RowJ
+    :<|> "api"
+      :> "albumrefq"
+      :> Capture "aid" AlbumKey
+      :> QueryParam "refresh" Text
+      :> Get '[JSON] [RefJ]
+
+-- one reference of an album, with what Discogs says about it (Nothing: rfError says why)
+data RefJ = RefJ
+  { rfRef :: Text -- "release/123", "master/456"
+  , rfUrl :: Text
+  , rfData :: Maybe DiscogsRef
+  , rfError :: Text
+  }
+  deriving (Show, Generic)
+instance ToJSON RefJ
+
 -- the answer to a change of the album layer: as ReqJ, and the key of the album's row
 -- afterwards (the page to show)
 data RowJ = RowJ
@@ -523,6 +553,7 @@ type ClutterAPI =
     :<|> API23
     :<|> API24
     :<|> API25
+    :<|> API26
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -604,6 +635,7 @@ clutterServer sd =
     :<|> serveNodeplayfiles
     :<|> (serveAlbumjoin :<|> serveAlbumsplit :<|> serveAlbumlead :<|> serveAlbumfind)
     :<|> (serveAlbumtag :<|> serveAlbumrate :<|> serveCurated)
+    :<|> (serveAlbumref :<|> serveAlbumrefq)
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -759,9 +791,9 @@ clutterServer sd =
         -- a version that is not its album's lead: the album, with all its versions, is its lead's row
         versionOf = let r = rowOf ly i in if r /= i then candV <$> M.lookup r am else Nothing
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf ly am a, xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor sit ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else []}
+      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf ly am a, xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor sit ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else [], xrefs = lyRefs ly i}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = [], xlead = i, xleadSet = False, xmembers = []}
+      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = [], xlead = i, xleadSet = False, xmembers = [], xrefs = []}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do
@@ -882,10 +914,24 @@ clutterServer sd =
   candidatesFor sit ly am a
     | hidden (albumID a) = []
     | otherwise =
-        [ CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = has b}
-        | (_, b) <- take 8 (sortOn (Down . fst) scored)
-        ]
+        take 8 . ordNubOn cvKey $
+          [ CandV{cvKey = albumID b, cvTitle = albumTitle b, cvArtist = albumArtist b, cvFormat = albumFormat b, cvReleased = albumReleased b, cvHas = has b}
+          | b <- referenced <> map snd (take 8 (sortOn (Down . fst) scored))
+          ]
    where
+    -- a record whose release or master an album's Discogs reference names: that album first
+    -- (docs/album-layer-plan.md › Discogs references)
+    referenced = case albumID a of
+      D n ->
+        [ b
+        | r <- ("release/" <> show n) : ["master/" <> m | m <- mapMaybe (TX.stripPrefix "dm:") (albumWikiKeys a)]
+        , nm <- M.findWithDefault [] r (lyRefIndex ly)
+        , let k = rowOfName ly nm
+        , not (hidden k)
+        , nameOf ly k /= nameOf ly (albumID a)
+        , Just b <- [M.lookup k am]
+        ]
+      _ -> []
     -- the stream of that service the other album has already (it stays: a second edition)
     -- (not for a Tidal or Apple album itself: its own id)
     has b = case (albumID a, albumID b) of
@@ -1203,6 +1249,48 @@ clutterServer sd =
               (if s == 0 then "Rating taken off" else "Rated " <> show s <> "★")
               i
       (Just _, Nothing) -> rowAnswer False "stars: 0 to 5" i
+
+  -- a Discogs release or master that describes aid's album, or taken off; written against
+  -- the album's C id if it has one, else its key. Not for a release that is a record of
+  -- the album already (that is a version, not a reference).
+  serveAlbumref :: AlbumKey -> Maybe Text -> Maybe Bool -> AppM RowJ
+  serveAlbumref i mref mv = do
+    now <- liftIO getZonedTime
+    am <- asks albumsR >>= readIORef
+    ly <- asks layerR >>= readIORef
+    let v = fromMaybe True mv
+        md = mref >>= parseDiscogsRef
+    case (M.lookup i am, md) of
+      _ | not (lyFormat ly) -> rowAnswer False notAlbumFormat i
+      (Nothing, _) -> rowAnswer False "Not in clutter" i
+      (Just _, Nothing) -> rowAnswer False "Not a Discogs release or master: paste its address on discogs.com" i
+      (Just a, Just d)
+        | v, AL.DRelease n <- d, isRecordOf ly i (D n) -> rowAnswer False "That release is a record of this album already" i
+        | v == (AL.refText d `elem` lyRefs ly i) ->
+            rowAnswer False (if v then "The album has Discogs " <> AL.refText d <> " already" else "The album does not have Discogs " <> AL.refText d) i
+        | otherwise ->
+            layerWrite
+              (\fn -> appendRef fn now (nameOf ly i) d v a)
+              ((if v then "Added Discogs " else "Took off Discogs ") <> AL.refText d)
+              i
+
+  -- what the album's references say, each fetched from Discogs once and then cached;
+  -- refresh=1 fetches them again
+  serveAlbumrefq :: AlbumKey -> Maybe Text -> AppM [RefJ]
+  serveAlbumrefq i mrefresh = do
+    ly <- asks layerR >>= readIORef
+    let shown r = case AL.parseRef r of
+          Just (AL.DRelease n) -> not (isRecordOf ly i (D n))
+          _ -> True
+    forM (filter shown (lyRefs ly i)) $ \r -> do
+      res <- liftIO (discogsRef (mrefresh == Just "1") r)
+      pure $ case res of
+        Right d -> RefJ{rfRef = r, rfUrl = "https://www.discogs.com/" <> r, rfData = Just d, rfError = ""}
+        Left err -> RefJ{rfRef = r, rfUrl = "https://www.discogs.com/" <> r, rfData = Nothing, rfError = err}
+
+  -- a release that is one of the album's records (a version), not a stand-in read as it
+  isRecordOf :: Layer -> AlbumKey -> AlbumKey -> Bool
+  isRecordOf ly i k = k `elem` versionsOfKey ly i && k `notElem` concat (M.elems (lyStandIns ly))
 
   -- the curated tags clutter offers (curated-tags.json, then those in use it does not
   -- name), with how many album rows have each

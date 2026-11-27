@@ -62,6 +62,8 @@ module Collection (
   readCurated,
   appendTag,
   appendRate,
+  appendRef,
+  parseDiscogsRef,
   attachCollection,
   shelfIndexTags,
   standInFolderTags,
@@ -212,6 +214,8 @@ buildLayer al am =
     , lyVersions = versions
     , lyKeep = AL.alKeep al
     , lyRated = AL.alRated al
+    , lyRefs = \k -> map AL.refText (AL.refsOf al (M.findWithDefault k k names))
+    , lyRefIndex = M.fromListWith (flip (<>)) [(AL.refText d, [n]) | (n, ds) <- M.toList (AL.alRefs al), d <- S.toList ds]
     , lyLeadSet = S.fromList [n | (n, k) <- M.toList (AL.alLead al), k `elem` M.findWithDefault [] n heldOrdered]
     , lyStandIns = M.fromListWith (flip (<>)) [(n, [k]) | (k, n) <- M.toList aliased]
     , lyIds = S.fromList (M.keys (AL.albumsWithIds al)) <> S.fromList (map C (M.keys (AL.alMerges al) <> M.elems (AL.alMerges al)))
@@ -529,6 +533,39 @@ appendRate :: FilePath -> ZonedTime -> AlbumKey -> Int -> Album -> IO ()
 appendRate fn now n s a =
   appendLine fn . object $
     ["ts" .= stamp now, "op" .= ("rate" :: Text), "album" .= n, "stars" .= s, "via" .= ("clutter" :: Text)] <> named a
+
+-- a Discogs release or master that describes the album (not owned), or taken off
+appendRef :: FilePath -> ZonedTime -> AlbumKey -> AL.DRef -> Bool -> Album -> IO ()
+appendRef fn now n d v a =
+  appendLine fn . object $
+    ["ts" .= stamp now, "op" .= ("ref" :: Text), "album" .= n, "discogs" .= AL.refText d]
+      <> ["value" .= False | not v]
+      <> ["via" .= ("clutter" :: Text)]
+      <> named a
+
+-- a Discogs release or master from what the page's box was given: a discogs.com URL
+-- ("https://www.discogs.com/release/123-Artist-Title", "/de/master/456", "/sell/release/123"),
+-- or "release/123", "master/456", "r123", "m456"
+parseDiscogsRef :: Text -> Maybe AL.DRef
+parseDiscogsRef raw
+  | Just d <- AL.parseRef low = Just d
+  | Just n <- T.stripPrefix "r" low >>= whole = Just (AL.DRelease n)
+  | Just n <- T.stripPrefix "m" low >>= whole = Just (AL.DMaster n)
+  | "discogs.com" `T.isInfixOf` low = viaNonEmpty head (mapMaybe pair (zip segs (drop 1 segs)))
+  | otherwise = Nothing
+ where
+  t = T.strip raw
+  low = T.toLower t
+  path = T.takeWhile (\c -> c /= '?' && c /= '#') low
+  -- (old addresses: /master/view/456)
+  segs = filter (\x -> not (T.null x) && x /= "view") (T.splitOn "/" path)
+  isDigit c = c >= '0' && c <= '9'
+  whole x = if not (T.null x) && T.all isDigit x then mfilter (> 0) (readMaybe (toString x)) else Nothing
+  lead x = let ds = T.takeWhile isDigit x in if T.null ds then Nothing else mfilter (> 0) (readMaybe (toString ds))
+  pair (k, x) = case k of
+    "release" -> AL.DRelease <$> lead x
+    "master" -> AL.DMaster <$> lead x
+    _ -> Nothing
 
 -- a version is its own album again
 appendSplit ::FilePath -> ZonedTime -> AlbumKey -> Album -> IO ()

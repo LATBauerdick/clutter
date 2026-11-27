@@ -10,6 +10,7 @@ it a new id; every file album id in the log is read through these lines (follow(
 
 import json
 import os
+import re
 
 
 def log_path() -> str:
@@ -208,7 +209,26 @@ def _event(e: dict):
     if op == "moved":
         a, b = k(e.get("from")), k(e.get("to"))
         return ("moved", a[1:], b[1:]) if a and b and a[0] == b[0] == "J" else None
+    if op == "ref":
+        a, d, v = k(e.get("album")), parse_ref(e.get("discogs")), e.get("value", True)
+        return ("ref", a, d, v) if a and d and isinstance(v, bool) else None
     return None
+
+
+def parse_ref(t):
+    """a Discogs reference as the log writes it, "release/123" or "master/456", as
+    (0 for a master | 1 for a release, id) so that masters sort first; None otherwise
+    (as AlbumLayer.parseRef)"""
+    if not isinstance(t, str):
+        return None
+    m = re.fullmatch(r"(release|master)/([0-9]+)", t.strip())
+    if not m or int(m.group(2)) <= 0:
+        return None
+    return (1 if m.group(1) == "release" else 0, int(m.group(2)))
+
+
+def ref_text(d) -> str:
+    return ("release/" if d[0] == 1 else "master/") + str(d[1])
 
 
 class AlbumLog:
@@ -233,6 +253,12 @@ class AlbumLog:
         self.tags: dict = {}
         self.rate: dict = {}
         self.lead: dict = {}
+        # album -> set of Discogs references: first those a stand-in release gives (an alias
+        # from a D key describes the album it is read as), then the ref lines in order
+        self.refs: dict = {}
+        for d in self.aliases:
+            if d[0] == "D":
+                self.refs.setdefault(self.album_of(d), set()).add((1, int(d[1:])))
         for e in events:
             if e[0] == "keep":
                 a = self.resolve(e[1])
@@ -252,6 +278,12 @@ class AlbumLog:
                     self.rate.pop(a, None)
                 else:
                     self.rate[a] = e[2]
+            elif e[0] == "ref":
+                a = self.resolve(e[1])
+                rs = self.refs.setdefault(a, set())
+                (rs.add if e[3] else rs.discard)(e[2])
+                if not rs:
+                    del self.refs[a]
             elif e[0] == "lead":
                 a = self.resolve(e[1])
                 if e[2] is None:
@@ -300,6 +332,10 @@ class AlbumLog:
 
     def rating_of(self, name: str):
         return self.rate.get(self.resolve(name))
+
+    def refs_of(self, name: str) -> list:
+        """the album's Discogs references, "master/…" first, then "release/…", each by id"""
+        return [ref_text(d) for d in sorted(self.refs.get(self.resolve(name), set()))]
 
     def lead_of(self, name: str, added=lambda k: None):
         """the version that leads: a lead line's, if still a version; else records (the

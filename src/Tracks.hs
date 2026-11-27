@@ -13,7 +13,7 @@
 -- its first artist with one. Tokens come from tok.json in
 -- the working directory, read at fetch time because the Tidal token lives only 4 hours; no
 -- part of a token is ever logged or returned.
-module Tracks (Track (..), Credit (..), AlbumTracks (..), Want (..), albumTracks, cacheDir, jellyfinItems, fileQuality) where
+module Tracks (Track (..), Credit (..), AlbumTracks (..), Want (..), DiscogsRef (..), albumTracks, discogsRef, cacheDir, jellyfinItems, fileQuality) where
 
 import Control.Exception (SomeAsyncException, onException, throwIO, try)
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, eitherDecode, encode, withObject, (.!=), (.:), (.:?))
@@ -194,7 +194,7 @@ cacheDir =
       pure $ home </> "Sync" </> "clutter" </> "album-details"
 
 -- unreadable or undecodable means absent: it is refetched and overwritten
-readCache :: FilePath -> IO (Maybe AlbumTracks)
+readCache :: FromJSON a => FilePath -> IO (Maybe a)
 readCache fn = do
   r <- tryAll $ doesFileExist fn >>= \ok -> if ok then Just <$> readFileBS fn else pure Nothing
   pure $ case r of
@@ -203,7 +203,7 @@ readCache fn = do
 
 -- temp file in the same directory, then rename, so a reader never sees half a file; a failed
 -- write is logged, the fetched data is still returned
-writeCache :: FilePath -> FilePath -> AlbumTracks -> IO ()
+writeCache :: ToJSON a => FilePath -> FilePath -> a -> IO ()
 writeCache dir fn at = do
   r <- tryAll $ do
     createDirectoryIfMissing True dir
@@ -755,6 +755,130 @@ fetchDiscogs mgr n = do
       Right (401, _) -> Left "Discogs: not authorised"
       Right (429, _) -> Left "Discogs: rate limited, try again in a minute"
       Right (st, _) -> Left ("Discogs: HTTP " <> show st)
+
+-- Discogs references (docs/album-layer-plan.md › Discogs references) ------------------------
+
+-- What a Discogs release or master says about an album that clutter does not own: credits
+-- (an opera's cast with roles), label, catalogue number, year, country; for a master, those of
+-- its main release with the master's year. Cached per reference in the details directory
+-- (discogs-release-123.json, discogs-master-456.json), shared by every album naming it.
+data DiscogsRef = DiscogsRef
+  { drRef :: Text -- "release/123", "master/456"
+  , drUrl :: Text -- the entry on discogs.com
+  , drFetched :: Text -- local time of the fetch
+  , drRelease :: Int -- the release the data is from (a master: its main release)
+  , drTitle :: Text
+  , drArtist :: Text
+  , drYear :: Maybe Int -- the release's
+  , drMasterYear :: Maybe Int -- a master's: the year of its first release
+  , drLabel :: Text
+  , drCatno :: Text
+  , drCountry :: Text
+  , drFormat :: Text -- "CD, Album", "Vinyl, LP, Stereo"
+  , drTracks :: [Track]
+  , drCredits :: [Credit]
+  }
+  deriving (Show, Generic)
+instance ToJSON DiscogsRef
+instance FromJSON DiscogsRef
+
+-- refresh = True skips the cache. Left is a short human-readable reason; never throws
+-- (asynchronous exceptions excepted).
+discogsRef :: Bool -> Text -> IO (Either Text DiscogsRef)
+discogsRef refresh ref =
+  tryAll go >>= \case
+    Right r -> pure r
+    Left e
+      | isAsync e -> throwIO e
+      | otherwise -> do
+          logLine (ref <> ": failed unexpectedly")
+          pure (Left "Discogs: unexpected error")
+ where
+  go = case T.splitOn "/" ref of
+    [k, n]
+      | k == "release" || k == "master"
+      , T.all Ch.isDigit n
+      , Just i <- readMaybe (toString n) -> do
+          dir <- cacheDir
+          let fn = dir </> toString ("discogs-" <> k <> "-" <> n <> ".json")
+          cached <- if refresh then pure Nothing else readCache fn
+          case cached of
+            Just d -> pure (Right d)
+            Nothing -> do
+              mgr <- newTlsManagerWith tlsManagerSettings{managerResponseTimeout = responseTimeoutMicro 20000000}
+              r <- if k == "master" then fetchMaster mgr i else fetchRelease mgr i
+              case r of
+                Left err -> do
+                  logLine (ref <> ": discogs failed: " <> err)
+                  pure (Left err)
+                Right d0 -> do
+                  now <- toText . formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" <$> getZonedTime
+                  let d = d0{drRef = ref, drUrl = "https://www.discogs.com/" <> ref, drFetched = now}
+                  logLine (ref <> ": discogs, " <> show (length (drCredits d)) <> " credits")
+                  writeCache dir fn d
+                  pure (Right d)
+    _ -> pure (Left "not a Discogs reference")
+
+-- GET api.discogs.com/<path>, decoded; the token only raises the rate limit
+discogsGet :: Manager -> Text -> String -> IO (Either Text Value)
+discogsGet mgr what path = do
+  tok <- readToken "tok"
+  let auth = maybe [] (\t -> [("Authorization", "Discogs token=" <> encodeUtf8 t)]) tok
+  httpGet mgr "Discogs" ("https://api.discogs.com/" <> path) [] (("User-Agent", "clutter/0.1") : auth)
+    <&> \case
+      Left e -> Left e
+      Right (200, b) -> first (const "Discogs: unexpected response") (eitherDecode b)
+      Right (404, _) -> Left ("Discogs: " <> what <> " not found")
+      Right (401, _) -> Left "Discogs: not authorised"
+      Right (429, _) -> Left "Discogs: rate limited, try again in a minute"
+      Right (st, _) -> Left ("Discogs: HTTP " <> show st)
+
+fetchRelease :: Manager -> Int -> IO (Either Text DiscogsRef)
+fetchRelease mgr n =
+  discogsGet mgr "release" ("releases/" <> show n) <&> \case
+    Left e -> Left e
+    Right v -> maybe (Left "Discogs: unexpected response") Right (discogsRefOf n v)
+
+-- a master: its main release's data, with the master's year
+fetchMaster :: Manager -> Int -> IO (Either Text DiscogsRef)
+fetchMaster mgr n =
+  discogsGet mgr "master" ("masters/" <> show n) >>= \case
+    Left e -> pure (Left e)
+    Right v -> case parseMaybe (withObject "discogs master" $ \o -> (,) <$> o .: "main_release" <*> o .:? "year") v of
+      Nothing -> pure (Left "Discogs: unexpected response")
+      Just (mainRel, yr) ->
+        fetchRelease mgr mainRel <&> fmap (\d -> d{drMasterYear = mfilter (> 0) yr})
+
+discogsRefOf :: Int -> Value -> Maybe DiscogsRef
+discogsRefOf n v = do
+  (ts, cs) <- discogsRelease v
+  flip parseMaybe v $ withObject "discogs release" $ \o -> do
+    title <- o .:? "title" .!= ""
+    artists <- o .:? "artists" .!= []
+    yr <- o .:? "year"
+    labels <- o .:? "labels" .!= []
+    country <- o .:? "country" .!= ""
+    formats <- o .:? "formats" .!= []
+    let names = mapMaybe (parseMaybe (withObject "artist" (.: "name"))) (artists :: [Value])
+        lab = viaNonEmpty head (mapMaybe (parseMaybe (withObject "label" $ \l -> (,) <$> l .: "name" <*> l .:? "catno" .!= "")) (labels :: [Value]))
+        fmt = viaNonEmpty head (mapMaybe (parseMaybe (withObject "format" $ \f -> (:) <$> f .: "name" <*> f .:? "descriptions" .!= [])) (formats :: [Value]))
+    pure
+      DiscogsRef
+        { drRef = ""
+        , drUrl = ""
+        , drFetched = ""
+        , drRelease = n
+        , drTitle = T.strip title
+        , drArtist = T.intercalate ", " (map (T.strip . displayName . T.strip) names)
+        , drYear = mfilter (> 0) yr
+        , drMasterYear = Nothing
+        , drLabel = maybe "" (T.strip . displayName . fst) lab
+        , drCatno = maybe "" (T.strip . snd) lab
+        , drCountry = T.strip country
+        , drFormat = maybe "" (T.intercalate ", " . filter (not . T.null) . map T.strip) fmt
+        , drTracks = ts
+        , drCredits = cs
+        }
 
 data DEntry = DEntry
   { deType :: Text

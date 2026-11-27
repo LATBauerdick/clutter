@@ -20,10 +20,13 @@
 --   {"op":"tag","album":…,"tag":"my.piano","value":true}
 --   {"op":"rate","album":…,"stars":4}               0 takes the rating off
 --   {"op":"moved","from":"J…","to":"J…"}            a file album's new Jellyfin id
+--   {"op":"ref","album":…,"discogs":"release/123"}  a Discogs release or master that
+--                                                   describes the album (not owned); "value":false takes it off
 --
 -- Last line wins for version/split (per key), keep, rate and lead (per album, after
 -- resolving); tags are folded in order. Moves, aliases and merges are chains, followed to
--- the end; a loop stops where it closes. For moves a line to an id takes off a line from
+-- the end; a loop stops where it closes. References are folded in order, after those an
+-- alias from a Discogs release gives (a stand-in describes what it stood for). For moves a line to an id takes off a line from
 -- it (foldChain); for merges and aliases only the exact reverse line (b → a after a → b)
 -- takes the earlier one off, so merge b → c then a → b ends with a in c (foldLinks).
 -- Where a version key is meant (version, split, the key of lead, both ends of alias) a C
@@ -41,6 +44,10 @@ module AlbumLayer (
   keepOf,
   tagsOf,
   ratingOf,
+  refsOf,
+  DRef (..),
+  refText,
+  parseRef,
   leadOf,
   leadAmong,
   kindRank,
@@ -49,8 +56,9 @@ module AlbumLayer (
   followChain,
 ) where
 
-import Data.Aeson (Value, withObject, (.:), (.:?))
+import Data.Aeson (Value (Bool), withObject, (.!=), (.:), (.:!), (.:?))
 import Data.Aeson.Types (Parser)
+import Data.Char (isDigit)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -68,7 +76,25 @@ data Event
   | Tag AlbumKey Text Bool
   | Rate AlbumKey Int
   | Moved Text Text -- Jellyfin ids, lower case
+  | Ref AlbumKey DRef Bool
   deriving (Eq, Show)
+
+-- a Discogs entry that describes an album without being owned (docs/album-layer-plan.md ›
+-- Discogs references): masters order before releases
+data DRef = DMaster Int | DRelease Int
+  deriving (Eq, Ord, Show)
+
+refText :: DRef -> Text
+refText = \case DMaster n -> "master/" <> show n; DRelease n -> "release/" <> show n
+
+-- "release/123" or "master/456" (as the log writes it)
+parseRef :: Text -> Maybe DRef
+parseRef t = case T.splitOn "/" (T.strip t) of
+  [k, n] | not (T.null n), T.all isDigit n, Just i <- readMaybe (toString n), i > 0 -> case k of
+    "release" -> Just (DRelease i)
+    "master" -> Just (DMaster i)
+    _ -> Nothing
+  _ -> Nothing
 
 -- Nothing for a line this reader leaves to others (link, unlink, skip, notsame, …)
 logEvent :: Value -> Parser (Maybe Event)
@@ -111,6 +137,15 @@ logEvent = withObject "collection event" $ \o -> do
         key "to" >>= \t -> case (f, t) of
           (J a, J b) -> pure (Just (Moved a b))
           _ -> fail "not a move of a file album"
+    "ref" -> do
+      a <- key "album"
+      d <- o .: "discogs" >>= maybe (fail "not a Discogs reference (release/… or master/…)") pure . parseRef
+      -- absent: true; present, it must be a Bool (null is not read, as in collection_log)
+      v <- o .:! "value" >>= \case
+        Nothing -> pure True
+        Just (Bool b) -> pure b
+        Just _ -> fail "value: true or false"
+      pure (Just (Ref a d v))
     _ -> pure Nothing
 
 -- the moves as the lines leave them: a line to an id takes off a line from it (a folder
@@ -145,6 +180,7 @@ data AlbumLog = AlbumLog
   , alRate :: Map AlbumKey Int -- by album
   , alLead :: Map AlbumKey AlbumKey -- by album: the version a lead line names
   , alRated :: Bool -- a rate line in the log: ratings are clutter's (seeded from Discogs), not Discogs's
+  , alRefs :: Map AlbumKey (Set DRef) -- by album: the Discogs entries that describe it
   }
 
 -- the key a version is known by now: moves and aliases followed (a loop stops)
@@ -190,6 +226,10 @@ tagsOf al n = M.findWithDefault S.empty (resolveName al n) (alTags al)
 ratingOf :: AlbumLog -> AlbumKey -> Maybe Int
 ratingOf al n = M.lookup (resolveName al n) (alRate al)
 
+-- the Discogs references of an album, masters first, then releases, each by id
+refsOf :: AlbumLog -> AlbumKey -> [DRef]
+refsOf al n = S.toList (M.findWithDefault S.empty (resolveName al n) (alRefs al))
+
 -- the lead rule: a record, then Tidal, files, Apple Music, Qobuz
 kindRank :: AlbumKey -> Int
 kindRank = \case D _ -> 0; T _ -> 1; J _ -> 2; A _ -> 3; Q _ -> 4; C _ -> 5
@@ -224,7 +264,7 @@ foldLog es =
       mv = \case J j -> J (followChain moves j); k -> k
       aliases = foldLinks [(mv a, mv b) | Alias a b <- es]
       merges = foldLinks [(a, b) | Merge a b <- es]
-      base = AlbumLog True moves aliases merges M.empty M.empty M.empty M.empty M.empty M.empty False
+      base = AlbumLog True moves aliases merges M.empty M.empty M.empty M.empty M.empty M.empty False M.empty
       member =
         foldl'
           ( \m (n, e) -> case e of
@@ -239,10 +279,14 @@ foldLog es =
           M.fromListWith (<>) [(C (followChain merges c), [(k, n)]) | (k, (c, n)) <- M.toList member]
       al0 = base{alFormat = Format `elem` es, alMember = member, alAlbums = table, alRated = any (\case Rate _ _ -> True; _ -> False) es}
       r = resolveName al0
+      -- a stand-in release describes the album it is read as
+      standIns = M.fromListWith (<>) [(albumOfKey al0 d, S.singleton (DRelease n)) | d@(D n) <- M.keys aliases]
+      setRef v d = Just . (if v then S.insert d else S.delete d) . fromMaybe S.empty
       step al = \case
         KeepMark n v -> al{alKeep = M.alter (const v) (r n) (alKeep al)}
         Tag n t v -> al{alTags = M.filter (not . S.null) (M.alter (Just . (if v then S.insert t else S.delete t) . fromMaybe S.empty) (r n) (alTags al))}
         Rate n s -> al{alRate = M.alter (const (if s == 0 then Nothing else Just s)) (r n) (alRate al)}
         Lead n mk -> al{alLead = M.alter (const (canonical al0 <$> mk)) (r n) (alLead al)}
+        Ref n d v -> al{alRefs = M.filter (not . S.null) (M.alter (setRef v d) (r n) (alRefs al))}
         _ -> al
-   in foldl' step al0 es
+   in foldl' step al0{alRefs = standIns} es
