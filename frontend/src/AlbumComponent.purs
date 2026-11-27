@@ -266,6 +266,11 @@ handleAction = case _ of
     adjustSort (fromMaybe "Nothing" <<< unwrap $ alist)
     H.modify_ _ { listName = alist, loading = true, menu { ln = fromMaybe "Nothing" <<< unwrap $ alist } }
     updateAlbumList
+  ShowSaved ffs -> do
+    pushView
+    adjustSort "All"
+    H.modify_ _ { listName = AlbumList (Just "All"), loading = true, menu { ln = "All", ffs = ffs } }
+    updateAlbumList
   ShowFocus tag -> do
     pushView
     -- from the album view: all albums with this tag (a genre chip, a tag)

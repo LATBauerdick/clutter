@@ -364,6 +364,7 @@ data Action = ToggleSortOrder
             | TagAlbum String String Boolean -- album, curated tag: put it on (true) or take it off (false)
             | RateAlbum String Int -- album, stars 1–5; 0 takes the rating off
             | ShowCurated String -- the view of a curated tag: All, focused on that tag
+            | ShowSaved (Array (Tuple String Boolean)) -- a saved focus (Never-played vinyl): All, with that focus
             | LoadCurated -- fetch the curated tags and their counts again
             | SetFindQ String
             | FindAlbums String -- album: search any album for "Same album as…"

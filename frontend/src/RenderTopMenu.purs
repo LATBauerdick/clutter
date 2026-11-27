@@ -49,6 +49,7 @@ renderSide state =
   HH.div [ cls (if state.sideOpen then "side side-open" else "side") ] $
     [ HH.div [ cls "brand" ] [ HH.i_ [], HH.text "clutter" ] ]
     <> group "Library" library
+    <> savedViews
     <> myTagsFold
     <> listenedFold
     <> serverFold
@@ -81,10 +82,17 @@ renderSide state =
   current = if inList state then state.menu.ln else ""
   -- (a tag view is All with a focus: the tag lights up, not All)
   item n =
-    HH.button [ cls (if n == current && not (any onTag state.curated) then "nav-item nav-on" else "nav-item")
+    HH.button [ cls (if n == current && not (any onTag state.curated) && not (any onSaved saved) then "nav-item nav-on" else "nav-item")
               , HE.onClick \_ -> ShowList (AlbumList (Just n)) ]
               [ HH.text n ]
   group title ns = if null ns then [] else [ HH.h4_ [ HH.text title ] ] <> map item ns
+  -- saved focuses, under the Library: All with that focus; lit while it is on show
+  saved = [ { name: "Never-played vinyl", tip: "All albums never played, on vinyl"
+            , ffs: [ Tuple "played.never" true, Tuple "format.vinyl" true ] } ]
+  onSaved s = inList state && state.menu.ln == "All" && state.menu.ffs == s.ffs
+  savedViews = map (\s -> HH.button [ cls (if onSaved s then "nav-item nav-on" else "nav-item")
+                                    , HE.onClick \_ -> ShowSaved s.ffs, HP.title s.tip ]
+                                    [ HH.text s.name ]) saved
   -- the curated tags as views (album layer, slice 5): All, focused on the tag; a tag no
   -- album has yet (my.vocal) is listed with 0. Folded, open while one of them is on show.
   onTag c = inList state && state.menu.ln == "All" && state.menu.ffs == [ Tuple c.ctTag true ]
@@ -253,9 +261,6 @@ renderTools state =
            [ HH.button [ cls "pill", HE.onClick \_ -> TogglePop "focus" ] [ HH.text "+ Focus" ]
            , HH.div [ cls (pop "focus" <> " pop-focus") ] focusPicker
            ]
-       , HH.button [ cls "pill", HE.onClick \_ -> SetFocus [ Tuple "played.never" true, Tuple "format.vinyl" true ]
-                   , HP.title "Never played, on vinyl" ]
-                   [ HH.text "★ Never-played vinyl" ]
        ]
     <> (if null ffs then [] else [ HH.button [ cls "pill", HE.onClick \_ -> SetFocus [] ] [ HH.text "Clear" ] ])
     <> [ HH.span [ cls "grow" ] []

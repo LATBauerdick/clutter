@@ -38,11 +38,12 @@ render state =
   HH.div [ HP.class_ (HH.ClassName "shell") ]
     [ renderSide state
     , HH.div [ HP.class_ (HH.ClassName "main") ] $
-        [ renderTop state ]
-        <> case state.review, state.listName of
-             Just rv, _ -> [ reviewView rv ]
-             _, AlbumList Nothing -> [ albumView state.album state.now ]
-             _, _ -> [ renderTools state, renderListView ]
+        case state.review, state.listName of
+             Just rv, _ -> [ renderTop state, reviewView rv ]
+             _, AlbumList Nothing -> [ renderTop state, albumView state.album state.now ]
+             -- a list: the top bar and the toolbar (the focus, sort) stay in view together
+             -- while the cards scroll under them
+             _, _ -> [ HH.div [ HP.class_ (HH.ClassName "head") ] [ renderTop state, renderTools state ], renderListView ]
     -- a click beside an open menu or the drawer closes it
     , if state.menuOpen /= Nothing || state.sideOpen
         then HH.div [ HP.class_ (HH.ClassName "backdrop"), HE.onClick \_ -> ClosePops ] []
