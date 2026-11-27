@@ -646,3 +646,62 @@ Status:
 4. Prefix `my.` for the curated tags?
 5. The Apple Music album found for a Tidal album by lookup is not a version
    until linked. OK?
+
+### Slice 9 — face and play default (proposed 2026-11-27; LATB chose "best quality")
+
+"Lead" did two jobs under one word. Split:
+
+- **Face** (was "lead"): what an album's card shows in the lists — title,
+  artist, cover, year, date added, playing time, row key. The rule stays
+  (record › Tidal › files › Apple › Qobuz); a `lead` line still overrides it.
+  The page no longer says "leads (rule)": the face row gets a small grey
+  "cover" mark, any other held row a "use as cover" button, ↺ back to the rule.
+- **Play default**: the version the album page starts on (facts, tracks, ▶).
+  - Opened from a version list — `Server …`, a shelf, Tidal, Discogs — the
+    version opened, as today.
+  - Opened from an album list (All, Collection, Inbox, My tags, Listened,
+    search, a strip): the playable version of the best quality.
+- **Quality rank**: Hi-Res (24-bit or above 48 kHz; DSD; Tidal
+  `HIRES_LOSSLESS`) › Lossless (16-bit ≤ 48 kHz; Tidal `LOSSLESS`) › lossy ›
+  unknown. A tie goes to Tidal (it starts faster on the Node — the 11-25
+  decision, kept where quality does not decide). A record is not playable and
+  never the play default.
+- **Where quality comes from**: Tidal from its store and the details cache
+  (`mediaMetadata.tags`); files from the tracks cache (`atQuality`), which the
+  server fills in the background for file albums that share an album with
+  another playable version (670 albums today, one Jellyfin request each,
+  one at a time) and for new ones after each update. This is also the backlog
+  item "tracks cache for file albums ahead of time", for those albums.
+- **Versions block**: rows in a fixed order — face first, then the rule's
+  order — each one line, with its quality ("Hi-Res", "FLAC 24/96"); the
+  version on show is highlighted, not moved.
+
+**Built 2026-11-27 — what changed from the proposal while building:**
+
+- Filling the tracks cache ahead of time also fetched each album's Tidal
+  review and Wikipedia lead (Wikipedia answered 429 within a minute). The fill
+  now asks Jellyfin for the tracks alone and keeps only the quality, in
+  `~/Sync/clutter/file-quality.json` (`$CLUTTER_FILE_QUALITY`; `""` = Jellyfin
+  gave none, not asked again); the tracks cache stays as it was and still wins
+  where it has a quality. 1,040 file albums share an album with another
+  version (not 670: that was files + Tidal only). Stops after ten failures in
+  a row with none done (Jellyfin not reachable); writes every 50 albums.
+- Only what ▶ can play takes part: files whose folder the player has
+  (`FileV.fvNode`, from its shares) and a Tidal album not gone. Without the
+  share, a Hi-Res file album does not win over Tidal.
+- A record's page stays on the record (its Discogs tracklist — the 11-22
+  decision); its ▶ plays the best version instead of Tidal by default.
+- Version lists are `Tidal`, `Apple Music` and `Server …`; an album page reached
+  from another page (a strip, ↗, a join) also keeps the version opened. A
+  shelf is a list of records, so it counts as an album list (the record's page
+  stays on the record anyway).
+- Labels: "album cover" (grey) on the face row, a "cover" button on the others.
+- Code: `frontend/src/Quality.purs` (rank, best version), `AlbumComponent`
+  (`autoFrom`, `loadDetail auto`), `Render` (Versions rows, record ▶),
+  `App.fillFileQuality`, `Tracks.cachedFileQuality` and the store.
+- Tested on 8085 with a copy of the live log and tracks cache, a stand-in
+  Jellyfin and a stand-in Node, in headless Chrome: I Love My Computer (Tidal
+  Hi-Res vs FLAC 24/44.1 → Tidal), Red (FLAC 24/96 vs an un-held Tidal album →
+  files, Tidal once the Node lacks the share), From Her To Eternity with its
+  files set to 24/96 (→ files from All, Tidal from the Tidal list and without
+  the share), Blonde On Blonde (record page, ▶ Tidal on a Hi-Res tie).

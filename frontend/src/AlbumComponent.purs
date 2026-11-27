@@ -29,6 +29,7 @@ import Data.Set as Set
 import RenderTopMenu (shownAlbums)
 import GetStuff (confirmBox, getUrl, postStrings, getNow, _encodeURIComponent, initHistory, pushHistory, historyBack, historyForward, onPopState, isClamped)
 import Render (render)
+import Quality (bestVersion)
 
 aComponent :: forall query input output m. MonadAff m => State -> H.Component query input output m
 aComponent is =
@@ -99,7 +100,7 @@ handleAction = case _ of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
     H.modify_ _ { album = am, loading = false, result = Just r, now = now }
-    loadDetail am
+    loadDetail false am
 
   ShowAlbum aid -> pushView *> showAlbum aid
 
@@ -286,7 +287,7 @@ handleAction = case _ of
                         Right { aid: _, album: a } -> Just a
                         Left _ -> Nothing
       H.modify_ _ { album = am, now = now, loading = false, result = Just r }
-      loadDetail am
+      loadDetail false am
   NodePlay tid mode -> do
     -- the album view stays; only the status line under the button changes
     H.modify_ _ { nodeMsg = Just "Node: starting…" }
@@ -632,8 +633,16 @@ handleAction = case _ of
       "J" -> "the file album"
       _ -> "this version"
 
+    -- an album list, not a list of one kind of version (the server's file albums, Tidal's):
+    -- from there the page starts on the version of the best quality (Slice 9)
+    autoFrom :: AlbumList -> Boolean
+    autoFrom = case _ of
+      AlbumList (Just n) -> not (n == "Tidal" || n == "Apple Music" || n == "Server" || S.take 7 n == "Server ")
+      _ -> false
+
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
     showAlbum aid = do
+      from <- H.gets _.listName
       H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, version = "", verX = Nothing, verA = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing, findQ = "", found = [], streamRef = "" }
       now <- H.liftAff getNow
       H.liftAff $ Console.logShow now
@@ -645,17 +654,22 @@ handleAction = case _ of
                         Right { aid: _, album: a } -> Just a
                         Left _ -> Nothing
       H.modify_ _ { album = am, now = now, loading = false, result = Just r }
-      loadDetail am
+      loadDetail (autoFrom from) am
 
     -- the album page's details, once the album itself is there; an older backend
     -- without /api/albumxq just leaves them out. Tracks are asked for at the same time
     -- (they may take seconds: fetched from Tidal, Discogs or Jellyfin the first time), and
     -- a Discogs release is checked with Discogs last (slice 18).
-    loadDetail :: forall output' m'. MonadAff m' => Maybe Album -> H.HalogenM State Action () output' m' Unit
-    loadDetail am = case am of
+    -- auto (Slice 9): opened from an album list, the page starts on the playable version of
+    -- the best quality (Quality.bestVersion) once the details say what each version is; the
+    -- tracks wait for that choice. A record's page stays on the record (its Discogs
+    -- tracklist, as decided 11-22); ▶ there plays the best version (Render).
+    loadDetail :: forall output' m'. MonadAff m' => Boolean -> Maybe Album -> H.HalogenM State Action () output' m' Unit
+    loadDetail auto am = case am of
       Nothing -> pure unit
       Just a -> do
-        _ <- H.fork (loadTracks false)
+        let choose = auto && S.take 1 a.albumID /= "D"
+        when (not choose) (void (H.fork (loadTracks false)))
         api <- H.gets _.apiUrl
         r <- H.liftAff $ getUrl (api <> "albumxq/" <> a.albumID)
         cur <- H.gets _.album
@@ -663,8 +677,12 @@ handleAction = case _ of
           Right x, Just c | x.xid == c.albumID -> do
             H.modify_ _ { albumX = Just x }
             _ <- H.fork (loadRefs false)
-            pure unit
-          _, _ -> pure unit
+            -- not over a version the reader picked meanwhile, nor on another album's page
+            st <- H.get
+            when (choose && st.version == "" && map _.albumID st.album == Just c.albumID) do
+              let best = bestVersion c x
+              if best == "" then void (H.fork (loadTracks false)) else handleAction (ShowVersion best)
+          _, _ -> when choose (void (H.fork (loadTracks false)))
         when (S.take 1 a.albumID == "D") (refreshFromDiscogs a.albumID)
 
     -- what the album's Discogs references say (docs/album-layer-plan.md › Discogs

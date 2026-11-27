@@ -41,7 +41,7 @@ inList state = case state.listName of
   AlbumList Nothing -> false
   _ -> true
 
--- the sidebar: collection lists, the play log, the Discogs lists, and the locations
+-- the sidebar: collection lists, my tags, the play log, and the locations
 -- folded by kind (Shelf, Cube, the rest). A drawer on a narrow screen.
 renderSide :: forall m. State -> H.ComponentHTML Action () m
 renderSide state =
@@ -49,7 +49,6 @@ renderSide state =
     [ HH.div [ cls "brand" ] [ HH.i_ [], HH.text "clutter" ] ]
     <> group "Library" library
     <> myTagsGroup
-    <> group "Discogs Lists" lists
     <> fold "Genre folders" genreFolders
     <> listenedFold
     <> serverFold
@@ -64,7 +63,8 @@ renderSide state =
   -- What is not the play log is told apart by the tags: a Discogs collection folder has a
   -- "folder.<name>" tag; a folder named after a medium (CD, CDR, Files, Streaming) also has a
   -- "format.<name>" tag, a genre folder (Piano, Pop, …) does not. The rest are the built-in
-  -- collections and the Discogs lists.
+  -- collections and the Discogs lists, which the sidebar no longer shows (curated tags
+  -- replaced them, 2026-11-27).
   tags = state.menu.params.msts
   isFolder n = elem ("folder." <> S.toLower n) tags
   isMedium n = elem ("format." <> S.toLower n) tags
@@ -76,7 +76,6 @@ renderSide state =
   rest = filter (\n -> not (isListened n) && not (isServer n)) names
   library = filter (\n -> builtIn n || (isFolder n && isMedium n)) rest
   genreFolders = filter (\n -> isFolder n && not (isMedium n) && not (builtIn n)) rest
-  lists = filter (\n -> not (isFolder n) && not (builtIn n)) rest
   firstWord n = fromMaybe "" (head (S.split (Pattern " ") n))
   shelves = filter (\n -> firstWord n == "Shelf") locs
   cubes = filter (\n -> firstWord n == "Cube") locs

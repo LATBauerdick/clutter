@@ -1092,6 +1092,7 @@ body { margin: 0; }
 .av-ver-open:hover { color: #2a3fb0; }
 .av-ver .av-tag { padding: 0 6px; }
 .av-ver-sub { flex-basis: 100%; color: #6b6b70; font-size: 12px; }
+.av-ver-note { color: #6b6b70; font-size: 12px; }
 .av-ver-of { margin: 2px 0 6px; font-size: 13px; color: #55555a; }
 .av-ver-of a { color: #2a3fb0; text-decoration: none; }
 /* the service marks in front of the "Open in" links (not the global img padding and glow) */

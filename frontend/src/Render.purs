@@ -10,7 +10,7 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Either (fromRight)
 import Data.Tuple (Tuple(..), snd)
-import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null, cons, any, nub, find)
+import Data.Array (range, length, replicate, zip, head, mapMaybe, elem, filter, concat, index, null, cons, any, nub, find, sortWith, mapWithIndex)
 import Control.Alt ((<|>))
 import Data.Foldable (minimum, maximum, sum)
 import Data.Traversable (traverse)
@@ -30,6 +30,7 @@ import Data.String.Pattern (Pattern(..), Replacement(..))
 
 import Types (Album, AlbumRef, ReviewJ, Track, State, AlbumList(..), Action(..), SortOrder(..), pLocList)
 import RenderTopMenu (renderSide, renderTop, renderTools, shownAlbums)
+import Quality (bestVersion)
 
 render :: forall m0. State -> H.ComponentHTML Action () m0
 render state =
@@ -312,21 +313,27 @@ render state =
     verNode = verIsFile && maybe false (\x -> fromMaybe true x.xnode) verDetail
     -- the album itself: a release or a Tidal album plays Tidal where it can; a file album
     -- plays its own files (its Tidal album is a version of its own)
+    -- A record's page stays on the record; its ▶ plays the version of the best quality
+    -- (Slice 9: Quality.bestVersion, its Tidal album on a tie)
+    recordBest = if isDiscogs then maybe "" (bestVersion a) detail else ""
+    recordFile = S.take 1 recordBest == "J"
     useTidal = case state.version of
       "tidal" -> tidalPlays
-      "" -> tidalPlays && not isFile
+      "" -> tidalPlays && not isFile && not recordFile
       _ -> false
     useFiles = case state.version of
       "tidal" -> false
-      "" -> not useTidal && hasFiles
+      "" -> if recordFile then maybe false (\f -> fromMaybe true f.fvNode) playFile else not useTidal && hasFiles
       _ -> verNode
     canPlay = useTidal || useFiles
-    -- the file album ▶ plays: the chosen one, else the album's first
-    playFile = find (\f -> f.fvKey == (if verIsFile then state.version else "J" <> fromMaybe "" a.albumJellyfin)) files
+    -- the file album ▶ plays: the chosen one, a record's best, else the album's first
+    playKey = if verIsFile then state.version else if recordFile then recordBest else "J" <> fromMaybe "" a.albumJellyfin
+    playFile = find (\f -> f.fvKey == playKey) files
     what = if useFiles then "the files, from the player's own library," else "the Tidal album"
     play mode
       | verIsFile = NodePlayFiles state.version mode
       | useTidal = NodePlay tidalId mode
+      | recordFile = NodePlayFiles recordBest mode
       | otherwise = NodePlayFiles a.albumID mode
     modeBtn mode label tip =
       HH.button [ cls "av-btn av-primary av-mode", HE.onClick \_ -> play mode, HP.title tip ] label
@@ -492,13 +499,23 @@ render state =
           inAlbum k = elem k albumKeys
           leadKey = fromMaybe a.albumID (detail >>= _.xlead)
           leadSet = fromMaybe false (detail >>= _.xleadSet)
+          -- the album's face in the lists (Slice 9; was "lead"): the version whose title,
+          -- cover, year and date added the album's card shows. The rule picks it (record,
+          -- Tidal, files, Apple Music, Qobuz); "use cover" on another version clutter holds
+          -- chooses it instead, ↺ goes back to the rule.
           leadCtl k held
             | not (inAlbum k) = []
-            | k == leadKey = [ HH.small [ cls "av-ver-sub", HP.title (if leadSet then "Chosen to lead the album: its title, cover and place in the lists" else "Leads the album by the rule: record, Tidal, files, Apple Music, Qobuz") ]
-                                [ HH.text (if leadSet then "leads" else "leads (rule)") ] ]
+            | k == leadKey = [ HH.small [ cls "av-ver-note", HP.title (if leadSet then "The album's card shows this version's title and cover (chosen by hand)" else "The album's card shows this version's title and cover (by the rule: record, Tidal, files, Apple Music, Qobuz)") ]
+                                [ HH.text "album cover" ] ]
                              <> (if leadSet then [ HH.button [ cls "av-tag", HE.onClick \_ -> LeadVersion a.albumID "", HP.title "Back to the rule: record, Tidal, files, Apple Music, Qobuz" ] [ HH.text "↺" ] ] else [])
-            | held = [ HH.button [ cls "av-tag", HE.onClick \_ -> LeadVersion a.albumID k, HP.title "Let this version lead the album: its title, cover and place in the lists" ] [ HH.text "lead" ] ]
+            | held = [ HH.button [ cls "av-tag", HE.onClick \_ -> LeadVersion a.albumID k, HP.title "Show this version's title and cover on the album's card" ] [ HH.text "cover" ] ]
             | otherwise = []
+          -- the version's quality, beside its name ("Hi-Res lossless", "FLAC 24/96")
+          qualNote = maybe [] (\q -> [ HH.small [ cls "av-ver-note" ] [ HH.text q ] ])
+          ownQuality
+            | isTidalAlbum = facts >>= _.afQuality
+            | isFile = detail >>= _.xquality
+            | otherwise = Nothing
           -- a Tidal album that is no favourite is a version, but clutter does not hold it
           -- (xversions: key alone, no title), so it cannot lead
           tidalHeld = maybe true (\v -> v.cvTitle /= "") (find (\v -> v.cvKey == "T" <> tidalId) (fromMaybe [] (detail >>= _.xversions)))
@@ -514,13 +531,15 @@ render state =
             -- a release's or a file album's Tidal album (a Tidal album is its own row)
             if not isTidalAlbum && hasTidal
               then [ pick "tidal" ("Tidal" <> if isGone then " · gone" else "") "The Tidal album: its tracks, quality and ▶"
-                       ([ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum ("T" <> tidalId), cls "av-ver-open", HP.title "Open the Tidal album's own page" ] [ HH.text "↗" ] ]
+                       (qualNote (facts >>= _.afQuality)
+                        <> [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum ("T" <> tidalId), cls "av-ver-open", HP.title "Open the Tidal album's own page" ] [ HH.text "↗" ] ]
                         <> leadCtl ("T" <> tidalId) tidalHeld <> splitCtl ("T" <> tidalId)) ]
               else []
           fileRow f =
             pick f.fvKey ("Files" <> (if f.fvStorage == "" then "" else " · " <> f.fvStorage))
                  (f.fvTitle <> " — " <> f.fvArtist <> ": its tracks, quality and ▶")
-                 ( [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum f.fvKey, cls "av-ver-open", HP.title "Open this file album's own page" ] [ HH.text "↗" ] ]
+                 ( qualNote f.fvQuality
+                   <> [ HH.a [ HP.href "#", HE.onClick \_ -> ShowAlbum f.fvKey, cls "av-ver-open", HP.title "Open this file album's own page" ] [ HH.text "↗" ] ]
                    <> (if f.fvUrl == "" then [] else
                          [ HH.a [ HP.href f.fvUrl, HP.target "_blank", cls "av-ver-open", HP.title "Open in Jellyfin" ] [ HH.text "J" ] ])
                    <> (if f.fvStorage == "" then [] else
@@ -560,7 +579,20 @@ render state =
           -- (its tracks are fetched and it plays on the Node).
           others = filter (\v -> not (elem v.cvKey shownKeys) && (v.cvTitle /= "" || S.take 1 v.cvKey == "T"))
                           (fromMaybe [] (detail >>= _.xversions))
-          rows = [ pick "" ownLabel "The album as it was opened" (leadCtl a.albumID true <> splitCtl a.albumID) ] <> tidalRow <> map fileRow files <> map otherRow others
+          ownRow = pick "" ownLabel "The album as it was opened" (qualNote ownQuality <> leadCtl a.albumID true <> splitCtl a.albumID)
+          keyed = [ Tuple a.albumID ownRow ]
+                  <> map (Tuple ("T" <> tidalId)) tidalRow
+                  <> map (\f -> Tuple f.fvKey (fileRow f)) files
+                  <> map (\v -> Tuple v.cvKey (otherRow v)) others
+          kindRank k = case S.take 1 k of
+            "D" -> 0
+            "T" -> 1
+            "J" -> 2
+            "A" -> 3
+            "Q" -> 4
+            _ -> 5
+          rows = map (\r -> r.row) $ sortWith (\r -> r.order) $
+                   mapWithIndex (\i (Tuple k rw) -> { order: (if k == leadKey then 0 else 1000) + kindRank k * 100 + i, row: rw }) keyed
           -- a version that is not its album's lead: the album, with all its versions, one click away
           ofRow = case detail >>= _.xof of
             Just o -> [ HH.p [ cls "av-ver-of" ]

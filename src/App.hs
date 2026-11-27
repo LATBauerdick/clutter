@@ -55,7 +55,9 @@ import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendRat
 import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedName, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
-import Tracks (AlbumTracks, DiscogsRef, Want (..), albumTracks, discogsRef)
+import Tracks (AlbumTracks, DiscogsRef, Want (..), albumTracks, cachedFileQuality, discogsRef, fetchFileQuality, readFileQualities, writeFileQualities)
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Exception (finally)
 import qualified Lucid as L
 import Network.HTTP.Media ((//), (/:))
 import Network.Wai
@@ -235,6 +237,7 @@ data AlbumXJ = AlbumXJ
   , xleadSet :: Bool -- a lead line chose it, not the rule
   , xmembers :: [AlbumKey] -- the versions the page may take off or let lead (membersOf): none for an album of one version
   , xrefs :: [Text] -- the Discogs entries that describe the album ("master/…", "release/…"), not owned
+  , xquality :: Maybe Text -- a file album: its files' quality, once its tracks are in the cache ("FLAC 24/96")
   }
   deriving (Show, Generic)
 instance ToJSON AlbumXJ
@@ -261,6 +264,8 @@ data FileV = FileV
   , fvLogged :: Bool -- linked in the collection log (can be taken off here); False: named in the Discogs Location field
   , fvOwner :: Maybe AlbumKey -- the other release of this album that holds the link (same Discogs master); Nothing: this one
   , fvOwnerFormat :: Text -- that release's format, "Vinyl"
+  , fvQuality :: Maybe Text -- its files' quality, once its tracks are in the cache ("FLAC 24/96")
+  , fvNode :: Bool -- the player has its folder in one of its shares (▶ can play it)
   }
   deriving (Show, Generic)
 instance ToJSON FileV
@@ -779,6 +784,17 @@ clutterServer sd =
     -- the suggestions marked "not the same album" (×) for this one
     excl <- liftIO $ M.findWithDefault [] i <$> (collectionFile >>= notSame)
     sit <- liftIO standInFolderTags
+    -- the files' quality of the page's own file album and of its file versions, from the
+    -- tracks cache (Slice 9: the page starts on the version of the best quality)
+    let fileIds = case M.lookup i am of
+          Just a -> ordNub ([j | J j <- [i]] <> albumFiles a)
+          Nothing -> []
+    qstore <- liftIO readFileQualities
+    fq <- liftIO $ M.fromList <$> mapM (\j -> (\q -> (j, q)) <$> cachedFileQuality qstore j) fileIds
+    let qualityOf j = join (M.lookup j fq)
+    -- which of them the player can play (its shares, asked for at most every two minutes)
+    fnode <- liftIO $ M.fromList <$> mapM (\j -> (\f -> (j, isJust f)) <$> nodeFolder j) fileIds
+    let onNodeOf j = M.findWithDefault False j fnode
     -- a file album is named by its storage location ("Files · 1001"), not "Jellyfin": the
     -- page says which copy a version or the album's lead is
     let fmtOf b
@@ -791,9 +807,9 @@ clutterServer sd =
         -- a version that is not its album's lead: the album, with all its versions, is its lead's row
         versionOf = let r = rowOf ly i in if r /= i then candV <$> M.lookup r am else Nothing
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = filesOf ly am a, xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor sit ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else [], xrefs = lyRefs ly i}
+      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = map (\f -> case fvKey f of J j -> f{fvQuality = qualityOf j, fvNode = onNodeOf j}; _ -> f) (filesOf ly am a), xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor sit ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else [], xrefs = lyRefs ly i, xquality = case i of J j -> qualityOf j; _ -> Nothing}
       -- not in the collection (an album made up from a play): no details
-      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = [], xlead = i, xleadSet = False, xmembers = [], xrefs = []}
+      Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = [], xlead = i, xleadSet = False, xmembers = [], xrefs = [], xquality = Nothing}
 
   serveAlbumtq :: AlbumKey -> Maybe Text -> Maybe Text -> AppM AlbumTJ
   serveAlbumtq i mrefresh msource = do
@@ -845,6 +861,8 @@ clutterServer sd =
         , fvLogged = inAlbum j
         , fvOwner = Nothing
         , fvOwnerFormat = ""
+        , fvQuality = Nothing
+        , fvNode = False
         }
 
   isRecordKey :: AlbumKey -> Bool
@@ -1553,6 +1571,9 @@ clutterServer sd =
         pure sj{reqInfo = e, reqResult = 0}
       Right (ExitSuccess, _, err) -> do
         (new, gone, moved, dangling) <- envJellyfinReload
+        -- the files' quality of new file albums with another version (Slice 9)
+        env <- ask
+        _ <- liftIO . forkIO $ fillFileQuality env
         let n c sg pl = show c <> " " <> (if c == 1 then sg else pl)
             -- the quick run saw by Jellyfin's album count that more than additions changed
             due = maybe False ("full update" `TX.isInfixOf`) (lastLine err)
@@ -1766,6 +1787,49 @@ nodeShares = do
     (_, rest) | not (TX.null rest) -> let (x, more) = TX.breakOn "</folder>" (TX.drop 8 rest) in x : between more
     _ -> []
   unescape = TX.replace "&amp;" "&" . TX.replace "&apos;" "'" . TX.replace "&quot;" "\"" . TX.replace "&gt;" ">" . TX.replace "&lt;" "<"
+
+-- Slice 9 (album-layer-plan.md): the album page starts on the version of the best quality, so
+-- the files' quality must be known before the page is opened. Ask Jellyfin for the tracks of
+-- every file album that shares an album with another version and whose quality is not known
+-- yet (neither in the tracks cache nor in the quality store), one album at a time, and keep
+-- the answers in the quality store (Tracks.readFileQualities) -- the tracks alone: no review,
+-- no Wikipedia, nothing written to the tracks cache. Run at start and after each server
+-- update; a second run while one is going is skipped. An album that failed is asked again on
+-- the next run; one that Jellyfin gives no quality for is stored as "" and not asked again.
+fillFileQuality :: Env -> IO ()
+fillFileQuality env = do
+  go <- atomicModifyIORef' fillRunning (\r -> (True, r)) <&> not
+  when go . (`finally` writeIORef fillRunning False) $ do
+    am <- readIORef (albumsR env)
+    ly <- readIORef (layerR env)
+    store0 <- readFileQualities
+    let shared = [j | k@(J j) <- M.keys am, length (versionsOfKey ly k) > 1]
+        pending j = if M.member j store0 then pure False else isNothing <$> cachedFileQuality mempty j
+    todo <- filterM pending shared
+    hPutStrLn stderr ("file quality: " <> show (length todo) <> " of " <> show (length shared) <> " file albums with another version to ask Jellyfin for")
+    let step (st, n, failed) (i, j) = do
+          r <- fetchFileQuality j
+          threadDelay 200000
+          -- failed: in a row (back to 0 with each answer)
+          let (st', n', failed') = case r of
+                Right q -> (M.insert j (fromMaybe "" q) st, n + 1, 0)
+                Left _ -> (st, n, failed + 1)
+          -- written every 50 albums, so a restart loses little
+          when (i `mod` 50 == 0 && n' > n) (writeFileQualities st')
+          pure (st', n', failed')
+        -- ten failures in a row: Jellyfin is not reachable, the run stops (the next one
+        -- goes on from there)
+        loop acc [] = pure (acc, False)
+        loop acc@(_, _, failed) (x : xs)
+          | failed >= 10 = pure (acc, True)
+          | otherwise = step acc x >>= \acc' -> loop acc' xs
+    ((store, done, _), stopped) <- loop (store0, 0 :: Int, 0 :: Int) (zip [1 :: Int ..] todo)
+    when (done > 0) (writeFileQualities store)
+    hPutStrLn stderr ("file quality: " <> show done <> " of " <> show (length todo) <> " asked" <> (if stopped then "; stopped after ten failures in a row (Jellyfin not reachable?)" else ""))
+
+{-# NOINLINE fillRunning #-}
+fillRunning :: IORef Bool
+fillRunning = unsafePerformIO (newIORef False)
 
 {-# NOINLINE nodeSharesCache #-}
 nodeSharesCache :: IORef (Maybe (UTCTime, [Text]))
@@ -2027,6 +2091,8 @@ startApp p c = do
   ldir <- listenedDir
   hPutStrLn stderr $ "logging plays to " <> ldir
   env <- envInit c
+  -- the files' quality of the file albums that share an album with another version (Slice 9)
+  _ <- forkIO $ threadDelay 20000000 >> fillFileQuality env
   run p (appWith sd env)
 
 ---

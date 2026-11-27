@@ -131,6 +131,7 @@ type AlbumXJ =    { xid :: String
                   , xleadSet :: Maybe Boolean -- a lead line chose it, not the rule
                   , xmembers :: Maybe (Array String) -- the versions the page may take off or let lead; none for an album of one version
                   , xrefs :: Maybe (Array String) -- Discogs entries that describe the album, not owned: "master/…", "release/…"
+                  , xquality :: Maybe String -- a file album: its files' quality, once its tracks are in the cache ("FLAC 24/96")
                   }
 -- /api/albumrefq: one Discogs reference with what Discogs says (Nothing: rfError says why)
 type RefJ =       { rfRef :: String
@@ -191,6 +192,8 @@ type FileV =      { fvKey :: String
                   , fvLogged :: Boolean -- linked in clutter's log (× takes it off); false: named in the Discogs Location field
                   , fvOwner :: Maybe String -- another release of this album holds the link (same Discogs master)
                   , fvOwnerFormat :: Maybe String
+                  , fvQuality :: Maybe String -- its files' quality, once its tracks are in the cache
+                  , fvNode :: Maybe Boolean -- the player has its folder (▶ can play it); an older backend does not say
                   }
 -- /api/albumtq: tracks, credits and review, fetched on demand and cached per album (backend Tracks.hs)
 type Track =      { tkDisc :: Int

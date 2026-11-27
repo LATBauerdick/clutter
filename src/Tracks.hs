@@ -13,7 +13,7 @@
 -- its first artist with one. Tokens come from tok.json in
 -- the working directory, read at fetch time because the Tidal token lives only 4 hours; no
 -- part of a token is ever logged or returned.
-module Tracks (Track (..), Credit (..), AlbumTracks (..), Want (..), DiscogsRef (..), albumTracks, discogsRef, cacheDir, jellyfinItems, fileQuality) where
+module Tracks (Track (..), Credit (..), AlbumTracks (..), Want (..), DiscogsRef (..), albumTracks, discogsRef, cacheDir, jellyfinItems, fileQuality, cachedFileQuality, readFileQualities, writeFileQualities, fetchFileQuality) where
 
 import Control.Exception (SomeAsyncException, onException, throwIO, try)
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, eitherDecode, encode, withObject, (.!=), (.:), (.:?))
@@ -42,7 +42,8 @@ import Network.HTTP.Client.TLS (newTlsManagerWith, tlsManagerSettings)
 import Relude
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile, renameFile)
 import System.Exit (ExitCode (..))
-import System.FilePath (takeFileName, (</>))
+import System.FilePath (takeDirectory, takeFileName, (</>))
+import qualified Data.Map.Strict as M
 import System.IO (hClose, hPutStrLn, openTempFileWithDefaultPermissions)
 import System.Process (readProcessWithExitCode)
 import Jellyfin (jellyfinApi)
@@ -184,6 +185,44 @@ isAsync :: SomeException -> Bool
 isAsync e = isJust (fromException e :: Maybe SomeAsyncException)
 
 -- cache -----------------------------------------------------------------------------------
+
+-- The files' quality of a file album (album-layer-plan.md › Slice 9: the album page starts on
+-- the version of the best quality): from its tracks in the cache (J<id>.json), else from the
+-- quality store, ~/Sync/clutter/file-quality.json ($CLUTTER_FILE_QUALITY), which the server
+-- fills ahead of time with Jellyfin's tracks alone -- no review, no Wikipedia, nothing in the
+-- tracks cache -- so that a page opened later still looks those up as before. A store
+-- entry "" means Jellyfin gave no quality (not asked again).
+cachedFileQuality :: Map Text Text -> Text -> IO (Maybe Text)
+cachedFileQuality store j = do
+  dir <- cacheDir
+  at <- readCache (dir </> (toString (keyText (J j)) <> ".json"))
+  pure ((at >>= atQuality) <|> mfilter (not . T.null) (M.lookup j store))
+
+qualityStorePath :: IO FilePath
+qualityStorePath =
+  lookupEnv "CLUTTER_FILE_QUALITY" >>= \case
+    Just p | not (null p) -> pure p
+    _ -> do
+      home <- fromMaybe "." <$> lookupEnv "HOME"
+      pure $ home </> "Sync" </> "clutter" </> "file-quality.json"
+
+-- unreadable or absent: empty
+readFileQualities :: IO (Map Text Text)
+readFileQualities = qualityStorePath >>= fmap (fromMaybe mempty) . readCache
+
+writeFileQualities :: Map Text Text -> IO ()
+writeFileQualities m = do
+  fn <- qualityStorePath
+  writeCache (takeDirectory fn) fn m
+
+-- one file album's quality from Jellyfin (its tracks, nothing else); Left: it failed
+fetchFileQuality :: Text -> IO (Either Text (Maybe Text))
+fetchFileQuality j =
+  tryAll (fetchJellyfin j) >>= \case
+    Right r -> pure (snd <$> r)
+    Left e
+      | isAsync e -> throwIO e
+      | otherwise -> pure (Left "failed unexpectedly")
 
 cacheDir :: IO FilePath
 cacheDir =
