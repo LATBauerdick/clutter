@@ -39,12 +39,20 @@ echo $TID
 echo $TCC
 echo $TDT
 
+# the collection in pages of 500, as many as Discogs says page 1 has (pagination.pages).
+# The server reads draw1..draw4 always and draw5 if it is there; a page past the end is
+# Discogs' "outside of valid range" message, which the scripts cannot read, so pages
+# beyond the collection (from when it was bigger: 2,044 on 2026-11-01, 1,770 on 2026-11-27)
+# are removed, from page 5 on.
 curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=1&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw1.json
-curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=2&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw2.json
-curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=3&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw3.json
-curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=4&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw4.json
-# page 5: the collection passed 2,000 releases (2,044 on 2026-11-01); a loop over all pages is still to do
-curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=5&per_page=500" -H "Authorization: Discogs token=$TOK"  > draw5.json
+PAGES=$(jq -r '.pagination.pages // 4' draw1.json)
+for P in $(seq 2 "$(( PAGES > 4 ? PAGES : 4 ))"); do
+    curl "https://api.discogs.com/users/$USR/collection/folders/0/releases?page=$P&per_page=500" -H "Authorization: Discogs token=$TOK"  > "draw$P.json"
+done
+for F in draw*.json; do
+    N=${F#draw}; N=${N%.json}
+    if [ "$N" -gt 4 ] && [ "$N" -gt "$PAGES" ]; then rm -f "$F"; fi
+done
 
 
 curl "https://api.discogs.com/users/$USR/collection/folders" -H "Authorization: Discogs token=$TOK" > folders-raw.json
