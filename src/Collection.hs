@@ -42,7 +42,7 @@
 -- Every file album id in the log, and in the play log, is read through these lines.
 --
 -- The rule, on the album: in the collection if it is marked yes; or it is not marked and
--- has a record (a Discogs release outside the stand-in folders) or has been played; out if
+-- has a record (a Discogs release) or has been played; out if
 -- marked no; inbox otherwise. Tags collection.in / collection.inbox / collection.out and
 -- keep.yes / keep.no, on every version of the album.
 module Collection (
@@ -66,7 +66,6 @@ module Collection (
   parseDiscogsRef,
   attachCollection,
   shelfIndexTags,
-  standInFolderTags,
   appendMark,
   appendVersion,
   appendSplit,
@@ -105,14 +104,6 @@ collectionFile =
     _ -> do
       home <- fromMaybe "." <$> lookupEnv "HOME"
       pure $ home </> "Sync" </> "clutter" </> "collection.jsonl"
-
--- the Discogs folders whose releases are stand-ins for a stream or for files, not records
--- on a shelf, as folder tags: CLUTTER_STANDIN_FOLDERS (comma-separated folder names),
--- else Streaming and Files
-standInFolderTags :: IO (Set Text)
-standInFolderTags = do
-  names <- maybe "Streaming,Files" toText <$> lookupEnv "CLUTTER_STANDIN_FOLDERS"
-  pure . S.fromList $ [T.toCaseFold ("folder." <> T.strip n) | n <- T.splitOn "," names, not (T.null (T.strip n))]
 
 -- a file album's old Jellyfin id -> the id its folder has since it moved
 type Moves = Map Text Text
@@ -430,15 +421,17 @@ spreadAlbumTags ly am = foldl' spread am albums
     _ -> m
 
 -- set the collection.* and keep.* tags, by album (Layer.lyKeep, the rule above). Needs the
--- played.* tags (attachAlbumPlays) and the albums as the readers give them (for a record's
--- folder: a stand-in is no record).
-attachCollection :: Set Text -> Layer -> Map AlbumKey Album -> Map AlbumKey Album -> Map AlbumKey Album
-attachCollection standInTags ly base am = M.mapWithKey setTags am
+-- played.* tags (attachAlbumPlays) and the albums as the readers give them. Every Discogs
+-- release is a record: the stand-in folders Streaming and Files are gone (2026-11-27), and a
+-- release the log reads as another (an alias) has that other's album, not its own.
+attachCollection :: Layer -> Map AlbumKey Album -> Map AlbumKey Album -> Map AlbumKey Album
+attachCollection ly base am = M.mapWithKey setTags am
  where
-  isRecord (k, a) = case k of
-    D _ -> not (any (`S.member` standInTags) (albumTags a))
+  aliased = S.fromList (concat (M.elems (lyStandIns ly)))
+  isRecord k = case k of
+    D _ -> not (S.member k aliased)
     _ -> False
-  withRecord = S.fromList [nameOf ly k | (k, a) <- M.toList base, isRecord (k, a)]
+  withRecord = S.fromList [nameOf ly k | k <- M.keys base, isRecord k]
   setTags k a =
     let n = nameOf ly k
         tags = filter (\t -> not ("collection." `T.isPrefixOf` t || "keep." `T.isPrefixOf` t)) (albumTags a)

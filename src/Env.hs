@@ -62,7 +62,7 @@ import Tracks (cachedRefCover)
 import qualified Data.Text as TX
 import Control.Exception (try)
 import qualified AlbumLayer as AL
-import Collection (attachAlbumPlays, attachAlbums, attachCollection, attachCurated, buildLayer, collectionFile, followMove, readAlbumLog, readMoves, shelfIndexTags, spreadAlbumTags, standInFolderTags)
+import Collection (attachAlbumPlays, attachAlbums, attachCollection, attachCurated, buildLayer, collectionFile, followMove, readAlbumLog, readMoves, shelfIndexTags, spreadAlbumTags)
 import Jellyfin (JellyfinStore (..), jellyfinAlbums, readJellyfinStore)
 import Listened (listenedDir, listenedName, listenedRows, listenedYears, readPlays)
 import Relude
@@ -351,17 +351,16 @@ buildTagsWith over am = M.map (ordNub . reverse) $ M.fromListWith (<>) [(t, [k])
 -- the playing time and rating by album, the collection rule. Also the tags of the records
 -- that lead an album, as they are matched in a shelf list.
 derive ::
-  Set Text ->
   AL.AlbumLog ->
   [PlayEvent] ->
   (Map AlbumKey Album -> Map AlbumKey Album) ->
   (Album -> AlbumFacts) ->
   Map AlbumKey Album ->
   (Layer, Map AlbumKey Album, Map AlbumKey [Text])
-derive sit alog es wl fa base =
+derive alog es wl fa base =
   let ly = buildLayer alog base
       am =
-        attachCollection sit ly base
+        attachCollection ly base
           . attachCurated alog ly
           . spreadAlbumTags ly
           . attachLength fa
@@ -382,7 +381,7 @@ rebuild = do
   es <- readIORef (playsR env)
   wl <- readIORef (wikiLinksR env)
   fa <- readIORef (albumFactsR env)
-  let (ly, am0, shelf) = derive (standInTags env) alog es wl fa base
+  let (ly, am0, shelf) = derive alog es wl fa base
   -- no cover of its own (a file album Jellyfin has no image for): the image of the album's
   -- first Discogs reference that has one, from the cached entries (album-layer slice 11).
   -- A cover of its own always wins, so a Jellyfin image found later takes over.
@@ -463,8 +462,7 @@ envInit c = do
       "WARNING: " <> cfn <> " has no format line: it is not in the album format yet "
         <> "(scripts/album-layer-migrate.py --write), so no album here has two versions"
   let plays' = plays0
-  sit <- standInFolderTags
-  let (layer', albums', shelfTags') = derive sit alog plays' (attachWiki wstore) (factsFor dstore) albums''
+  let (layer', albums', shelfTags') = derive alog plays' (attachWiki wstore) (factsFor dstore) albums''
   hPutStrLn stderr $ "album layer: " <> show (M.size (lyVersions layer')) <> " albums with an id, " <> show (M.size (lyRow layer')) <> " keys shown as another's row"
 
   -- create the Tags index
@@ -555,7 +553,6 @@ envInit c = do
       , baseR = bsr
       , layerR = lyr
       , shelfTagsR = str
-      , standInTags = sit
       }
 
 --

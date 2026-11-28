@@ -594,6 +594,18 @@ Status:
   rating donation, `candidatesFor`'s exclusion, `attachCollection`'s record test;
   scripts: the migration's stand-in step). LATB 11-26: the two folders stay at
   Discogs for now (no new releases go into them); the stand-in code stays with them.
+  Done 2026-11-27: LATB removed both folders' releases at Discogs (1,770 releases left;
+  backup of the 270 entries in `~/Sync/clutter/discogs-standins-2026-11-27.json`; the six
+  Discogs play counts above the log became `manual` plays). The folder rule went:
+  `standInFolderTags`, `CLUTTER_STANDIN_FOLDERS`, `Env.standInTags`, `candidatesFor`'s
+  exclusion; `attachCollection`'s record test is now "a `D` key the log does not read as
+  another". `scripts/standin-retire-check.py` deleted (its job is done). Kept on purpose:
+  `lyStandIns`, alias rows and the rating of an aliased key — they are the general
+  handling of any held key the log reads as another (a T → T alias for a gone Tidal
+  edition, a moved file album, a leftover stand-in still in the Discogs collection), not
+  folder code. The migration and inventory scripts keep their stand-in steps as history.
+  Compared with the live build on a copy of the stores: 67 lists, plays per album and the
+  Versions of 1,294 albums identical.
 - Slice 8 — built 2026-11-26 (session 6bbf0c46), committed `84eb246`, LATB asked for it the same
   day. Readers: `AlbumLayer` (`Ref`, `DRef`, `parseRef`, `refsOf`, `alRefs`: aliases from a
   `D` key first, then `ref` lines folded) and `collection_log` (`parse_ref`, `refs_of`);

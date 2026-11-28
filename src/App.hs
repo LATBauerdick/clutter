@@ -54,7 +54,7 @@ import Env (
   envUpdateSort,
  )
 import qualified AlbumLayer as AL
-import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendRate, appendRef, parseDiscogsRef, appendSkip, appendSplit, appendTag, appendVersion, collectionFile, readCurated, followMove, newAlbumId, notSame, parseStreamRef, readMoves, reviewedFiles, sameKind, standInFolderTags)
+import Collection (appendLead, appendMark, appendMerge, appendNotSame, appendRate, appendRef, parseDiscogsRef, appendSkip, appendSplit, appendTag, appendVersion, collectionFile, readCurated, followMove, newAlbumId, notSame, parseStreamRef, readMoves, reviewedFiles, sameKind)
 import qualified Data.Text as TX
 import Listened (appendPlay, listenedDir, listenedName, listenedRows, playAlbum, playEvent)
 import Related (Related (..), noRelated, related)
@@ -824,7 +824,6 @@ clutterServer sd =
     onNode <- liftIO $ maybe (pure False) (fmap isJust . nodeFolder) (M.lookup i am >>= fileKey)
     -- the suggestions marked "not the same album" (×) for this one
     excl <- liftIO $ M.findWithDefault [] i <$> (collectionFile >>= notSame)
-    sit <- liftIO standInFolderTags
     -- the files' quality of the page's own file album and of its file versions, from the
     -- tracks cache (Slice 9: the page starts on the version of the best quality)
     let fileIds = case M.lookup i am of
@@ -848,7 +847,7 @@ clutterServer sd =
         -- a version that is not its album's lead: the album, with all its versions, is its lead's row
         versionOf = let r = rowOf ly i in if r /= i then candV <$> M.lookup r am else Nothing
     pure $ case M.lookup i am of
-      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = map (\f -> case fvKey f of J j -> f{fvQuality = qualityOf j, fvNode = onNodeOf j}; _ -> f) (filesOf ly am a), xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor sit ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else [], xrefs = lyRefs ly i, xquality = case i of J j -> qualityOf j; _ -> Nothing, xname = nameOf ly i}
+      Just a -> AlbumXJ{xnode = onNode, xid = i, xfacts = facts a, xrelated = related am a, xloc = M.lookup i lcs, xfiles = map (\f -> case fvKey f of J j -> f{fvQuality = qualityOf j, fvNode = onNodeOf j}; _ -> f) (filesOf ly am a), xcandidates = filter ((`notElem` excl) . cvKey) (candidatesFor ly am a), xstreams = filter isStreamKey others, xof = versionOf, xnotsame = mapMaybe (fmap candV . (`M.lookup` am)) excl, xversions = map versionV others, xlead = rowOf ly i, xleadSet = Set.member (nameOf ly i) (lyLeadSet ly), xmembers = let ms = membersOf ly i in if length ms > 1 then ms else [], xrefs = lyRefs ly i, xquality = case i of J j -> qualityOf j; _ -> Nothing, xname = nameOf ly i}
       -- not in the collection (an album made up from a play): no details
       Nothing -> AlbumXJ{xnode = False, xid = i, xfacts = AlbumFacts Nothing Nothing Nothing Nothing Nothing Nothing False [] Nothing, xrelated = noRelated, xloc = Nothing, xfiles = [], xcandidates = [], xstreams = [], xof = Nothing, xnotsame = [], xversions = [], xlead = i, xleadSet = False, xmembers = [], xrefs = [], xquality = Nothing, xname = i}
 
@@ -963,14 +962,14 @@ clutterServer sd =
   -- the same, or one title inside the other ("Mind Maps 6" in "FSOLdigital Presents Mind
   -- Maps 6"), or most words shared -- with a shared artist word breaking ties. The automatic
   -- import (scripts/import-inventory-links.py) only takes exact pairs; these are for a click.
-  candidatesFor :: Set Text -> Layer -> Map AlbumKey Album -> Album -> [CandV]
+  candidatesFor :: Layer -> Map AlbumKey Album -> Album -> [CandV]
   --
   -- Likewise for a stream album: the albums it may be a version of (a release, a file
   -- album, another edition of the stream); and for a record, other records of the same
   -- title and artist (a second pressing, the CD of a vinyl). Since slice 3 of the album
   -- layer a suggestion joins the two albums (/api/albumjoin); nothing is replaced.
   -- Only for an album's row, and never an album it is a version of already.
-  candidatesFor sit ly am a
+  candidatesFor ly am a
     | hidden (albumID a) = []
     | otherwise =
         take 8 . ordNubOn cvKey $
@@ -1003,14 +1002,12 @@ clutterServer sd =
     -- Discogs master (by title, an opera's other recordings would all look the same:
     -- Carmen, Aida); anything else to anything
     fits b = case (albumID a, albumID b) of
-      -- (not a stand-in release of the folders Streaming and Files: it is no version, slice 6)
-      (D _, D _) -> not (Set.null (masters a `Set.intersection` masters b)) && not (standIn a || standIn b)
+      (D _, D _) -> not (Set.null (masters a `Set.intersection` masters b))
       (D _, _) -> False
       _ -> True
     isRecord = case albumID a of D _ -> True; _ -> False
     masters x = Set.fromList (filter ("dm:" `TX.isPrefixOf`) (albumWikiKeys x))
-    standIn x = any ((`Set.member` sit) . TX.toCaseFold) (albumTags x)
-    -- shown as another album's row: a version of an album, a stand-in
+    -- shown as another album's row: a version of an album, a key the log reads as another
     hidden k = rowOf ly k /= k
     -- words of two letters or more, and numbers ("Mind Maps 6" is not "Mind Maps 7")
     ws = filter (\w -> T.length w > 1 || TX.all Ch.isDigit w) . T.words . T.map (\c -> if Ch.isAlphaNum c then Ch.toLower c else ' ') . dropBrackets
@@ -1507,7 +1504,6 @@ clutterServer sd =
         let decided = logged <> Set.fromList [j | (J j, C _) <- M.toList (lyName ly)]
         -- the inventory has the ids of its day; a folder moved since has a new one
         moves <- liftIO $ collectionFile >>= readMoves
-        sit <- liftIO standInFolderTags
         am <- asks albumsR >>= readIORef
         let rows = case map (TX.dropWhileEnd (== '\r')) (TX.lines body) of
               (h : ls) ->
@@ -1543,7 +1539,7 @@ clutterServer sd =
               guard (not (j `Set.member` decided))
               f <- M.lookup (J j) am
               -- (the review links with albumlink: no other file album as the target)
-              let cands = take 5 (L.nubBy ((==) `on` cvKey) (maybeToList (proposal r) <> filter (not . isFileKey . cvKey) (candidatesFor sit ly am f)))
+              let cands = take 5 (L.nubBy ((==) `on` cvKey) (maybeToList (proposal r) <> filter (not . isFileKey . cvKey) (candidatesFor ly am f)))
               pure
                 ( (rank r, TX.toLower (albumArtist f))
                 , ReviewRow

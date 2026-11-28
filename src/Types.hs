@@ -161,7 +161,6 @@ data Env = Env
     baseR :: IORef (Map AlbumKey Album)
   , layerR :: IORef Layer -- the album layer as the collection log and the albums held leave it
   , shelfTagsR :: IORef (Map Text [AlbumKey]) -- the tags index for a record's row in a shelf list (tagsR: an album's row)
-  , standInTags :: Set Text -- folder tags of the Discogs stand-in folders (Collection.standInFolderTags)
   }
 
 -- The album layer as the server uses it (Collection.buildLayer; docs/album-layer-plan.md).
