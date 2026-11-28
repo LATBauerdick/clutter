@@ -116,7 +116,7 @@ handleAction = case _ of
                       Right { aid: _, album: a } -> Just a
                       Left _ -> Nothing
     H.modify_ _ { album = am, loading = false, result = Just r, now = now }
-    loadDetail false am
+    loadDetail false "" am
 
   ShowAlbum aid -> pushView *> showAlbum aid
 
@@ -289,7 +289,8 @@ handleAction = case _ of
         H.modify_ _ { views = vs, pos = j, menuOpen = Nothing, sideOpen = false, search = "", review = Nothing }
         case v of
           VReview -> loadReview
-          VAlbum aid -> showAlbum aid
+          -- the version that was on show, not the best one again (opened from a list)
+          VAlbum aid ver -> showAlbumAt ver aid
           VList alist ln ffs sn so -> do
             -- the entry brings its own sort; going back into the play log, keep the lists' sort
             H.modify_ _ { sortKept = if isListened ln && not (isListened st.menu.ln)
@@ -335,7 +336,7 @@ handleAction = case _ of
                         Right { aid: _, album: a } -> Just a
                         Left _ -> Nothing
       H.modify_ _ { album = am, now = now, loading = false, result = Just r }
-      loadDetail false am
+      loadDetail false "" am
   NodePlay tid mode -> do
     -- the album view stays; only the status line under the button changes
     H.modify_ _ { nodeMsg = Just "Node: starting…" }
@@ -699,7 +700,7 @@ handleAction = case _ of
     currentView :: State -> Maybe View
     currentView st = case st.listName, st.album of
       _, _ | st.review /= Nothing -> Just VReview
-      AlbumList Nothing, Just a -> Just (VAlbum a.albumID)
+      AlbumList Nothing, Just a -> Just (VAlbum a.albumID st.version)
       AlbumList Nothing, Nothing -> Nothing
       l, _ -> Just (VList l st.menu.ln st.menu.ffs st.menu.sortName st.menu.sso)
 
@@ -747,7 +748,12 @@ handleAction = case _ of
       _ -> false
 
     showAlbum :: forall output' m'. MonadAff m' => String -> H.HalogenM State Action () output' m' Unit
-    showAlbum aid = do
+    showAlbum = showAlbumAt ""
+
+    -- at: the version to show (Back/Forward: the one that was on show; "" the album's own);
+    -- showAlbum ("" and from a list) lets the page choose
+    showAlbumAt :: forall output' m'. MonadAff m' => String -> String -> H.HalogenM State Action () output' m' Unit
+    showAlbumAt at aid = do
       from <- H.gets _.listName
       H.modify_ _ { album = Nothing, albumX = Nothing, albumT = Nothing, aboutOpen = false, aboutLong = false, version = "", verX = Nothing, verA = Nothing, loading = true, listName = AlbumList Nothing, nodeMsg = Nothing, findQ = "", found = [], streamRef = "" }
       now <- H.liftAff getNow
@@ -761,7 +767,7 @@ handleAction = case _ of
                         Left _ -> Nothing
       H.modify_ _ { album = am, now = now, loading = false, result = Just r }
       when (isJust am) (H.liftEffect (saveView ("album\t" <> aid)))
-      loadDetail (autoFrom from) am
+      loadDetail (autoFrom from) at am
 
     -- the album page's details, once the album itself is there; an older backend
     -- without /api/albumxq just leaves them out. Tracks are asked for at the same time
@@ -771,12 +777,18 @@ handleAction = case _ of
     -- the best quality (Quality.bestVersion) once the details say what each version is; the
     -- tracks wait for that choice. A record's page stays on the record (its Discogs
     -- tracklist, as decided 11-22); ▶ there plays the best version (Render).
-    loadDetail :: forall output' m'. MonadAff m' => Boolean -> Maybe Album -> H.HalogenM State Action () output' m' Unit
-    loadDetail auto am = case am of
+    -- at (Back/Forward): the version that was on show; it is shown again, not chosen anew
+    loadDetail :: forall output' m'. MonadAff m' => Boolean -> String -> Maybe Album -> H.HalogenM State Action () output' m' Unit
+    loadDetail auto at am = case am of
       Nothing -> pure unit
       Just a -> do
-        let choose = auto && S.take 1 a.albumID /= "D"
-        when (not choose) (void (H.fork (loadTracks false)))
+        let restore = at /= "" && at /= a.albumID
+            choose = auto && not restore && S.take 1 a.albumID /= "D"
+            -- the version back on show, while the page still shows this album
+            showAt = do
+              st <- H.get
+              when (st.version == "" && map _.albumID st.album == Just a.albumID) (handleAction (ShowVersion at))
+        when (not choose && not restore) (void (H.fork (loadTracks false)))
         api <- H.gets _.apiUrl
         r <- H.liftAff $ getUrl (api <> "albumxq/" <> a.albumID)
         cur <- H.gets _.album
@@ -789,7 +801,8 @@ handleAction = case _ of
             when (choose && st.version == "" && map _.albumID st.album == Just c.albumID) do
               let best = bestVersion c x
               if best == "" then void (H.fork (loadTracks false)) else handleAction (ShowVersion best)
-          _, _ -> when choose (void (H.fork (loadTracks false)))
+            when restore showAt
+          _, _ -> if restore then showAt else when choose (void (H.fork (loadTracks false)))
         when (S.take 1 a.albumID == "D") (refreshFromDiscogs a.albumID)
 
     -- what the album's Discogs references say (docs/album-layer-plan.md › Discogs

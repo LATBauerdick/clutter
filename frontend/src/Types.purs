@@ -310,7 +310,7 @@ type ParamsJ =    { timeStamp :: String
                   }
 
 -- a view to go back to: an album, or a list with its focus and sort, or the review
-data View = VAlbum String
+data View = VAlbum String String -- album, the version on show ("": the album's own)
           | VList AlbumList String (Array (Tuple String Boolean)) String SortOrder
           | VReview
 
