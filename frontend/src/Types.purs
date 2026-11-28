@@ -342,6 +342,7 @@ data Action = ToggleSortOrder
             | LinkFile String String -- album id (D…, T…), file album id (J…): the files are a version of that album
             | UnlinkFile String String -- album id, file album id (J…): these files are not this album
             | KeepAlbum String String -- album id; yes | no | unset: the keep mark (docs/jellyfin-plan.md)
+            | TidalAdd String String -- album id, Tidal id: add the album to the Tidal collection (favourites)
             | ToggleSelect -- a list: select mode on or off
             | SelectAlbum String -- in select mode: this album in or out of the selection
             | SelectShown -- everything the list shows (what the search box lets through)

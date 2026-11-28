@@ -524,6 +524,20 @@ handleAction = case _ of
             Left _ -> H.modify_ _ { notice = Just i }
         Right { reqInfo: i } -> H.modify_ _ { notice = Just i }
         Left _ -> H.modify_ _ { notice = Just "Keep mark: no answer" }
+  -- "+ Tidal": the album into the Tidal collection; the backend then updates from Tidal
+  -- (a few seconds), and the page is drawn again with the album as a favourite
+  TidalAdd aid tid -> do
+    H.modify_ _ { notice = Just "Adding to the Tidal collection…" }
+    api <- H.gets _.apiUrl
+    r <- H.liftAff $ getUrl (api <> "tidaladd/" <> tid)
+    case (decodeJson =<< parseJson r) :: Either JsonDecodeError { reqInfo :: String, reqResult :: Int } of
+      Right { reqInfo: i } -> do
+        ra <- H.liftAff $ getUrl (api <> "albumq/" <> aid)
+        st <- H.gets identity
+        case (decodeJson =<< parseJson ra) :: Either JsonDecodeError AlbumJ of
+          Right { aid: _, album: a } | map _.albumID st.album == Just aid -> H.modify_ _ { album = Just a, notice = Just i }
+          _ -> H.modify_ _ { notice = Just i }
+      Left _ -> H.modify_ _ { notice = Just "Add to Tidal: no answer" }
   -- bulk Keep: select albums in a list, then mark them all at once
   ToggleSelect -> H.modify_ \st -> st { selecting = not st.selecting, selected = (Set.empty :: Set.Set String) }
   SelectAlbum aid -> H.modify_ \st -> st { selected = if Set.member aid st.selected then Set.delete aid st.selected else Set.insert aid st.selected }

@@ -462,6 +462,15 @@ type API27 =
     :> Capture "aid" AlbumKey
     :> Get '[JSON] RowJ
 
+-- add a Tidal album to the Tidal collection (the favourites; scripts/tidal-favourite.py),
+-- then the update from Tidal as for "Update from Tidal"
+--   /api/tidaladd/:tid
+type API28 =
+  "api"
+    :> "tidaladd"
+    :> Capture "tid" Int
+    :> Get '[JSON] ReqJ
+
 -- one reference of an album, with what Discogs says about it (Nothing: rfError says why)
 data RefJ = RefJ
   { rfRef :: Text -- "release/123", "master/456"
@@ -578,6 +587,7 @@ type ClutterAPI =
     :<|> API25
     :<|> API26
     :<|> API27
+    :<|> API28
     :<|> Raw
 
 clutterAPI :: Proxy ClutterAPI
@@ -661,6 +671,7 @@ clutterServer sd =
     :<|> (serveAlbumtag :<|> serveAlbumrate :<|> serveCurated)
     :<|> (serveAlbumref :<|> serveAlbumrefq)
     :<|> serveAlbumupdate
+    :<|> serveTidaladd
     :<|> serveDirectoryFileServer sd
  where
   decodeListQuery :: Text -> Maybe Text -> Maybe Text -> [Text] -> AppM (V.Vector AlbumKey)
@@ -1655,13 +1666,7 @@ clutterServer sd =
       -- --tidal refreshes the token and brings the album store up to date; its output is
       -- dropped unread. Then the store is taken in again.
       Just "tidal" -> do
-        ran <- liftIO . try . withStoreLock $ readProcessWithExitCode "./update-json" ["--tidal"] ""
-        let failed = case ran :: Either SomeException (ExitCode, String, String) of
-              Right (ExitSuccess, _, _) -> Nothing
-              Right (ExitFailure c, _, _) -> Just ("update-json --tidal failed (" <> show c <> ")")
-              Left _ -> Just "update-json could not be run"
-        new <- envTidalReload
-        liftIO $ hPutStrLn stderr ("update from Tidal: " <> show new <> " new albums" <> maybe "" (\e -> "; " <> toString e) failed)
+        (new, failed) <- tidalUpdate
         pure $ case failed of
           Nothing -> sj{reqInfo = show new <> (if new == 1 then " new album" else " new albums") <> " from Tidal"}
           Just e -> sj{reqInfo = e, reqResult = 0}
@@ -1671,6 +1676,39 @@ clutterServer sd =
       -- every album, not only the new ones: minutes (Jellyfin takes about 40 ms per album)
       Just "jellyfinfull" -> jellyfinUpdate ["--full"]
       _ -> liftIO (print r) >> pure sj
+
+  -- update-json --tidal (token, favourites, Save for later, album store), then the store
+  -- taken in again: the number of new albums, and what failed
+  tidalUpdate :: AppM (Int, Maybe Text)
+  tidalUpdate = do
+    ran <- liftIO . try . withStoreLock $ readProcessWithExitCode "./update-json" ["--tidal"] ""
+    let failed = case ran :: Either SomeException (ExitCode, String, String) of
+          Right (ExitSuccess, _, _) -> Nothing
+          Right (ExitFailure c, _, _) -> Just ("update-json --tidal failed (" <> show c <> ")")
+          Left _ -> Just "update-json could not be run"
+    new <- envTidalReload
+    liftIO $ hPutStrLn stderr ("update from Tidal: " <> show new <> " new albums" <> maybe "" (\e -> "; " <> toString e) failed)
+    pure (new, failed)
+
+  -- "+ Tidal" on an album page: the album into the Tidal collection, then the update from
+  -- Tidal, so the album comes back as a favourite with the date it was added
+  serveTidaladd :: Int -> AppM ReqJ
+  serveTidaladd tid = do
+    liftIO $ print ("-------serveTidaladd " :: Text, tid)
+    now <- liftIO getZonedTime
+    let sj = ReqJ{reqTime = toText $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M" now, reqInfo = "", reqResult = 1}
+    ran <- liftIO . try $ readProcessWithExitCode "python3" ["scripts/tidal-favourite.py", show tid] ""
+    case ran :: Either SomeException (ExitCode, String, String) of
+      Left _ -> pure sj{reqInfo = "scripts/tidal-favourite.py could not be run", reqResult = 0}
+      Right (ExitFailure _, _, err) -> do
+        let e = fromMaybe "Tidal did not take the album" (viaNonEmpty last . filter (not . TX.null) . TX.lines $ toText err)
+        liftIO $ hPutStrLn stderr (toString e)
+        pure sj{reqInfo = e, reqResult = 0}
+      Right (ExitSuccess, _, _) -> do
+        (_, failed) <- tidalUpdate
+        pure $ case failed of
+          Nothing -> sj{reqInfo = "Added to the Tidal collection"}
+          Just e -> sj{reqInfo = "Added to the Tidal collection, but " <> e, reqResult = 0}
 
   -- the file server: scripts/update-jellyfin-albums.py asks Jellyfin for its albums -- the
   -- new ones, or with --full all of them -- and writes clutter's store; then the store is

@@ -435,7 +435,7 @@ render state =
             _ -> []
         , locationRow
         , row "Plays" [ HH.text playsText ]
-        , if isDiscogs then [] else row "Tidal" [ HH.text collectionText ]
+        , if isDiscogs then [] else row "Tidal" (if canAddTidal && collectionText == "not in the collection" then tidalAddBtn else [ HH.text collectionText ] <> tidalAddBtn)
         , if otherTags == [] then [] else
             row "Tags" (map (\t -> HH.button [ cls "av-tag", HE.onClick \_ -> ShowFocus t, HP.title ("All albums: #" <> t) ]
                                              [ HH.text t ]) otherTags)
@@ -463,6 +463,14 @@ render state =
       Just _, _ | elem "tidal.collection" a.albumTags -> "in the collection since " <> S.take 10 (fromMaybe "" a.albumAdded)
       Just _, Just u -> "in the collection " <> S.take 10 (fromMaybe "" a.albumAdded) <> " – " <> S.take 10 u
       Just _, Nothing -> "not in the collection"
+    -- a Tidal album that is on Tidal but not (or no longer) in the Tidal collection: add it
+    canAddTidal = a.albumTidal /= Nothing && not isGone && not (elem "tidal.collection" a.albumTags)
+    tidalAddBtn
+      | canAddTidal =
+          [ HH.button [ cls "av-tag", HE.onClick \_ -> TidalAdd a.albumID tidalId
+                                   , HP.title ("Add this album to the Tidal collection (favourites) · T" <> tidalId) ]
+                                   [ HH.text "+ Tidal" ] ]
+      | otherwise = []
     -- a shelf or box is shown under the artist (whereView); here only a location that is a link
     locationRow = case a.albumLocation of
       Just loc | loc /= "" && whereIs == Nothing -> row "Location" [ HH.a [ HP.href loc ] [ HH.text loc ] ]
